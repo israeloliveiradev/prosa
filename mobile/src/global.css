@@ -1,0 +1,108 @@
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+:root.light {
+  color-scheme: light;
+  --paper: #f9f8f6;
+  --ink: #2a211e;
+  --muted: #5e564f;
+  --ember: #4a1e24;
+  --ember-soft: #e8d5c8;
+  --on-ember: #f9f8f6;
+  --moss: #3b4a3a;
+  --moss-soft: #e4ebe0;
+  --card: #ffffff;
+  --line: #e6ddd6;
+  --rose-soft: #f8d6db;
+  --rose-ink: #8e1b2c;
+  --sand: #e8d5c8;
+  --sand-ink: #4a1e24;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    color-scheme: dark;
+    --paper: #141110;
+    --ink: #f9f8f6;
+    --muted: #d9cfc8;
+    --ember: #e8d5c8;
+    --ember-soft: #3a2c2a;
+    --on-ember: #4a1e24;
+    --moss: #d7e3d2;
+    --moss-soft: #2a3328;
+    --card: #241e1c;
+    --line: #3a3330;
+    --rose-soft: #4a2030;
+    --rose-ink: #f8d6db;
+    --sand: #3a2e28;
+    --sand-ink: #e8d5c8;
+  }
+}
+
+:root.dark {
+  color-scheme: dark;
+  --paper: #141110;
+  --ink: #f9f8f6;
+  --muted: #d9cfc8;
+  --ember: #e8d5c8;
+  --ember-soft: #3a2c2a;
+  --on-ember: #4a1e24;
+  --moss: #d7e3d2;
+  --moss-soft: #2a3328;
+  --card: #241e1c;
+  --line: #3a3330;
+  --rose-soft: #4a2030;
+  --rose-ink: #f8d6db;
+  --sand: #3a2e28;
+  --sand-ink: #e8d5c8;
+}
+
+html,
+body,
+#root {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  transition: background-color 320ms ease, color 320ms ease;
+}
+
+#root * {
+  font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+#root .font-display {
+  font-family: "Playfair Display", "Times New Roman", serif;
+  font-style: normal;
+  font-weight: 500;
+}
+
+#root .font-displayItalic {
+  font-family: "Playfair Display", "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 500;
+}
+
+#root .font-label {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 600;
+}
+
+[role="button"]:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
