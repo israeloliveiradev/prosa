@@ -1,0 +1,17 @@
+secrets/*.env
+!secrets/*.example
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+mobile/.kotlin/
+*.jks
+*.p8
+*.p12
+*.pem
+*.mobileprovision
