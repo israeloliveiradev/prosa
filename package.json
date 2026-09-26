@@ -1,0 +1,32 @@
+{
+  "name": "prosa-api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx --env-file=secrets/runtime.env src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "tsx --test test/levenshtein.test.ts test/cache-key.test.ts test/schemas.test.ts test/news-feed.test.ts test/voice-catalog.test.ts test/mnemonic.test.ts test/grammar.test.ts test/cadence.test.ts test/reconstruction.test.ts test/duel.test.ts test/cognate.test.ts test/hands-free.test.ts test/retention.test.ts test/persona.test.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/multipart": "^9.0.3",
+    "@fastify/rate-limit": "^10.3.0",
+    "@google/genai": "^2.24.0",
+    "@node-rs/argon2": "^2.2.1",
+    "fastify": "^5.6.1",
+    "ioredis": "^5.8.1",
+    "pg": "^8.16.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
