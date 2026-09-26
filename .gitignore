@@ -4,6 +4,8 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+__pycache__/
+*.pyc
 .DS_Store
 mobile/node_modules/
 mobile/.expo/
