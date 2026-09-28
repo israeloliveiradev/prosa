@@ -1,4 +1,4 @@
-import { Fraunces_500Medium, Fraunces_500Medium_Italic } from "@expo-google-fonts/fraunces";
+import { Newsreader_600SemiBold } from "@expo-google-fonts/newsreader";
 import { SourceSans3_400Regular, SourceSans3_600SemiBold } from "@expo-google-fonts/source-sans-3";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -11,8 +11,7 @@ import { ThemeProvider, useTheme } from "@/theme/ThemeContext";
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
-    Fraunces: Fraunces_500Medium,
-    "Fraunces Italic": Fraunces_500Medium_Italic,
+    Newsreader: Newsreader_600SemiBold,
     "Source Sans 3": SourceSans3_400Regular,
     "Source Sans 3 Semibold": SourceSans3_600SemiBold,
   });

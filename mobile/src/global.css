@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -7,58 +7,58 @@
 :root,
 :root.light {
   color-scheme: light;
-  --paper: #f9f8f6;
-  --ink: #2a211e;
-  --muted: #5e564f;
-  --ember: #4a1e24;
-  --ember-soft: #e8d5c8;
-  --on-ember: #f9f8f6;
-  --moss: #3b4a3a;
-  --moss-soft: #e4ebe0;
+  --paper: #fff8f1;
+  --ink: #1c1917;
+  --muted: #44403c;
+  --ember: #9a3412;
+  --ember-soft: #f8d9c8;
+  --on-ember: #ffffff;
+  --moss: #047857;
+  --moss-soft: #d1fae5;
   --card: #ffffff;
-  --line: #e6ddd6;
-  --rose-soft: #f8d6db;
-  --rose-ink: #8e1b2c;
-  --sand: #e8d5c8;
-  --sand-ink: #4a1e24;
+  --line: #e4d2c8;
+  --rose-soft: #fee2e2;
+  --rose-ink: #b91c1c;
+  --sand: #ffedd5;
+  --sand-ink: #7c2d12;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
     color-scheme: dark;
-    --paper: #141110;
-    --ink: #f9f8f6;
-    --muted: #d9cfc8;
-    --ember: #e8d5c8;
-    --ember-soft: #3a2c2a;
-    --on-ember: #4a1e24;
-    --moss: #d7e3d2;
-    --moss-soft: #2a3328;
-    --card: #241e1c;
-    --line: #3a3330;
-    --rose-soft: #4a2030;
-    --rose-ink: #f8d6db;
-    --sand: #3a2e28;
-    --sand-ink: #e8d5c8;
+    --paper: #0e0c0b;
+    --ink: #f6ede6;
+    --muted: #cdbfb4;
+    --ember: #e07a4a;
+    --ember-soft: #3a2218;
+    --on-ember: #1c0a06;
+    --moss: #5fcb9a;
+    --moss-soft: #12382c;
+    --card: #1a1614;
+    --line: #2e2824;
+    --rose-soft: #5c1a1a;
+    --rose-ink: #f0a8a8;
+    --sand: #2a1c14;
+    --sand-ink: #ffedd5;
   }
 }
 
 :root.dark {
   color-scheme: dark;
-  --paper: #141110;
-  --ink: #f9f8f6;
-  --muted: #d9cfc8;
-  --ember: #e8d5c8;
-  --ember-soft: #3a2c2a;
-  --on-ember: #4a1e24;
-  --moss: #d7e3d2;
-  --moss-soft: #2a3328;
-  --card: #241e1c;
-  --line: #3a3330;
-  --rose-soft: #4a2030;
-  --rose-ink: #f8d6db;
-  --sand: #3a2e28;
-  --sand-ink: #e8d5c8;
+  --paper: #0e0c0b;
+  --ink: #f6ede6;
+  --muted: #cdbfb4;
+  --ember: #e07a4a;
+  --ember-soft: #3a2218;
+  --on-ember: #1c0a06;
+  --moss: #5fcb9a;
+  --moss-soft: #12382c;
+  --card: #1a1614;
+  --line: #2e2824;
+  --rose-soft: #5c1a1a;
+  --rose-ink: #f0a8a8;
+  --sand: #2a1c14;
+  --sand-ink: #ffedd5;
 }
 
 html,
@@ -66,29 +66,65 @@ body,
 #root {
   background: var(--paper);
   color: var(--ink);
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  word-spacing: normal;
+  letter-spacing: normal;
   transition: background-color 320ms ease, color 320ms ease;
 }
 
-#root * {
-  font-family: "Plus Jakarta Sans", sans-serif;
+#root .font-displayItalic.text-display,
+#root .font-display.text-display {
+  font-size: clamp(34px, 4.6vw, 52px);
+  line-height: 1.18;
+  letter-spacing: -0.018em;
+}
+
+#root .font-displayItalic.text-headline,
+#root .font-display.text-headline {
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.28;
+  letter-spacing: -0.012em;
+}
+
+/* RN Web Text vira flex no NativeWind e some com o espaço entre as palavras. */
+#root [dir],
+#root [class*="css-text"],
+#root [class*="css-textHasAncestor"] {
+  display: inline-block !important;
+  white-space: pre-wrap !important;
+  word-spacing: 0.16em !important;
 }
 
 #root .font-display {
-  font-family: "Playfair Display", "Times New Roman", serif;
+  font-family: "Newsreader", Georgia, serif;
   font-style: normal;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 #root .font-displayItalic {
-  font-family: "Playfair Display", "Times New Roman", serif;
-  font-style: italic;
-  font-weight: 500;
+  font-family: "Newsreader", Georgia, serif;
+  font-style: normal;
+  font-weight: 600;
 }
 
 #root .font-label {
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: "Source Sans 3", "Segoe UI", sans-serif;
   font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+#root .text-\[11px\] {
+  font-size: 12px !important;
+  line-height: 1.35;
+}
+
+#root .tracking-\[0\.22em\],
+#root .tracking-\[0\.24em\],
+#root .tracking-\[0\.28em\],
+#root .tracking-widest {
+  letter-spacing: 0.08em !important;
 }
 
 [role="button"]:focus-visible,
