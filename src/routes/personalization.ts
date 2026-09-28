@@ -78,6 +78,7 @@ export function registerPersonalizationRoutes(
       reply.header("x-prosa-cache", result.cached ? "hit" : "miss");
       return {
         ...result.news,
+        published: result.news.published ?? null,
         audio_url: result.audio_url,
         words: result.words,
       };

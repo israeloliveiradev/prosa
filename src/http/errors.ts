@@ -7,3 +7,15 @@ export class AppError extends Error {
     this.statusCode = statusCode;
   }
 }
+
+const SENSITIVE = /api[_-]?key|password_hash|secret=|stack|ECONN|postgres:\/\//i;
+
+export function publicErrorMessage(error: Error, statusCode: number): string {
+  if (statusCode < 500) {
+    return error.message;
+  }
+  if (error instanceof AppError && !SENSITIVE.test(error.message)) {
+    return error.message;
+  }
+  return "Internal server error";
+}

@@ -13,6 +13,8 @@ import { cognateLessonOpen, listCognates, type CognateAnchor } from "./cognates.
 import type { LessonCache } from "./lesson-cache.js";
 import type { GeminiGateway } from "./gemini-gateway.js";
 import type { AuthUser } from "../auth/session.js";
+import type { OpsService } from "./ops.js";
+import { castStamp, parseCast, type CastSlot, type MindId } from "./minds.js";
 
 export interface GeneratedLesson {
   lesson: LessonPayload;
@@ -26,6 +28,7 @@ export class LessonService {
     private readonly redis: Redis,
     private readonly cache: LessonCache,
     private readonly gemini: GeminiGateway,
+    private readonly ops?: OpsService,
   ) {}
 
   async generate(input: GenerateLessonBody, user?: AuthUser): Promise<GeneratedLesson> {
@@ -36,6 +39,7 @@ export class LessonService {
           level: user.level,
           topic: input.topic,
           interests: input.interests ?? [],
+          minds: await this.loadMinds(user.id, input),
         }
       : await this.resolveProfile(input);
     const used = user ? await this.cognateCount(user.id) : 0;
@@ -50,6 +54,7 @@ export class LessonService {
       profile.interests,
       profile.native_lang,
       cognate,
+      castStamp(profile.minds),
     );
     const existing = await this.cache.get(hash);
     if (existing) {
@@ -83,12 +88,17 @@ export class LessonService {
         }
         return { lesson: again, cached: true, anchors: cognate ? anchors : [] };
       }
+      if (this.ops && (await this.ops.isGenerationPaused())) {
+        await this.ops.record("lesson", "paused", "Lesson generation is paused");
+        throw new AppError(503, "Lesson generation is paused");
+      }
       const created = await this.gemini.generateLesson(profile, cognate ? anchors : []);
       const stored = await this.cache.put(hash, created);
       await this.persistDailyLesson(user?.id ?? input.user_id, stored, profile);
       if (user && cognate) {
         await this.noteCognateLesson(user.id);
       }
+      await this.ops?.record("lesson", "ok", `Generated ${profile.target_lang}:${profile.level}`);
       return { lesson: stored, cached: false, anchors: cognate ? anchors : [] };
     } finally {
       await this.redis.del(lockKey);
@@ -123,6 +133,12 @@ export class LessonService {
         level: input.level,
         topic: input.topic,
         interests: input.interests ?? [],
+        minds: parseCast({
+          reading: input.mind_reading,
+          memory: input.mind_memory,
+          speech: input.mind_speech,
+          journal: input.mind_journal,
+        }),
       };
     }
 
@@ -140,7 +156,24 @@ export class LessonService {
       level: z.enum(CEFR_LEVELS).parse(row.level),
       topic: input.topic,
       interests: input.interests ?? [],
+      minds: await this.loadMinds(input.user_id, input),
     };
+  }
+
+  private async loadMinds(userId: string, input: GenerateLessonBody): Promise<Record<CastSlot, MindId>> {
+    const found = await this.pool.query<{
+      mind_reading: string;
+      mind_memory: string;
+      mind_speech: string;
+      mind_journal: string;
+    }>("SELECT mind_reading, mind_memory, mind_speech, mind_journal FROM users WHERE id = $1", [userId]);
+    const row = found.rows[0];
+    return parseCast({
+      reading: input.mind_reading ?? row?.mind_reading,
+      memory: input.mind_memory ?? row?.mind_memory,
+      speech: input.mind_speech ?? row?.mind_speech,
+      journal: input.mind_journal ?? row?.mind_journal,
+    });
   }
 
   private async persistDailyLesson(userId: string | undefined, lesson: LessonPayload, profile: LessonProfile): Promise<void> {

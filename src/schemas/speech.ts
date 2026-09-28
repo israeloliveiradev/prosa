@@ -23,6 +23,14 @@ export const speakBodySchema = z.object({
 
 export type SpeakBody = z.infer<typeof speakBodySchema>;
 
+export const speakBatchBodySchema = z.object({
+  texts: z.array(z.string().trim().min(1).max(4_000)).min(1).max(16),
+  lang: speakBodySchema.shape.lang,
+  voice: speakBodySchema.shape.voice,
+});
+
+export type SpeakBatchBody = z.infer<typeof speakBatchBodySchema>;
+
 export const neuralSpeechSchema = z.object({
   audio_base64: z.string().min(1),
   words: z.array(wordMarkSchema),

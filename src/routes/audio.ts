@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { AppError } from "../http/errors.js";
 import { isSupportedAudioMime, languageCodeSchema, referenceTextSchema } from "../schemas/shadowing.js";
-import { speakBodySchema } from "../schemas/speech.js";
+import { speakBatchBodySchema, speakBodySchema } from "../schemas/speech.js";
 import type { NeuralVoice } from "../services/neural-voice.js";
 import type { ShadowingService } from "../services/shadowing-service.js";
 import { voicesFor } from "../services/voice-catalog.js";
@@ -85,6 +85,14 @@ export function registerAudioRoutes(app: FastifyInstance, shadowing: ShadowingSe
 
   app.post("/api/v1/audio/speak", speakRoute, synthesize);
   app.post("/api/v1/tts/synthesize", speakRoute, synthesize);
+
+  app.post("/api/v1/audio/speak-batch", speakRoute, async (request) => {
+    const body = speakBatchBodySchema.parse(request.body);
+    const clips = await neural.speakMany(body.texts.map((text) => ({ text, lang: body.lang, voice: body.voice })));
+    return {
+      clips: clips.map((spoken) => ({ audio_url: spoken.audioUrl, words: spoken.words })),
+    };
+  });
 
   app.get(
     "/api/v1/audio/neural/:id",

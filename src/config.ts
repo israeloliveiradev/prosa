@@ -17,10 +17,28 @@ const envSchema = z.object({
   EDGE_TTS_URL: z.string().url().default("http://127.0.0.1:8077"),
   STRIPE_SECRET_KEY: z.string().default(""),
   STRIPE_PRICE_ID: z.string().default(""),
+  ADMIN_EMAILS: z.string().default(""),
+  APP_PUBLIC_URL: z.string().url().default("http://localhost:8081"),
+  CORS_ORIGINS: z.string().default(""),
+  MAIL_FROM: z.string().default("Prosa <prosa@local.test>"),
+  RESEND_API_KEY: z.string().default(""),
+  BREVO_API_KEY: z.string().default(""),
+  SMTP_HOST: z.string().default(""),
+  SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  MAIL_INBOX_URL: z.string().default(""),
 });
 
 export type Env = z.infer<typeof envSchema>;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   return envSchema.parse(source);
+}
+
+export function parseAdminEmails(raw: string): Set<string> {
+  return new Set(
+    raw
+      .split(/[,\s]+/)
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.includes("@")),
+  );
 }

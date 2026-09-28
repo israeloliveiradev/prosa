@@ -10,7 +10,7 @@
     "dev": "tsx --env-file=secrets/runtime.env src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "tsx --test test/levenshtein.test.ts test/cache-key.test.ts test/schemas.test.ts test/news-feed.test.ts test/voice-catalog.test.ts test/mnemonic.test.ts test/grammar.test.ts test/cadence.test.ts test/reconstruction.test.ts test/duel.test.ts test/cognate.test.ts test/hands-free.test.ts test/retention.test.ts test/persona.test.ts"
+    "test": "tsx --test test/levenshtein.test.ts test/cache-key.test.ts test/schemas.test.ts test/news-feed.test.ts test/voice-catalog.test.ts test/mnemonic.test.ts test/grammar.test.ts test/cadence.test.ts test/reconstruction.test.ts test/duel.test.ts test/cognate.test.ts test/hands-free.test.ts test/retention.test.ts test/persona.test.ts test/ops.test.ts test/totp.test.ts test/mail-templates.test.ts test/minds.test.ts test/security.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

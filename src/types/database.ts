@@ -1,4 +1,4 @@
-export const DATABASE_SCHEMA_VERSION = "007_cognates" as const;
+export const DATABASE_SCHEMA_VERSION = "015_verify" as const;
 
 export const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 export type CefrLevel = (typeof CEFR_LEVELS)[number];
@@ -51,6 +51,7 @@ export interface UserRow {
   level: CefrLevel;
   interests: string[];
   plan: "free" | "pro";
+  role: "learner" | "admin";
   streak_count: number;
   last_lesson_at: IsoDateTime | null;
   streak_freeze_count: number;
@@ -68,6 +69,7 @@ export interface UserInsert {
   level: CefrLevel;
   interests?: string[];
   plan?: "free" | "pro";
+  role?: "learner" | "admin";
   streak_count?: number;
   last_lesson_at?: IsoDateTime | null;
   streak_freeze_count?: number;
@@ -84,6 +86,7 @@ export interface UserUpdate {
   level?: CefrLevel;
   interests?: string[];
   plan?: "free" | "pro";
+  role?: "learner" | "admin";
   streak_count?: number;
   last_lesson_at?: IsoDateTime | null;
   streak_freeze_count?: number;

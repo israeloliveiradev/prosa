@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { accountSettingsBodySchema, forgotBodySchema, resetBodySchema, verifyBodySchema } from "../src/schemas/account.ts";
 import { loginBodySchema, registerBodySchema } from "../src/schemas/auth.ts";
 import { checkoutBodySchema, checkoutSessionParamsSchema } from "../src/schemas/billing.ts";
 import { evaluateJournalBodySchema } from "../src/schemas/journal.ts";
 import { generateLessonBodySchema } from "../src/schemas/lesson.ts";
 import { onboardingQuizBodySchema, personalizedLessonBodySchema } from "../src/schemas/onboarding.ts";
-import { speakBodySchema } from "../src/schemas/speech.ts";
+import { parseAdminEmails } from "../src/config.ts";
+import { adminFreezeBodySchema, adminGenerationBodySchema, adminPlanBodySchema } from "../src/schemas/admin.ts";
+import { speakBatchBodySchema, speakBodySchema } from "../src/schemas/speech.ts";
 import { syncReviewsBodySchema } from "../src/schemas/srs.ts";
 
 describe("generateLessonBodySchema", () => {
@@ -98,6 +101,14 @@ describe("checkoutBodySchema", () => {
     assert.equal(body.success_url, "http://localhost:8081/paywall");
   });
 
+  it("rejects a checkout URL with credentials", () => {
+    const parsed = checkoutBodySchema.safeParse({
+      success_url: "https://user:pass@localhost:8081/paywall",
+      cancel_url: "http://localhost:8081/paywall",
+    });
+    assert.equal(parsed.success, false);
+  });
+
   it("rejects a checkout session id outside the Stripe format", () => {
     const parsed = checkoutSessionParamsSchema.safeParse({ id: "sess_123" });
     assert.equal(parsed.success, false);
@@ -165,5 +176,106 @@ describe("speakBodySchema", () => {
   it("accepts a story in a supported language code", () => {
     const body = speakBodySchema.parse({ text: "Hello.", lang: "EN" });
     assert.equal(body.lang, "en");
+  });
+});
+
+describe("speakBatchBodySchema", () => {
+  it("accepts up to sixteen sentences in one request", () => {
+    const body = speakBatchBodySchema.parse({
+      texts: ["Hello.", "See you."],
+      lang: "en",
+      voice: "en-US-AvaNeural",
+    });
+    assert.equal(body.texts.length, 2);
+  });
+
+  it("rejects a seventeenth sentence", () => {
+    const parsed = speakBatchBodySchema.safeParse({
+      texts: Array.from({ length: 17 }, (_, index) => `Line ${index}.`),
+      lang: "en",
+    });
+    assert.equal(parsed.success, false);
+  });
+});
+
+describe("adminPlanBodySchema", () => {
+  it("accepts only free or pro", () => {
+    assert.equal(adminPlanBodySchema.parse({ plan: "pro" }).plan, "pro");
+    assert.equal(adminPlanBodySchema.safeParse({ plan: "team" }).success, false);
+  });
+});
+
+describe("adminFreezeBodySchema", () => {
+  it("accepts a single freeze step", () => {
+    assert.equal(adminFreezeBodySchema.parse({ delta: 1 }).delta, 1);
+    assert.equal(adminFreezeBodySchema.parse({ delta: -1 }).delta, -1);
+    assert.equal(adminFreezeBodySchema.safeParse({ delta: 2 }).success, false);
+  });
+});
+
+describe("adminGenerationBodySchema", () => {
+  it("requires a boolean pause flag", () => {
+    assert.equal(adminGenerationBodySchema.parse({ paused: true }).paused, true);
+    assert.equal(adminGenerationBodySchema.safeParse({ paused: "yes" }).success, false);
+  });
+});
+
+describe("accountSettingsBodySchema", () => {
+  it("accepts a locale and a reminder hour", () => {
+    const body = accountSettingsBodySchema.parse({ display_locale: "en", reminder_hour: 7, reminder_enabled: true });
+    assert.equal(body.display_locale, "en");
+    assert.equal(body.reminder_hour, 7);
+  });
+
+  it("accepts a famous mind in its slot", () => {
+    const body = accountSettingsBodySchema.parse({ mind_reading: "plato", mind_journal: "davinci" });
+    assert.equal(body.mind_reading, "plato");
+    assert.equal(body.mind_journal, "davinci");
+  });
+
+  it("rejects a mind in the wrong slot", () => {
+    assert.equal(accountSettingsBodySchema.safeParse({ mind_reading: "curie" }).success, false);
+  });
+
+  it("rejects an empty patch", () => {
+    assert.equal(accountSettingsBodySchema.safeParse({}).success, false);
+  });
+});
+
+describe("forgotBodySchema", () => {
+  it("lowercases the recovery email", () => {
+    assert.equal(forgotBodySchema.parse({ email: "Ana@Prosa.local" }).email, "ana@prosa.local");
+  });
+});
+
+describe("verifyBodySchema", () => {
+  it("accepts an email and a six-digit code", () => {
+    const body = verifyBodySchema.parse({ email: "Ana@Prosa.local", code: "188026" });
+    assert.equal(body.email, "ana@prosa.local");
+    assert.equal(body.code, "188026");
+  });
+
+  it("rejects a short code", () => {
+    assert.equal(verifyBodySchema.safeParse({ email: "ana@prosa.local", code: "12" }).success, false);
+  });
+});
+
+describe("resetBodySchema", () => {
+  it("accepts an email, a six-digit code and a password", () => {
+    const body = resetBodySchema.parse({ email: "Ana@Prosa.local", code: "123456", password: "senha-forte" });
+    assert.equal(body.email, "ana@prosa.local");
+    assert.equal(body.code, "123456");
+  });
+
+  it("rejects a short code", () => {
+    assert.equal(resetBodySchema.safeParse({ email: "ana@prosa.local", code: "12", password: "senha-forte" }).success, false);
+  });
+});
+
+describe("parseAdminEmails", () => {
+  it("keeps lowercase addresses and drops empty tokens", () => {
+    const emails = parseAdminEmails("Ana@Prosa.local, outro,  ");
+    assert.equal(emails.has("ana@prosa.local"), true);
+    assert.equal(emails.size, 1);
   });
 });

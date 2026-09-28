@@ -109,6 +109,10 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       EDGE_TTS_URL: http://edge-tts:8077
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      MAIL_FROM: Prosa <prosa@local.test>
+      MAIL_INBOX_URL: http://localhost:8025
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -118,6 +122,8 @@ services:
         condition: service_healthy
       edge-tts:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     healthcheck:
       test:
         - CMD
@@ -160,6 +166,16 @@ services:
         limits:
           cpus: "0.5"
           memory: 512M
+    networks:
+      - prosa
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: prosa-mailpit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
     networks:
       - prosa
 

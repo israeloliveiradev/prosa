@@ -6,7 +6,8 @@ import { storedNewsSchema, type StoredNews } from "../schemas/news.js";
 import type { GeminiGateway } from "./gemini-gateway.js";
 import type { LessonService } from "./lesson-service.js";
 import type { NeuralVoice } from "./neural-voice.js";
-import { fetchHeadlines } from "./news-feed.js";
+import { fetchHeadlines, headlineFitsInterest } from "./news-feed.js";
+import type { OpsService } from "./ops.js";
 
 export class PersonalizationService {
   constructor(
@@ -14,6 +15,7 @@ export class PersonalizationService {
     private readonly gemini: GeminiGateway,
     private readonly lessons: LessonService,
     private readonly neural: NeuralVoice,
+    private readonly ops?: OpsService,
   ) {}
 
   async saveQuiz(user: AuthUser, body: OnboardingQuizBody): Promise<{
@@ -160,22 +162,42 @@ export class PersonalizationService {
     index = 0,
     level?: AuthUser["level"],
   ): Promise<{ news: StoredNews; audio_url: string; words: { text: string; offset_ms: number }[]; cached: boolean }> {
+    const levelUsed = level ?? user.level;
+    if (this.ops && (await this.ops.isGenerationPaused())) {
+      return this.speakStored(
+        user,
+        await this.requireRecentNews(user.target_lang, levelUsed, 503, "Lesson generation is paused", undefined, interest),
+        voice,
+        true,
+      );
+    }
     let headlines;
     try {
       headlines = await fetchHeadlines(user.target_lang.toLowerCase(), interest);
     } catch (error) {
-      throw new AppError(502, "News feed is unavailable", { cause: error });
+      await this.ops?.record("news", "error", "News feed failed", error instanceof Error ? error.message : undefined);
+      return this.speakStored(
+        user,
+        await this.requireRecentNews(user.target_lang, levelUsed, 502, "News feed is unavailable", error, interest),
+        voice,
+        true,
+      );
     }
     const headline = headlines[index];
     if (!headline) {
-      throw new AppError(502, "News feed returned no stories");
+      return this.speakStored(
+        user,
+        await this.requireRecentNews(user.target_lang, levelUsed, 502, "News feed returned no stories", undefined, interest),
+        voice,
+        true,
+      );
     }
-    const levelUsed = level ?? user.level;
 
     const existing = await this.pool.query<{ simplified_text_json: unknown }>(
       `SELECT simplified_text_json
        FROM news_feed_cache
-       WHERE target_lang = $1 AND level = $2 AND original_url = $3`,
+       WHERE target_lang = $1 AND level = $2 AND original_url = $3
+         AND created_at > now() - interval '36 hours'`,
       [user.target_lang, levelUsed, headline.url],
     );
     const cachedPayload = storedNewsSchema.safeParse(existing.rows[0]?.simplified_text_json);
@@ -188,20 +210,66 @@ export class PersonalizationService {
         level: levelUsed,
         title: headline.title,
         summary: headline.summary,
+        ...(headline.published ? { published: headline.published } : {}),
       });
       news = storedNewsSchema.parse({
         ...adapted,
         source_url: headline.url,
         source_title: headline.title.slice(0, 300),
+        ...(headline.published ? { published: headline.published } : {}),
       });
       await this.pool.query(
         `INSERT INTO news_feed_cache (target_lang, level, original_url, simplified_text_json)
          VALUES ($1, $2, $3, $4::jsonb)
-         ON CONFLICT (target_lang, level, original_url) DO NOTHING`,
+         ON CONFLICT (target_lang, level, original_url) DO UPDATE
+         SET simplified_text_json = EXCLUDED.simplified_text_json, created_at = now()`,
         [user.target_lang, levelUsed, headline.url, JSON.stringify(news)],
       );
     }
 
+    return this.speakStored(user, news, voice, cached);
+  }
+
+  private async requireRecentNews(
+    targetLang: string,
+    level: AuthUser["level"],
+    status: 502 | 503,
+    message: string,
+    cause?: unknown,
+    interest?: string,
+  ): Promise<StoredNews> {
+    const found = await this.pool.query<{ simplified_text_json: unknown; created_at: Date }>(
+      `SELECT simplified_text_json, created_at
+       FROM news_feed_cache
+       WHERE target_lang = $1 AND level = $2 AND created_at > now() - interval '36 hours'
+       ORDER BY created_at DESC
+       LIMIT 8`,
+      [targetLang, level],
+    );
+    for (const row of found.rows) {
+      const parsed = storedNewsSchema.safeParse(row.simplified_text_json);
+      if (!parsed.success) {
+        continue;
+      }
+      const news = parsed.data.published ? parsed.data : { ...parsed.data, published: row.created_at.toISOString() };
+      if (
+        headlineFitsInterest(
+          { title: news.title, url: news.source_url, summary: news.story_text, published: news.published },
+          interest,
+        )
+      ) {
+        return news;
+      }
+    }
+    throw new AppError(status, message, cause ? { cause } : undefined);
+  }
+
+  private async speakStored(
+    user: AuthUser,
+    news: StoredNews,
+    voice: string | undefined,
+    cached: boolean,
+  ): Promise<{ news: StoredNews; audio_url: string; words: { text: string; offset_ms: number }[]; cached: boolean }> {
     const spoken = await this.neural.speak({
       text: news.story_text,
       lang: user.target_lang.toLowerCase(),

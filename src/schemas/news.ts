@@ -6,6 +6,7 @@ import { CEFR_LEVELS } from "../types/database.js";
 export const storedNewsSchema = lessonPayloadSchema.extend({
   source_url: z.string().regex(/^https:\/\/\S+$/),
   source_title: z.string().trim().min(1).max(300),
+  published: z.string().trim().min(1).max(80).optional(),
 });
 
 export type StoredNews = z.infer<typeof storedNewsSchema>;

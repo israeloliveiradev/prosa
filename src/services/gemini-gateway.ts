@@ -13,6 +13,8 @@ import { reconstructionReportSchema, type ReconstructionBody, type Reconstructio
 import { personaReplySchema } from "../schemas/persona.js";
 import { mnemonicResponseSchema } from "../schemas/srs.js";
 import { frequentVerbs, type CognateAnchor } from "./cognates.js";
+import { lessonVoicePrompt, DEFAULT_CAST } from "./minds.js";
+import { modelBusy } from "./ops.js";
 
 const LESSON_INSTRUCTIONS = [
   "Write one daily language lesson.",
@@ -232,6 +234,7 @@ export class GeminiGateway {
   constructor(
     private readonly apiKey: string,
     private readonly model: string,
+    private readonly onFailure?: (input: { busy: boolean; message: string }) => void,
   ) {}
 
   async generateLesson(profile: LessonProfile, anchors: CognateAnchor[] = []): Promise<LessonPayload> {
@@ -245,6 +248,7 @@ export class GeminiGateway {
       lines.push(`Learner interests: ${profile.interests.join(", ")}`);
       lines.push("Weave those interests into the story when they fit the topic.");
     }
+    lines.push(lessonVoicePrompt(profile.minds ?? DEFAULT_CAST));
     const trueCognates = anchors.filter((item) => item.kind === "true");
     const falseFriends = anchors.filter((item) => item.kind === "false");
     const instruction = trueCognates.length >= 8 ? COGNATE_INSTRUCTIONS : LESSON_INSTRUCTIONS;
@@ -609,12 +613,14 @@ export class GeminiGateway {
     level: string;
     title: string;
     summary: string;
+    published?: string;
   }): Promise<LessonPayload> {
     const completion = await this.generateStructured({
       systemInstruction: [
-        "Turn one news item into a language lesson.",
+        "Turn one current news item into a language lesson.",
         "story_text is 90 to 140 words in the target language, at the requested CEFR level.",
-        "Use only the headline and summary. Do not add events that are not in them.",
+        "Write it as today's briefing. Use only the headline, the summary and the publication date.",
+        "Do not invent older events, and do not turn the story into a timeless textbook example.",
         "translation is the complete story in the native language, the language the learner studies through.",
         "vocabulary contains 4 to 6 items that appear in the story.",
         "journal_prompt asks the learner to react in the target language in two sentences.",
@@ -623,6 +629,7 @@ export class GeminiGateway {
         `Target language: ${input.targetLang}`,
         `Native language: ${input.nativeLang}`,
         `CEFR level: ${input.level}`,
+        `Published: ${input.published ?? "today"}`,
         `Headline: ${input.title}`,
         `Summary: ${input.summary || input.title}`,
       ].join("\n"),
@@ -700,7 +707,7 @@ export class GeminiGateway {
 
   private requireClient(): GoogleGenAI {
     if (!this.apiKey) {
-      throw new AppError(503, "GEMINI_API_KEY is not configured");
+      throw new AppError(503, "Lesson generation is unavailable");
     }
     this.client ??= new GoogleGenAI({ apiKey: this.apiKey });
     return this.client;
@@ -739,6 +746,12 @@ export class GeminiGateway {
     } catch (error) {
       if (error instanceof AppError) {
         throw error;
+      }
+      const busy = modelBusy(error);
+      const message = error instanceof Error ? error.message : "Model request failed";
+      this.onFailure?.({ busy, message });
+      if (busy) {
+        throw new AppError(503, "The model is busy. Try again in a minute.", { cause: error });
       }
       throw new AppError(502, "Model request failed", { cause: error });
     }

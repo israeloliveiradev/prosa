@@ -34,4 +34,11 @@ describe("lessonCacheHash", () => {
     assert.notEqual(shared, personal);
     assert.match(personal, /^en:A2:[a-f0-9]{64}:i:[a-f0-9]{16}$/);
   });
+
+  it("keeps two casts of the same topic apart", () => {
+    const other = lessonCacheHash("en", "A2", "café", [], "pt", false, "galileo:darwin:cicero:aurelius");
+    const famous = lessonCacheHash("en", "A2", "café", [], "pt", false, "einstein:curie:feynman:davinci");
+    assert.notEqual(other, famous);
+    assert.match(famous, /:m:einstein:curie:feynman:davinci$/);
+  });
 });

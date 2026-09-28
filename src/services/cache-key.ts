@@ -11,6 +11,7 @@ export function lessonCacheHash(
   interests: readonly string[] = [],
   throughLang = "",
   cognate = false,
+  minds = "",
 ): string {
   const topicHash = createHash("sha256").update(normalizeTopic(topic)).digest("hex");
   const through = throughLang.trim().toLowerCase();
@@ -20,5 +21,7 @@ export function lessonCacheHash(
   const normalized = interests.map((item) => normalizeTopic(item)).filter((item) => item.length > 0).sort();
   const withInterests =
     normalized.length === 0 ? base : `${base}:i:${createHash("sha256").update(normalized.join("|")).digest("hex").slice(0, 16)}`;
-  return cognate ? `${withInterests}:cognate` : withInterests;
+  const withCognate = cognate ? `${withInterests}:cognate` : withInterests;
+  const stamp = minds.trim().toLowerCase();
+  return stamp ? `${withCognate}:m:${stamp}` : withCognate;
 }

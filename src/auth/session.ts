@@ -10,9 +10,10 @@ export interface AuthUser {
   target_lang: string;
   level: "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
   plan: "free" | "pro";
+  role: "learner" | "admin";
 }
 
-const USER_COLUMNS = "u.id, u.email, u.native_lang, u.target_lang, u.level, u.plan";
+const USER_COLUMNS = "u.id, u.email, u.native_lang, u.target_lang, u.level, u.plan, u.role";
 
 export function tokenHash(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -30,6 +31,17 @@ export async function issueSession(pool: Pool, userId: string): Promise<string> 
 
 export async function revokeSession(pool: Pool, token: string): Promise<void> {
   await pool.query("DELETE FROM auth_sessions WHERE token_hash = $1", [tokenHash(token)]);
+}
+
+export async function revokeAllSessions(pool: Pool, userId: string): Promise<void> {
+  await pool.query("DELETE FROM auth_sessions WHERE user_id = $1", [userId]);
+}
+
+export async function revokeOtherSessions(pool: Pool, userId: string, keepToken: string): Promise<void> {
+  await pool.query("DELETE FROM auth_sessions WHERE user_id = $1 AND token_hash <> $2", [
+    userId,
+    tokenHash(keepToken),
+  ]);
 }
 
 export function readBearer(request: FastifyRequest): string | null {
@@ -53,7 +65,9 @@ export async function requireUser(pool: Pool, request: FastifyRequest): Promise<
     `SELECT ${USER_COLUMNS}
      FROM auth_sessions s
      JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = $1 AND s.expires_at > now()`,
+     WHERE s.token_hash = $1
+       AND s.expires_at > now()
+       AND u.email_verified_at IS NOT NULL`,
     [tokenHash(token)],
   );
   const user = result.rows[0];

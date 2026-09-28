@@ -15,6 +15,7 @@ export class NeuralVoice {
     private readonly redis: Redis,
     private readonly baseUrl: string,
     private readonly ttlSeconds: number,
+    private readonly onSynthesize?: (ok: boolean, message: string) => void,
   ) {}
 
   async speak(input: SpeakBody): Promise<SpokenAudio> {
@@ -31,18 +32,41 @@ export class NeuralVoice {
       };
     }
 
-    const spoken = await this.synthesize(input, voice.id);
-    const audio = Buffer.from(spoken.audio_base64, "base64");
-    if (audio.length === 0) {
-      throw new AppError(502, "Neural voice returned no audio");
+    try {
+      const spoken = await this.synthesize(input, voice.id);
+      const audio = Buffer.from(spoken.audio_base64, "base64");
+      if (audio.length === 0) {
+        throw new AppError(502, "Neural voice returned no audio");
+      }
+      await this.redis.set(audioKey, audio, "EX", this.ttlSeconds);
+      await this.redis.set(wordsKey, JSON.stringify(spoken.words), "EX", this.ttlSeconds);
+      this.onSynthesize?.(true, `Synthesized ${input.lang}`);
+      return {
+        id,
+        audioUrl: this.publicPath(id),
+        words: spoken.words,
+      };
+    } catch (error) {
+      this.onSynthesize?.(false, error instanceof Error ? error.message : "Neural voice failed");
+      throw error;
     }
-    await this.redis.set(audioKey, audio, "EX", this.ttlSeconds);
-    await this.redis.set(wordsKey, JSON.stringify(spoken.words), "EX", this.ttlSeconds);
-    return {
-      id,
-      audioUrl: this.publicPath(id),
-      words: spoken.words,
+  }
+
+  async speakMany(inputs: SpeakBody[]): Promise<SpokenAudio[]> {
+    const results = new Array<SpokenAudio>(inputs.length);
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+      while (cursor < inputs.length) {
+        const index = cursor;
+        cursor += 1;
+        const input = inputs[index];
+        if (input) {
+          results[index] = await this.speak(input);
+        }
+      }
     };
+    await Promise.all(Array.from({ length: Math.min(3, inputs.length) }, () => worker()));
+    return results;
   }
 
   async read(id: string): Promise<Buffer | null> {

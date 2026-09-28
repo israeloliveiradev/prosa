@@ -1,5 +1,8 @@
 import { z } from "zod";
+import { MIND_IDS } from "../services/minds.js";
 import { CEFR_LEVELS } from "../types/database.js";
+
+const mindIdSchema = z.enum(MIND_IDS);
 
 export const vocabularyEntrySchema = z.object({
   word: z.string().trim().min(1),
@@ -26,6 +29,10 @@ export const generateLessonBodySchema = z
     topic: z.string().trim().min(1).max(120).default("everyday life"),
     interests: z.array(z.string().trim().min(1).max(48)).max(12).optional(),
     cognate: z.boolean().optional(),
+    mind_reading: mindIdSchema.optional(),
+    mind_memory: mindIdSchema.optional(),
+    mind_speech: mindIdSchema.optional(),
+    mind_journal: mindIdSchema.optional(),
   })
   .superRefine((value, context) => {
     if (value.user_id) {
@@ -47,4 +54,10 @@ export interface LessonProfile {
   level: (typeof CEFR_LEVELS)[number];
   topic: string;
   interests: string[];
+  minds: {
+    reading: (typeof MIND_IDS)[number];
+    memory: (typeof MIND_IDS)[number];
+    speech: (typeof MIND_IDS)[number];
+    journal: (typeof MIND_IDS)[number];
+  };
 }

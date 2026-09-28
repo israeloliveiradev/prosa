@@ -5,6 +5,9 @@ const checkoutUrlSchema = z
   .url()
   .refine((value) => {
     const url = new URL(value);
+    if (url.username || url.password) {
+      return false;
+    }
     return url.protocol === "https:" || url.protocol === "http:" || url.protocol === "prosa:";
   }, "Checkout URL must use http, https, or the prosa app scheme");
 

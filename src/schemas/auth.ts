@@ -2,14 +2,14 @@ import { z } from "zod";
 
 export const cefrLevelSchema = z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]);
 
-const emailSchema = z
+export const emailSchema = z
   .string()
   .trim()
   .email()
   .max(160)
   .transform((value) => value.toLowerCase());
 
-const passwordSchema = z.string().min(8).max(72);
+export const passwordSchema = z.string().min(8).max(72);
 const langSchema = z
   .string()
   .trim()
