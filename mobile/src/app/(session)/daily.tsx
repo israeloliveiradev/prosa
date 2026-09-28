@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import * as Speech from "expo-speech";
+import { AreaHint } from "@/components/guide/area-hint";
 import { HandsFreePlayer } from "@/components/session/hands-free-player";
 import { JournalStage } from "@/components/session/journal-stage";
 import { ReconstructionStage } from "@/components/session/reconstruction-stage";
@@ -13,10 +13,14 @@ import { SrsStage } from "@/components/session/srs-stage";
 import { WordSheet } from "@/components/session/word-sheet";
 import { Figure } from "@/components/cast/figure";
 import { AppFrame } from "@/components/shell/app-frame";
-import { castForPhase } from "@/design/cast";
+import { mindCopy, mindForPhase } from "@/lib/cast";
+import { getLocale } from "@/lib/i18n";
+import { keepWords } from "@/lib/text";
 import { useTheme } from "@/theme/ThemeContext";
 import { ChunkButton } from "@/components/shell/chunk-button";
-import { generateLesson, generatePersonalized } from "@/lib/api";
+import { generateLesson, generatePersonalized, prefetchSpeech } from "@/lib/api";
+import { allSentences, handsFreeIntro } from "@/lib/hands-free";
+import { narratorVoice } from "@/lib/narrator";
 import { useSession } from "@/lib/session";
 import { tap } from "@/lib/haptics";
 import { AudioService } from "@/services/audio/AudioService";
@@ -91,7 +95,8 @@ export default function DailySession() {
   const clockStarted = useRef(false);
   const seeded = useRef("");
   const lesson = query.data ?? null;
-  const person = castForPhase(stage);
+  const person = mindForPhase(stage);
+  const personText = mindCopy(person, getLocale());
   const dueReverse = reconstructionDue(progress.reconstruction, today);
   const [pinnedReverse, setPinnedReverse] = useState(dueReverse);
 
@@ -140,9 +145,16 @@ export default function DailySession() {
   }, [elapsed, lesson, today]);
 
   useEffect(() => {
+    if (!lesson) {
+      return;
+    }
+    prefetchSpeech(allSentences(lesson.story_text), profile.target_lang, narratorVoice(profile.target_lang));
+    prefetchSpeech([handsFreeIntro(profile.native_lang, lesson.title)], profile.native_lang, narratorVoice(profile.native_lang));
+  }, [lesson, profile.native_lang, profile.target_lang]);
+
+  useEffect(() => {
     return () => {
       AudioService.stopAndUnload();
-      Speech.stop();
     };
   }, []);
 
@@ -155,7 +167,6 @@ export default function DailySession() {
     if (clockStarted.current) {
       if (!AudioService.hasSequence()) {
         AudioService.stopAndUnload();
-        Speech.stop();
       }
       void tap("medium");
     }
@@ -166,7 +177,6 @@ export default function DailySession() {
 
   function continuePhase() {
     AudioService.stopAndUnload();
-    Speech.stop();
     const next = PHASES.find((phase) => phase.start > elapsed);
     setElapsed(next ? next.start : SESSION_SECONDS);
   }
@@ -250,6 +260,7 @@ export default function DailySession() {
             ) : null}
             {lesson && stage === "reading" ? (
               <View className="mt-6">
+                <AreaHint area="prosa" />
                 <ReadingStage lesson={lesson} language={profile.target_lang} active={stage === "reading"} onOpenWord={setSelectedToken} />
               </View>
             ) : null}
@@ -299,7 +310,6 @@ export default function DailySession() {
                       accessibilityRole="button"
                       onPress={() => {
                         AudioService.stopAndUnload();
-                        Speech.stop();
                         router.push(session ? "/duel" : "/account");
                       }}
                       className="mt-4 min-h-12 items-center justify-center rounded-full bg-ember px-6"
@@ -319,8 +329,8 @@ export default function DailySession() {
             <View>
               <Figure who={person.id} size={148} />
               <Text className="mt-4 font-displayItalic text-3xl text-ink">{person.name}</Text>
-              <Text className="mt-1 font-label text-xs uppercase tracking-widest text-ember">{person.role}</Text>
-              <Text className="mt-3 text-sm leading-5 text-muted">{person.line}</Text>
+              <Text className="mt-1 font-label text-xs uppercase tracking-widest text-ember">{keepWords(personText.role)}</Text>
+              <Text className="mt-3 text-sm leading-5 text-muted">{keepWords(personText.line)}</Text>
             </View>
             <View className="mt-8 border-t border-line pt-4">
               {PHASES.map((phase) => {

@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import * as Speech from "expo-speech";
-import { speakStory } from "@/lib/api";
-import { findVocabulary, normalizeWord, sentenceAt, speechLocale, tokenize } from "@/lib/lesson";
+import { prefetchSpeech, speakStory } from "@/lib/api";
+import { findVocabulary, normalizeWord, sentenceAt, tokenize } from "@/lib/lesson";
 import { narratorVoice } from "@/lib/narrator";
 import type { LessonPayload } from "@/lib/types";
 import { highlightIndex, narrationToken, startNeuralPlayback, type PlaybackHandle } from "@/lib/voice";
+import { sentenceRanges } from "@/lib/hands-free";
 import { AudioService } from "@/services/audio/AudioService";
 import { useTheme } from "@/theme/ThemeContext";
 import { GlassSheet } from "@/components/session/glass-sheet";
 import { GrammarSheet } from "@/components/session/grammar-sheet";
 import { VoicePicker } from "@/components/session/voice-picker";
+import { ChunkButton } from "@/components/shell/chunk-button";
 
 export function ReadingStage({
   lesson,
@@ -25,6 +26,7 @@ export function ReadingStage({
 }) {
   const { palette } = useTheme();
   const words = tokenize(lesson.story_text);
+  const ranges = sentenceRanges(lesson.story_text);
   const anchors = lesson.anchors ?? [];
   const trueWords = new Set(anchors.filter((item) => item.kind === "true").map((item) => normalizeWord(item.word)));
   const falseFriends = anchors.filter((item) => item.kind === "false");
@@ -32,51 +34,21 @@ export function ReadingStage({
   const [playing, setPlaying] = useState(false);
   const [passageOpen, setPassageOpen] = useState(false);
   const [grammarSentence, setGrammarSentence] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const indexRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playbackRef = useRef<PlaybackHandle | null>(null);
   const lastTap = useRef({ at: 0, sentence: "" });
 
-  function clearTimer() {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  }
-
   function stop() {
     AudioService.stopAndUnload();
-    Speech.stop();
     playbackRef.current = null;
-    clearTimer();
     setPlaying(false);
   }
 
-  function playWithDeviceVoice(start: number) {
-    const slice = words.slice(start);
-    timerRef.current = setInterval(() => {
-      const next = Math.min(words.length - 1, indexRef.current + 1);
-      indexRef.current = next;
-      setIndex(next);
-      if (next >= words.length - 1) {
-        clearTimer();
-      }
-    }, 320);
-    Speech.speak(slice.join(" "), {
-      language: speechLocale(language),
-      rate: 0.95,
-      onDone: () => {
-        clearTimer();
-        indexRef.current = words.length;
-        setIndex(words.length);
-        setPlaying(false);
-      },
-      onStopped: () => {
-        clearTimer();
-        setPlaying(false);
-      },
-    });
-  }
+  useEffect(() => {
+    const voice = narratorVoice(language);
+    prefetchSpeech(ranges.map((item) => item.text), language, voice);
+  }, [language, lesson.story_text]);
 
   async function play() {
     const start = indexRef.current >= words.length ? 0 : indexRef.current;
@@ -91,27 +63,52 @@ export function ReadingStage({
       setIndex(0);
     }
     setPlaying(true);
+    setError(null);
+    const from = Math.max(0, ranges.findIndex((item) => start < item.end));
+    const voice = narratorVoice(language);
+    prefetchSpeech(ranges.slice(from + 1).map((item) => item.text), language, voice);
     try {
-      const spoken = await speakStory(words.slice(start).join(" "), language, narratorVoice(language));
+      for (let cursor = from; cursor < ranges.length; cursor += 1) {
+        const range = ranges[cursor];
+        if (!range || narrationToken() !== generation) {
+          return;
+        }
+        const spoken = await speakStory(range.text, language, voice);
+        if (narrationToken() !== generation) {
+          return;
+        }
+        await new Promise<void>((resolve, reject) => {
+          playbackRef.current = startNeuralPlayback(
+            spoken.audioUrl,
+            1,
+            (elapsedMs, durationMs) => {
+              const local = highlightIndex(elapsedMs, durationMs, range.end - range.start, spoken.words);
+              const next = Math.min(words.length - 1, range.start + local);
+              indexRef.current = next;
+              setIndex(next);
+            },
+            () => {
+              playbackRef.current = null;
+              resolve();
+            },
+            (message) => {
+              playbackRef.current = null;
+              reject(new Error(message));
+            },
+          );
+        });
+      }
       if (narrationToken() !== generation) {
         return;
       }
-      playbackRef.current = startNeuralPlayback(spoken.audioUrl, 1, (elapsedMs, durationMs) => {
-        const local = highlightIndex(elapsedMs, durationMs, words.length - start, spoken.words);
-        const next = Math.min(words.length - 1, start + local);
-        indexRef.current = next;
-        setIndex(next);
-      }, () => {
-        indexRef.current = words.length;
-        setIndex(words.length);
-        setPlaying(false);
-        playbackRef.current = null;
-      });
+      indexRef.current = words.length;
+      setIndex(words.length);
+      setPlaying(false);
     } catch {
-      if (narrationToken() !== generation) {
-        return;
+      if (narrationToken() === generation) {
+        setPlaying(false);
+        setError("A voz neural não abriu. Tente de novo.");
       }
-      playWithDeviceVoice(start);
     }
   }
 
@@ -122,9 +119,7 @@ export function ReadingStage({
     return () => {
       if (!AudioService.hasSequence()) {
         AudioService.stopAndUnload();
-        Speech.stop();
       }
-      clearTimer();
     };
   }, [active]);
 
@@ -135,7 +130,7 @@ export function ReadingStage({
       {trueWords.size > 0 ? (
         <Text className="mt-3 text-base leading-7 text-muted">As palavras sublinhadas parecem as que você já conhece.</Text>
       ) : null}
-      <View className="mt-6 rounded-[28px] border border-line bg-card px-5 py-6">
+      <View className="mt-8 border-t border-ink pt-6">
       <View className="flex-row flex-wrap">
         {words.map((token, wordIndex) => {
           const known = Boolean(findVocabulary(lesson.vocabulary, token));
@@ -180,17 +175,16 @@ export function ReadingStage({
           ))}
         </View>
       ) : null}
-      <Pressable accessibilityRole="button" onPress={() => setPassageOpen(true)} className="mt-4 min-h-12 justify-center">
-        <Text className="font-label text-base text-ember">Ver a tradução</Text>
-      </Pressable>
+      <View className="mt-5 flex-row flex-wrap gap-2">
+        <ChunkButton label={playing ? "Pausar áudio" : "Ouvir a história"} onPress={() => (playing ? stop() : void play())} tone="ink" />
+        <ChunkButton label="Ver a tradução" onPress={() => setPassageOpen(true)} tone="ghost" />
+      </View>
       <VoicePicker language={language} onPreview={stop} />
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => (playing ? stop() : play())}
-        className="mt-6 min-h-12 items-center justify-center self-start rounded-full bg-ink px-6"
-      >
-        <Text className="text-base font-semibold text-card">{playing ? "Pausar áudio" : "Ouvir a história"}</Text>
-      </Pressable>
+      {error ? (
+        <Text accessibilityRole="alert" className="mt-3 text-base text-roseInk">
+          {error}
+        </Text>
+      ) : null}
       <GlassSheet visible={passageOpen} onClose={() => setPassageOpen(false)} label="Tradução da história">
         <Text className="mt-3 text-lg leading-8 text-ink">{lesson.translation}</Text>
       </GlassSheet>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { SrsStage } from "@/components/session/srs-stage";
+import { ChunkButton } from "@/components/shell/chunk-button";
 import { recordRetention } from "@/lib/api";
 import { tap } from "@/lib/haptics";
 import { enqueueReview, persistDeck } from "@/lib/progress";
@@ -75,9 +76,9 @@ export function RetentionHeatmap({ cards }: { cards: SessionCard[] }) {
             enqueueReview(graded, quality);
           }}
         />
-        <Pressable accessibilityRole="button" onPress={() => setQueue(null)} className="mt-4 min-h-12 cursor-pointer justify-center self-start">
-          <Text className="font-label text-base text-ink">Voltar ao mapa</Text>
-        </Pressable>
+        <View className="mt-4 self-start">
+          <ChunkButton label="Voltar ao mapa" onPress={() => setQueue(null)} tone="ghost" />
+        </View>
       </View>
     );
   }
@@ -86,7 +87,7 @@ export function RetentionHeatmap({ cards }: { cards: SessionCard[] }) {
 
   return (
     <View accessibilityRole="summary" accessibilityLabel={`Mapa de retenção. ${snapshot.critical} em risco, ${snapshot.decaying} esquecendo, ${snapshot.settling} firmando, ${snapshot.mastered} na memória longa.`}>
-      <Text className="font-label text-sm text-muted">Memória</Text>
+      <Text className="font-label text-sm text-muted">Memória · em risco primeiro</Text>
       <Text className="mt-2 font-display text-2xl text-ink">
         {cards.length === 0 ? "O mapa abre com a primeira palavra." : `${snapshot.score}% já passou de 21 dias.`}
       </Text>

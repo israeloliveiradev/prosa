@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { speakStory } from "@/lib/api";
 import { sampleLine, setNarratorVoice, useNarratorVoice, voicesFor } from "@/lib/narrator";
@@ -9,6 +9,7 @@ export function VoicePicker({ language, onPreview }: { language: string; onPrevi
   const voices = voicesFor(language);
   const selected = useNarratorVoice(language);
   const playbackRef = useRef<PlaybackHandle | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -26,6 +27,7 @@ export function VoicePicker({ language, onPreview }: { language: string; onPrevi
     AudioService.stopAndUnload();
     const generation = narrationToken();
     playbackRef.current = null;
+    setError(null);
     try {
       const spoken = await speakStory(sampleLine(language), language, voiceId);
       if (narrationToken() !== generation) {
@@ -33,9 +35,13 @@ export function VoicePicker({ language, onPreview }: { language: string; onPrevi
       }
       playbackRef.current = startNeuralPlayback(spoken.audioUrl, 1, () => undefined, () => {
         playbackRef.current = null;
+      }, () => {
+        playbackRef.current = null;
+        setError("O navegador recusou o áudio.");
       });
     } catch {
       playbackRef.current = null;
+      setError("A prévia da voz não saiu. Tente de novo.");
     }
   }
 
@@ -64,6 +70,11 @@ export function VoicePicker({ language, onPreview }: { language: string; onPrevi
         })}
       </View>
       <Text className="mt-2 text-sm leading-5 text-muted">Toque num nome para ouvir um trecho.</Text>
+      {error ? (
+        <Text accessibilityRole="alert" className="mt-2 text-base leading-6 text-roseInk">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }

@@ -1,17 +1,19 @@
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
+import { Linking, Pressable, Text, TextInput, View } from "react-native";
+import { ActionRow } from "@/components/shell/action-row";
+import { ChunkButton } from "@/components/shell/chunk-button";
 import { GlassSheet } from "@/components/session/glass-sheet";
 import { GrammarSheet } from "@/components/session/grammar-sheet";
 import { VoicePicker } from "@/components/session/voice-picker";
 import { fetchAdaptedNews, speakStory, type AdaptedNews } from "@/lib/api";
-import { bytesToBase64 } from "@/lib/audio-cache";
 import { tap } from "@/lib/haptics";
 import { cardsFromLesson, findVocabulary, normalizeWord, sentenceAt, tokenize } from "@/lib/lesson";
 import { narratorVoice } from "@/lib/narrator";
 import { isoDate, persistDeck, rememberLesson, useProgress } from "@/lib/progress";
 import { kv } from "@/lib/kv";
 import { useSession } from "@/lib/session";
+import { newsThemeChoices } from "@/lib/themes";
 import { highlightIndex, narrationToken, startNeuralPlayback } from "@/lib/voice";
 import { AudioService } from "@/services/audio/AudioService";
 import { useTheme } from "@/theme/ThemeContext";
@@ -46,7 +48,7 @@ function feedKey(interest: string, index: number, level: string): string {
 }
 
 function storageKey(userId: string): string {
-  return `prosa.news.v1.${userId}`;
+  return `prosa.news.v3.${userId}`;
 }
 
 function readLibrary(userId: string, targetLang: string): NewsLibrary {
@@ -66,9 +68,23 @@ function readLibrary(userId: string, targetLang: string): NewsLibrary {
   }
 }
 
+function formatPublished(value?: string): string {
+  if (!value) {
+    return isoDate();
+  }
+  const at = Date.parse(value);
+  if (Number.isNaN(at)) {
+    return value.slice(0, 10);
+  }
+  return new Date(at).toLocaleDateString("pt-BR", { day: "numeric", month: "long" });
+}
+
 function newsMessage(message: string): string {
-  if (message.includes("News feed")) {
-    return "A notícia não chegou agora.";
+  if (message.includes("Failed to fetch") || message.includes("Network request failed") || message.includes("NetworkError")) {
+    return "A notícia não chegou agora. Tente de novo.";
+  }
+  if (message.includes("News feed") || message.includes("paused") || message.includes("503")) {
+    return "A notícia não chegou agora. A última salva continua na prateleira.";
   }
   if (message.includes("Model request failed") || message.includes("não voltou")) {
     return "A adaptação não saiu.";
@@ -81,7 +97,8 @@ export function DailyNews() {
   const progress = useProgress();
   const { palette } = useTheme();
   const [library, setLibrary] = useState<NewsLibrary | null>(null);
-  const [interest, setInterest] = useState(GENERAL);
+  const [interest, setInterest] = useState("Tecnologia e IA");
+  const [customTheme, setCustomTheme] = useState("");
   const [pending, setPending] = useState(false);
   const [playingKey, setPlayingKey] = useState<string | null>(null);
   const [spoken, setSpoken] = useState(0);
@@ -91,10 +108,12 @@ export function DailyNews() {
   const [band, setBand] = useState<NewsBand>("A2");
   const [error, setError] = useState<string | null>(null);
   const lastTap = useRef({ at: 0, sentence: "" });
+  const opened = useRef("");
   const userId = session?.user.id;
   const targetLang = session?.user.target_lang;
   const interests = session?.user.interests?.filter((item) => item.trim().length > 0) ?? [];
-  const choices = interests.length > 0 ? interests : [GENERAL];
+  const choices = newsThemeChoices(interests);
+  const chips = choices.includes(interest) ? choices : [interest, ...choices];
   const choiceKey = choices.join("|");
 
   useEffect(() => {
@@ -105,7 +124,12 @@ export function DailyNews() {
     const stored = readLibrary(userId, targetLang);
     const names = choiceKey.split("|").filter((item) => item.length > 0);
     setLibrary(stored);
-    setInterest((current) => (names.includes(current) ? current : names[0] ?? GENERAL));
+    setInterest((current) => {
+      if (names.includes(current) || (current !== GENERAL && current.trim().length > 1)) {
+        return current;
+      }
+      return names[0] ?? "Tecnologia e IA";
+    });
     return () => {
       AudioService.stopAndUnload();
     };
@@ -115,6 +139,45 @@ export function DailyNews() {
   useEffect(() => {
     setBand(bandFor(accountLevel));
   }, [accountLevel]);
+
+  useEffect(() => {
+    if (!session || !library || !userId || !targetLang) {
+      return;
+    }
+    const key = `${userId}:${isoDate()}:${interest}:${band}`;
+    const existing = library.stories[feedKey(interest, 0, band)];
+    if (existing && Array.isArray(existing.vocabulary)) {
+      opened.current = key;
+      return;
+    }
+    if (opened.current === key) {
+      return;
+    }
+    opened.current = key;
+    const voice = narratorVoice(targetLang);
+    setPending(true);
+    setError(null);
+    void fetchAdaptedNews(session.token, interest.trim() || undefined, voice, 0, band)
+      .then((news) => {
+        news.voiceId = voice;
+        setLibrary((current) => {
+          const base = current ?? { date: isoDate(), target_lang: targetLang, stories: {} };
+          const next = {
+            date: isoDate(),
+            target_lang: targetLang,
+            stories: { ...base.stories, [feedKey(interest, 0, band)]: news },
+          };
+          kv.set(storageKey(userId), JSON.stringify(next));
+          return next;
+        });
+      })
+      .catch((caught: unknown) => {
+        setError(newsMessage(caught instanceof Error ? caught.message : "A notícia não chegou agora."));
+      })
+      .finally(() => {
+        setPending(false);
+      });
+  }, [band, interest, library, session, targetLang, userId]);
 
   if (!session || !userId || !targetLang || !library) {
     return null;
@@ -181,9 +244,9 @@ export function DailyNews() {
     setError(null);
     try {
       const voice = narratorVoice(language);
-      const news = await fetchAdaptedNews(token, interest === GENERAL ? undefined : interest, voice, index, band);
+      const news = await fetchAdaptedNews(token, interest.trim() || undefined, voice, index, band);
       news.voiceId = voice;
-      const next = { ...shelf, stories: { ...shelf.stories, [feedKey(interest, index, band)]: news } };
+      const next = { date: isoDate(), target_lang: language, stories: { ...shelf.stories, [feedKey(interest, index, band)]: news } };
       kv.set(storageKey(readerId), JSON.stringify(next));
       setLibrary(next);
     } catch (caught) {
@@ -256,7 +319,7 @@ export function DailyNews() {
     try {
       let audioUrl = story.audioUrl;
       let marks = story.words ?? [];
-      if (story.voiceId !== voice) {
+      if (story.voiceId !== voice || !audioUrl) {
         const spoken = await speakStory(story.story_text, language, voice);
         if (narrationToken() !== generation) {
           return;
@@ -267,15 +330,6 @@ export function DailyNews() {
         const next = { ...shelf, stories: { ...shelf.stories, [key]: saved } };
         kv.set(storageKey(readerId), JSON.stringify(next));
         setLibrary(next);
-      } else if (!audioUrl.startsWith("data:")) {
-        const file = await fetch(audioUrl);
-        if (file.ok) {
-          audioUrl = `data:audio/mpeg;base64,${bytesToBase64(new Uint8Array(await file.arrayBuffer()))}`;
-          const saved = { ...story, audioUrl, voiceId: voice };
-          const next = { ...shelf, stories: { ...shelf.stories, [key]: saved } };
-          kv.set(storageKey(readerId), JSON.stringify(next));
-          setLibrary(next);
-        }
       }
       if (narrationToken() !== generation) {
         return;
@@ -285,6 +339,10 @@ export function DailyNews() {
       }, () => {
         setPlayingKey(null);
         setSpoken(0);
+      }, () => {
+        setPlayingKey(null);
+        setSpoken(0);
+        setError("O áudio da notícia não abriu.");
       });
     } catch {
       if (narrationToken() === generation) {
@@ -297,28 +355,59 @@ export function DailyNews() {
 
   return (
     <View>
-      <Text className="font-label text-sm text-muted">Notícia</Text>
-      {choices.length > 1 || choices[0] !== GENERAL ? (
-        <View accessibilityRole="radiogroup" className="mt-3 flex-row flex-wrap gap-2">
-          {choices.map((item) => {
-            const selected = item === interest;
-            return (
-              <Pressable
-                key={item}
-                accessibilityRole="radio"
-                accessibilityLabel={item}
-                accessibilityState={{ selected, checked: selected }}
-                onPress={() => choose(item)}
-                className={`min-h-12 items-center justify-center rounded-full px-4 ${selected ? "bg-ember" : "border border-line bg-card"}`}
-              >
-                <Text numberOfLines={1} className={`font-label text-sm ${selected ? "text-onEmber" : "text-ink"}`}>
-                  {item}
-                </Text>
-              </Pressable>
-            );
-          })}
+      <Text className="font-label text-sm text-muted">Boletim de hoje</Text>
+      <Text className="mt-1 text-base leading-6 text-muted">O que saiu hoje em {interest}.</Text>
+      <View accessibilityRole="radiogroup" className="mt-3 flex-row flex-wrap gap-2">
+        {chips.map((item) => {
+          const selected = item === interest;
+          return (
+            <Pressable
+              key={item}
+              accessibilityRole="radio"
+              accessibilityLabel={item}
+              accessibilityState={{ selected, checked: selected }}
+              onPress={() => choose(item)}
+              className={`min-h-12 items-center justify-center rounded-full px-4 ${selected ? "bg-ember" : "border border-line bg-card"}`}
+            >
+              <Text numberOfLines={1} className={`font-label text-sm ${selected ? "text-onEmber" : "text-ink"}`}>
+                {item}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <View className="mt-4 max-w-md">
+        <Text className="mb-2 font-label text-sm text-muted">Outro tema</Text>
+        <TextInput
+          value={customTheme}
+          onChangeText={setCustomTheme}
+          accessibilityLabel="Outro tema do boletim"
+          placeholder="Por exemplo, arquitetura"
+          placeholderTextColor={palette.onSurfaceVariant}
+          className="min-h-14 rounded-full bg-card px-5 text-base text-ink"
+          onSubmitEditing={() => {
+            const next = customTheme.trim().slice(0, 80);
+            if (next.length < 2) {
+              return;
+            }
+            choose(next);
+          }}
+        />
+        <View className="mt-3 self-start">
+          <ChunkButton
+            label="Abrir este tema"
+            tone="ghost"
+            disabled={customTheme.trim().length < 2 || pending}
+            onPress={() => {
+              const next = customTheme.trim().slice(0, 80);
+              if (next.length < 2) {
+                return;
+              }
+              choose(next);
+            }}
+          />
         </View>
-      ) : null}
+      </View>
       <VoicePicker
         language={language}
         onPreview={() => {
@@ -347,9 +436,13 @@ export function DailyNews() {
         const words = story.vocabulary ?? [];
         const playing = playingKey === key;
         return (
-          <View key={key} className="mt-4 rounded-[28px] border border-line bg-card px-5 py-5" style={{ boxShadow: "0 10px 28px rgba(0,0,0,0.07)" }}>
-            <Text className="font-display text-2xl text-ink">{story.title}</Text>
-            <Text className="mt-2 text-sm text-muted">{words.length} {words.length === 1 ? "palavra nova" : "palavras novas"}</Text>
+          <View key={key} className="mt-10 border-t border-ink pt-8">
+            <View>
+              <Text className="font-label text-[11px] uppercase tracking-[0.28em] text-ember">{formatPublished(story.published)}</Text>
+              <Text className="font-displayItalic mt-3 text-headline text-ink">{story.title}</Text>
+            </View>
+            <View className="mt-5">
+            <Text className="text-sm text-muted">{words.length} {words.length === 1 ? "palavra nova" : "palavras novas"}</Text>
             <View className="mt-4 flex-row flex-wrap">
               {tokenize(story.story_text).map((token, wordIndex) => {
                 const known = Boolean(findVocabulary(words, token));
@@ -400,34 +493,50 @@ export function DailyNews() {
               })}
             </View>
             <View className="mt-5 flex-row flex-wrap gap-2">
-              <Pressable accessibilityRole="button" onPress={() => void listen(story, key)} className="min-h-12 items-center justify-center rounded-full bg-ink px-5">
-                <Text className="font-label text-base text-card">{playing ? "Pausar áudio" : "Ouvir a notícia"}</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => setPassageOpen(true)} className="min-h-12 items-center justify-center rounded-full border border-line px-5">
-                <Text className="font-label text-base text-ink">Ver a tradução</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => study(story)} className="min-h-12 items-center justify-center rounded-full bg-ember px-5">
-                <Text className="font-label text-base text-onEmber">Estudar esta notícia</Text>
-              </Pressable>
+              <ChunkButton label={playing ? "Pausar áudio" : "Ouvir a notícia"} onPress={() => void listen(story, key)} tone="ink" />
+              <ChunkButton label="Ver a tradução" onPress={() => setPassageOpen(true)} tone="ghost" />
+              <ChunkButton label="Estudar esta notícia" onPress={() => study(story)} />
             </View>
-            <Pressable accessibilityRole="link" accessibilityLabel={story.source_title} onPress={() => void Linking.openURL(story.source_url)} className="mt-4 min-h-12 justify-center">
-              <Text className="text-sm text-muted">{story.source_title}</Text>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`Abrir a fonte: ${story.source_title}`}
+              onPress={() => void Linking.openURL(story.source_url)}
+              className="mt-4 min-h-12 cursor-pointer justify-center self-start"
+            >
+              <Text className="font-label text-sm text-ember underline">{story.source_title}</Text>
             </Pressable>
+            </View>
           </View>
         );
       })}
-      {nextIndex !== undefined ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ busy: pending, disabled: pending }}
-          disabled={pending}
-          onPress={() => void load(nextIndex)}
-          className="mt-3 min-h-14 cursor-pointer justify-center"
-        >
-          {pending ? <ActivityIndicator color={palette.primary} /> : <Text className="font-label text-base text-ink">{feed.length === 0 ? `Ler a notícia de ${interest === GENERAL ? "hoje" : interest}` : "Próxima notícia"}</Text>}
-          <Text className="text-sm text-muted">{feed.length === 0 ? "Uma matéria do dia, no nível escolhido." : "A próxima matéria do mesmo tema."}</Text>
-        </Pressable>
+      {nextIndex !== undefined && feed.length > 0 ? (
+        <View className="mt-5">
+          <ActionRow
+            title="Próxima do boletim"
+            detail="A matéria seguinte que saiu hoje, no mesmo assunto."
+            onPress={() => void load(nextIndex)}
+            busy={pending}
+            disabled={pending}
+          />
+        </View>
       ) : null}
+      <View className="mt-5">
+        <ActionRow
+          title={error ? "Tentar o boletim de novo" : "Atualizar o boletim"}
+          detail="Busca de novo as matérias que saíram hoje."
+          onPress={() => {
+            opened.current = "";
+            const next = { date: isoDate(), target_lang: language, stories: { ...shelf.stories } };
+            for (const index of [0, 1, 2]) {
+              delete next.stories[feedKey(interest, index, band)];
+            }
+            kv.set(storageKey(readerId), JSON.stringify(next));
+            setLibrary(next);
+          }}
+          busy={pending}
+          disabled={pending}
+        />
+      </View>
       <GlassSheet visible={passageOpen} onClose={() => setPassageOpen(false)} label="Tradução da notícia">
         <Text className="mt-3 text-lg leading-8 text-ink">{feed.map((item) => item.story.translation).join("\n\n")}</Text>
       </GlassSheet>
@@ -443,7 +552,11 @@ export function DailyNews() {
         )}
       </GlassSheet>
       <GrammarSheet sentence={grammarSentence} language={language} onClose={() => setGrammarSentence(null)} />
-      {error ? <Text className="mt-2 text-base text-roseInk">{error}</Text> : null}
+      {error ? (
+        <Text accessibilityRole="alert" className="mt-4 text-base leading-6 text-roseInk">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }

@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from "expo-audio";
 import { AppFrame } from "@/components/shell/app-frame";
+import { PageMasthead } from "@/components/shell/page-masthead";
+import { ChunkButton } from "@/components/shell/chunk-button";
 import { fetchPersonaScenes, sendPersonaTurn, speakStory, transcribeSpeech, type PersonaScene } from "@/lib/api";
 import { tap } from "@/lib/haptics";
 import { narratorVoice } from "@/lib/narrator";
@@ -174,9 +176,9 @@ export function PersonaScreen() {
   return (
     <AppFrame>
       <View className="gap-8 pb-16">
-        <Pressable accessibilityRole="button" onPress={() => router.replace("/")} className="min-h-12 cursor-pointer justify-center self-start">
-          <Text className="font-label text-base text-ink">Início</Text>
-        </Pressable>
+        <View className="self-start">
+          <ChunkButton label="Voltar ao início" onPress={() => router.replace("/")} tone="ghost" />
+        </View>
         {phase === "loading" ? <Text className="text-base text-muted">Abrindo as cenas.</Text> : null}
         {phase === "error" ? (
           <View>
@@ -186,8 +188,11 @@ export function PersonaScreen() {
         ) : null}
         {phase === "list" ? (
           <View className="gap-4">
-            <Text className="font-displayItalic text-display text-ink">Cena</Text>
-            <Text className="max-w-xl text-lg leading-7 text-muted">Escolha um lugar. A pessoa responde no idioma que você estuda, e a dica explica o tom.</Text>
+            <PageMasthead
+              kicker="Oficina"
+              title="Cena"
+              dek="Escolha um lugar. A pessoa responde no idioma que você estuda, e a dica explica o tom."
+            />
             {scenes.length === 0 ? <Text className="text-base text-muted">Não há cenas para este idioma.</Text> : null}
             {scenes.map((item) => (
               <Pressable
@@ -195,23 +200,23 @@ export function PersonaScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`${item.title}, ${item.role}, ${item.register === "formal" ? "formal" : "informal"}`}
                 onPress={() => openScene(item)}
-                className="min-h-12 cursor-pointer rounded-3xl border border-line bg-card px-5 py-5"
+                className="min-h-16 cursor-pointer border-b border-line py-5"
               >
                 <Text className="font-displayItalic text-3xl text-ink">{item.title}</Text>
                 <Text className="mt-2 text-base text-ink">{item.role}</Text>
                 <Text className="mt-1 text-base text-muted">{item.brief}</Text>
-                <Text className="mt-3 font-label text-sm text-ember">{item.register === "formal" ? "Formal" : "Informal"}</Text>
+                <Text className="mt-3 font-label text-sm text-ember">{item.register === "formal" ? "Formal" : "Informal"} · Abrir</Text>
               </Pressable>
             ))}
           </View>
         ) : null}
         {phase === "talk" && scene ? (
           <View className="gap-4">
-            <Text className="font-label text-sm text-muted">{scene.place}</Text>
-            <Text className="font-displayItalic text-display text-ink">{scene.title}</Text>
-            <Text className="text-base leading-7 text-muted">
-              {scene.role}. {scene.register === "formal" ? "Tom formal." : "Tom informal."}
-            </Text>
+            <PageMasthead
+              kicker={scene.place}
+              title={scene.title}
+              dek={`${scene.role}. ${scene.register === "formal" ? "Tom formal." : "Tom informal."}`}
+            />
             {turns.map((turn, index) => (
               <View key={`${turn.role}-${index}`} className={turn.role === "learner" ? "items-end" : "items-start"}>
                 <View className={`max-w-[90%] rounded-3xl px-5 py-4 ${turn.role === "learner" ? "bg-ember" : "border border-line bg-card"}`}>

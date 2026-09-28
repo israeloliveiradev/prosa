@@ -1,11 +1,14 @@
 import { router } from "expo-router";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { AreaHint } from "@/components/guide/area-hint";
 import { BadgeGallery } from "@/components/home/badge-gallery";
 import { NicheMatrix } from "@/components/home/niche-matrix";
 import { RetentionBoard } from "@/components/home/retention-board";
 import { RetentionHeatmap } from "@/components/home/retention-heatmap";
 import { VocabDonut } from "@/components/home/vocab-donut";
+import { ActionRow } from "@/components/shell/action-row";
 import { AppFrame } from "@/components/shell/app-frame";
+import { PageMasthead } from "@/components/shell/page-masthead";
 import { isoDate, useProgress } from "@/lib/progress";
 import { useProgressReady } from "@/lib/query";
 
@@ -19,10 +22,12 @@ export default function MemoryScreen() {
   return (
     <AppFrame>
       <View className="gap-12">
-        <View>
-          <Text className="font-displayItalic text-display text-ink">Memória</Text>
-          <Text className="mt-3 max-w-xl text-lg leading-7 text-muted">O que já ficou, o que está em risco e as prosas anteriores.</Text>
-        </View>
+        <PageMasthead
+          kicker="Arquivo"
+          title="Memória"
+          dek="As células em risco vêm primeiro. Depois o que está firmando e o arquivo das prosas."
+        />
+        <AreaHint area="memory" />
         {ready ? (
           <>
             <RetentionHeatmap cards={progress.cards} />
@@ -40,29 +45,25 @@ export default function MemoryScreen() {
                   <Text className="mt-4 text-base leading-7 text-muted">A primeira prosa entra aqui, com data e tema.</Text>
                 ) : (
                   progress.history.map((item) => (
-                    <Pressable
-                      key={`${item.date}-${item.topic}`}
-                      accessibilityRole="button"
-                      onPress={() => {
-                        if (!progress.pro && item.date !== today) {
-                          router.push("/paywall");
-                          return;
-                        }
-                        router.push({ pathname: "/daily", params: { topic: item.topic, date: item.date } });
-                      }}
-                      className="min-h-14 cursor-pointer justify-center border-b border-line py-3"
-                    >
-                      <Text className="font-display text-xl text-ink">{item.title}</Text>
-                      <Text className="mt-1 text-sm text-muted">
-                        {item.date} · {item.topic}
-                      </Text>
-                    </Pressable>
+                    <View key={`${item.date}-${item.topic}`} className="mt-3">
+                      <ActionRow
+                        title={item.title}
+                        detail={`${item.date} · ${item.topic}`}
+                        onPress={() => {
+                          if (!progress.pro && item.date !== today) {
+                            router.push("/paywall");
+                            return;
+                          }
+                          router.push({ pathname: "/daily", params: { topic: item.topic, date: item.date } });
+                        }}
+                      />
+                    </View>
                   ))
                 )}
                 {progress.pro ? null : (
-                  <Pressable accessibilityRole="button" onPress={() => router.push("/paywall")} className="mt-4 min-h-12 cursor-pointer justify-center">
-                    <Text className="font-label text-base text-ember">Lições anteriores ficam na Prosa Pro</Text>
-                  </Pressable>
+                  <View className="mt-4">
+                    <ActionRow title="Lições anteriores" detail="O histórico completo entra na Prosa Pro." onPress={() => router.push("/paywall")} />
+                  </View>
                 )}
               </View>
             </View>

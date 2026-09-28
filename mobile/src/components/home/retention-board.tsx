@@ -62,7 +62,7 @@ export function RetentionBoard({
               accessibilityLabel={`${group.label}, ${group.count}`}
               accessibilityState={{ selected }}
               onPress={() => setOpen(selected ? null : group.id)}
-              className="min-h-12 justify-center"
+              className="min-h-12 cursor-pointer justify-center rounded-[20px] border border-line bg-card px-4 py-3"
             >
               <View className="flex-row items-center justify-between">
                 <Text className="font-label text-base text-ink">{group.label}</Text>

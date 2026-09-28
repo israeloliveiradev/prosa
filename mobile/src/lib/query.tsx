@@ -2,6 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { hydrateGuide } from "@/lib/guide";
 import { kv } from "@/lib/kv";
 import { flushReviews, hydrateProgress, setPro } from "@/lib/progress";
 import { hydrateSession, refreshSession } from "@/lib/session";
@@ -45,6 +46,7 @@ export function ProsaQueryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     hydrateProgress();
     hydrateSession();
+    hydrateGuide();
     setReady(true);
     void refreshSession().then((user) => {
       if (user) {

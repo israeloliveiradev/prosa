@@ -1,7 +1,10 @@
 import { router } from "expo-router";
-import { Pressable, Text, View } from "react-native";
+import { View } from "react-native";
+import { AreaHint } from "@/components/guide/area-hint";
 import { DailyNews } from "@/components/home/daily-news";
+import { ActionRow } from "@/components/shell/action-row";
 import { AppFrame } from "@/components/shell/app-frame";
+import { PageMasthead } from "@/components/shell/page-masthead";
 import { useSession } from "@/lib/session";
 
 export default function NewsScreen() {
@@ -10,16 +13,12 @@ export default function NewsScreen() {
   return (
     <AppFrame>
       <View className="gap-8">
-        <View>
-          <Text className="font-displayItalic text-display text-ink">Notícias</Text>
-          <Text className="mt-3 max-w-xl text-lg leading-7 text-muted">Uma história do dia, no nível que você escolhe.</Text>
-        </View>
+        <PageMasthead kicker="Boletim" title="Notícias" dek="O jornal de hoje, no assunto e no nível da conta." />
+        <AreaHint area="news" />
         {session ? (
           <DailyNews />
         ) : (
-          <Pressable accessibilityRole="button" onPress={() => router.push("/account")} className="min-h-12 cursor-pointer justify-center">
-            <Text className="font-label text-base text-ink">Entre na conta para ler a notícia</Text>
-          </Pressable>
+          <ActionRow title="Entre na conta para ler a notícia" detail="A notícia usa o nível e os interesses da conta." onPress={() => router.push("/account")} />
         )}
       </View>
     </AppFrame>

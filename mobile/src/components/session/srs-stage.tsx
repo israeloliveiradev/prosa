@@ -157,9 +157,9 @@ export function SrsStage({
         accessibilityLabel="Virar cartão"
         accessibilityHint="Depois de virar, arraste para a esquerda para errar e para a direita para fácil. Os botões abaixo fazem o mesmo."
         onPress={() => setRevealed((value) => !value)}
-        className="mt-3 min-h-12 items-center justify-center"
+        className="mt-3 min-h-12 items-center justify-center self-start rounded-full border border-line bg-card px-5"
       >
-        <Text className="text-sm font-semibold text-ink">Virar cartão</Text>
+        <Text className="font-label text-base text-ink">Virar cartão</Text>
       </Pressable>
       <View className="mt-2 flex-row flex-wrap gap-2">
         {GRADES.map((gradeOption) => (

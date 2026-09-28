@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { speakStory } from "@/lib/api";
+import { prefetchSpeech, speakStories, speakStory } from "@/lib/api";
 import { tap } from "@/lib/haptics";
 import { allSentences, HANDS_FREE_GAP_MS, handsFreeIntro, handsFreeLabel, handsFreeSteps } from "@/lib/hands-free";
 import { narratorVoice } from "@/lib/narrator";
@@ -28,10 +28,13 @@ export function HandsFreePlayer({
   const run = useRef(0);
 
   useEffect(() => {
+    const sentences = allSentences(story);
+    prefetchSpeech([handsFreeIntro(throughLang, title)], throughLang, narratorVoice(throughLang));
+    prefetchSpeech(sentences, targetLang, narratorVoice(targetLang));
     return () => {
       run.current += 1;
     };
-  }, [story]);
+  }, [story, title, targetLang, throughLang]);
 
   async function start() {
     const id = run.current + 1;
@@ -43,30 +46,28 @@ export function HandsFreePlayer({
     setLabel("Preparando o viva-voz");
     try {
       const sentences = allSentences(story);
-      const intro = await speakStory(handsFreeIntro(throughLang, title), throughLang, narratorVoice(throughLang));
-      const clips = await mapPool(sentences, 3, (sentence) => speakStory(sentence, targetLang, narratorVoice(targetLang)));
+      const throughVoice = narratorVoice(throughLang);
+      const targetVoice = narratorVoice(targetLang);
+      const restPromise = sentences.length > 1 ? speakStories(sentences.slice(1), targetLang, targetVoice) : Promise.resolve([]);
+      const [intro, first] = await Promise.all([
+        speakStory(handsFreeIntro(throughLang, title), throughLang, throughVoice),
+        sentences[0] ? speakStory(sentences[0], targetLang, targetVoice) : Promise.resolve(null),
+      ]);
       if (run.current !== id) {
         return;
       }
       const total = sentences.length;
-      const steps = handsFreeSteps(sentences.length);
-      const items: SequenceItem[] = steps.map((step) => {
-        if (step.kind === "gap") {
-          return { kind: "gap", ms: HANDS_FREE_GAP_MS, unit: step.unit, title: handsFreeLabel(step.kind, step.unit, total) };
-        }
-        const url = step.kind === "intro" ? intro.audioUrl : clips[step.sentence]?.audioUrl;
-        return { kind: "audio", url: url ?? "", unit: step.unit, title: handsFreeLabel(step.kind, step.unit, total) };
-      });
-      if (items.some((item) => item.kind === "audio" && !item.url)) {
-        throw new Error("A voz não devolveu o áudio.");
-      }
+      const firstItems = itemsFor(0, total, intro.audioUrl, first?.audioUrl);
       setPhase("live");
-      AudioService.startSequence(items, (update) => {
+      AudioService.startSequence(firstItems, (update) => {
         if (run.current !== id) {
           return;
         }
         setLabel(update.title);
         setPaused(update.paused);
+        if (update.error) {
+          setError(update.error);
+        }
         if (update.done) {
           setPhase("done");
           setPaused(false);
@@ -74,7 +75,22 @@ export function HandsFreePlayer({
         if (update.title.startsWith("Sua vez")) {
           void tap("medium");
         }
-      });
+      }, { open: sentences.length > 1 });
+      if (sentences.length > 1) {
+        const rest = await restPromise;
+        if (run.current !== id) {
+          return;
+        }
+        if (rest.some((clip) => !clip.audioUrl)) {
+          throw new Error("A voz não devolveu o áudio.");
+        }
+        const extra: SequenceItem[] = [];
+        rest.forEach((clip, offset) => {
+          extra.push(...itemsFor(offset + 1, total, "", clip.audioUrl));
+        });
+        AudioService.extendSequence(extra);
+        AudioService.sealSequence();
+      }
     } catch (caught) {
       if (run.current !== id) {
         return;
@@ -135,24 +151,22 @@ export function HandsFreePlayer({
           </View>
         </View>
       ) : null}
-      {error ? <Text className="mt-3 text-base text-roseInk">{error}</Text> : null}
+      {error ? (
+        <Text accessibilityRole="alert" className="mt-3 text-base text-roseInk">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
-async function mapPool<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let cursor = 0;
-  async function run(): Promise<void> {
-    while (cursor < items.length) {
-      const index = cursor;
-      cursor += 1;
-      const item = items[index];
-      if (item !== undefined) {
-        results[index] = await worker(item);
-      }
+function itemsFor(sentence: number, total: number, introUrl: string, clipUrl?: string): SequenceItem[] {
+  const steps = handsFreeSteps(total).filter((step) => (sentence === 0 ? step.unit <= 1 : step.sentence === sentence));
+  return steps.map((step) => {
+    if (step.kind === "gap") {
+      return { kind: "gap" as const, ms: HANDS_FREE_GAP_MS, unit: step.unit, title: handsFreeLabel(step.kind, step.unit, total) };
     }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
-  return results;
+    const url = step.kind === "intro" ? introUrl : clipUrl ?? "";
+    return { kind: "audio" as const, url, unit: step.unit, title: handsFreeLabel(step.kind, step.unit, total) };
+  });
 }

@@ -18,6 +18,7 @@ export interface SequenceUpdate {
   unit: number;
   done: boolean;
   paused: boolean;
+  error?: string;
 }
 
 type Release = () => void;
@@ -54,6 +55,9 @@ class AudioController {
   private audioModeReady = false;
 
   private sequenceLive = false;
+  private sequenceItems: SequenceItem[] = [];
+  private sequenceOpen = false;
+  private moreGate: (() => void) | null = null;
 
   token(): number {
     return this.generation;
@@ -69,9 +73,12 @@ class AudioController {
     this.paused = false;
     this.skipUnit = null;
     this.sequenceLive = false;
+    this.sequenceOpen = false;
+    this.sequenceItems = [];
     this.finishClip("stop");
     this.releaseCurrent();
     this.openPauseGate();
+    this.openMoreGate();
     this.clearMediaSession();
   }
 
@@ -80,12 +87,16 @@ class AudioController {
     rate: number,
     onTime: (elapsedMs: number, durationMs: number) => void,
     onEnd: () => void,
+    onError?: (message: string) => void,
   ): PlaybackHandle {
     this.sequenceId += 1;
     this.sequenceLive = false;
     this.finishClip("stop");
     this.releaseCurrent();
-    const release = Platform.OS === "web" ? this.bindWeb(url, rate, onTime, onEnd, null) : this.bindNative(url, rate, onTime, onEnd, null);
+    const release =
+      Platform.OS === "web"
+        ? this.bindWeb(url, rate, onTime, onEnd, null, onError)
+        : this.bindNative(url, rate, onTime, onEnd, null, onError);
     this.release = release;
     return {
       stop: () => {
@@ -97,11 +108,23 @@ class AudioController {
     };
   }
 
-  startSequence(items: SequenceItem[], onUpdate: (update: SequenceUpdate) => void): void {
+  startSequence(items: SequenceItem[], onUpdate: (update: SequenceUpdate) => void, options?: { open?: boolean }): void {
     this.stopAndUnload();
     this.sequenceLive = true;
+    this.sequenceOpen = options?.open ?? false;
+    this.sequenceItems = items.slice();
     const sequenceId = this.sequenceId;
-    void this.runSequence(items, sequenceId, onUpdate);
+    void this.runSequence(sequenceId, onUpdate);
+  }
+
+  extendSequence(items: SequenceItem[]): void {
+    this.sequenceItems.push(...items);
+    this.openMoreGate();
+  }
+
+  sealSequence(): void {
+    this.sequenceOpen = false;
+    this.openMoreGate();
   }
 
   pauseSequence(): void {
@@ -129,13 +152,11 @@ class AudioController {
     this.releaseCurrent();
   }
 
-  private async runSequence(items: SequenceItem[], sequenceId: number, onUpdate: (update: SequenceUpdate) => void): Promise<void> {
+  private async runSequence(sequenceId: number, onUpdate: (update: SequenceUpdate) => void): Promise<void> {
     await this.prepareBackground();
     let index = 0;
-    while (index < items.length) {
-      if (this.sequenceId !== sequenceId) {
-        return;
-      }
+    while (this.sequenceId === sequenceId) {
+      const items = this.sequenceItems;
       if (this.skipUnit != null) {
         const unit = this.skipUnit;
         this.skipUnit = null;
@@ -145,7 +166,13 @@ class AudioController {
       }
       const item = items[index];
       if (!item) {
-        break;
+        if (!this.sequenceOpen) {
+          break;
+        }
+        await new Promise<void>((resolve) => {
+          this.moreGate = resolve;
+        });
+        continue;
       }
       this.currentUnit = item.unit;
       onUpdate({ title: item.title, unit: item.unit, done: false, paused: this.paused });
@@ -158,7 +185,7 @@ class AudioController {
         index += 1;
         continue;
       }
-      const reason = await this.playUntilEnd(item.url ?? "", sequenceId, item.title);
+      const reason = await this.playUntilEnd(item.url ?? "", sequenceId, item.title, onUpdate);
       if (reason === "stop" || this.sequenceId !== sequenceId) {
         return;
       }
@@ -169,12 +196,18 @@ class AudioController {
     }
     if (this.sequenceId === sequenceId) {
       this.sequenceLive = false;
+      this.sequenceOpen = false;
       onUpdate({ title: "Fim", unit: this.currentUnit, done: true, paused: false });
       this.clearMediaSession();
     }
   }
 
-  private playUntilEnd(url: string, sequenceId: number, title: string): Promise<"end" | "skip" | "stop"> {
+  private playUntilEnd(
+    url: string,
+    sequenceId: number,
+    title: string,
+    onUpdate: (update: SequenceUpdate) => void,
+  ): Promise<"end" | "skip" | "stop"> {
     this.releaseCurrent();
     return new Promise((resolve) => {
       this.clipDone = resolve;
@@ -185,10 +218,14 @@ class AudioController {
         }
         this.finishClip("end");
       };
+      const onError = (message: string) => {
+        onUpdate({ title, unit: this.currentUnit, done: false, paused: this.paused, error: message });
+        this.finishClip("stop");
+      };
       const release =
         Platform.OS === "web"
-          ? this.bindWeb(url, 1, () => undefined, onEnd, title)
-          : this.bindNative(url, 1, () => undefined, onEnd, title);
+          ? this.bindWeb(url, 1, () => undefined, onEnd, title, onError)
+          : this.bindNative(url, 1, () => undefined, onEnd, title, onError);
       this.release = release;
     });
   }
@@ -226,6 +263,12 @@ class AudioController {
   private openPauseGate(): void {
     const gate = this.pauseGate;
     this.pauseGate = null;
+    gate?.();
+  }
+
+  private openMoreGate(): void {
+    const gate = this.moreGate;
+    this.moreGate = null;
     gate?.();
   }
 
@@ -295,6 +338,7 @@ class AudioController {
     onTime: (elapsedMs: number, durationMs: number) => void,
     onEnd: () => void,
     lockTitle: string | null,
+    onError?: (message: string) => void,
   ): Release {
     const Factory = (globalThis as { Audio?: new (src: string) => WebAudio }).Audio;
     if (!Factory) {
@@ -309,11 +353,15 @@ class AudioController {
     audio.addEventListener("timeupdate", update);
     audio.addEventListener("ended", onEnd);
     const pending = audio.play();
-    void pending.catch(() => undefined);
+    void pending.catch(() => {
+      onError?.("O navegador recusou o áudio.");
+    });
     if (lockTitle) {
       this.clipPause = () => audio.pause();
       this.clipResume = () => {
-        void audio.play().catch(() => undefined);
+        void audio.play().catch(() => {
+          onError?.("O navegador recusou o áudio.");
+        });
       };
       this.publishMedia("playing", lockTitle);
     }
@@ -336,6 +384,7 @@ class AudioController {
     onTime: (elapsedMs: number, durationMs: number) => void,
     onEnd: () => void,
     lockTitle: string | null,
+    onError?: (message: string) => void,
   ): Release {
     const player: AudioPlayer = createAudioPlayer(url);
     player.shouldCorrectPitch = true;

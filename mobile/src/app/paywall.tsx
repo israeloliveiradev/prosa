@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { Platform, Text, View } from "react-native";
 import { Figure } from "@/components/cast/figure";
 import { AppFrame } from "@/components/shell/app-frame";
+import { PageMasthead } from "@/components/shell/page-masthead";
 import { ChunkButton } from "@/components/shell/chunk-button";
-import { confirmCheckout, startCheckout } from "@/lib/api";
+import { confirmCheckout, fetchBillingStatus, startCheckout } from "@/lib/api";
 import { tap } from "@/lib/haptics";
 import { setPro, useProgress } from "@/lib/progress";
 import { getSession, refreshSession, useSession } from "@/lib/session";
@@ -29,15 +30,28 @@ export default function PaywallScreen() {
   const params = useLocalSearchParams<{ session_id?: string }>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stripeReady, setStripeReady] = useState<boolean | null>(null);
   const sessionId = typeof params.session_id === "string" ? params.session_id : "";
 
   useEffect(() => {
-    if (!sessionId) {
+    let active = true;
+    void fetchBillingStatus().then((configured) => {
+      if (active) {
+        setStripeReady(configured);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId || !session?.token) {
       return;
     }
     let active = true;
     setPending(true);
-    void confirmCheckout(sessionId)
+    void confirmCheckout(session.token, sessionId)
       .then((paid) => {
         if (!active) {
           return;
@@ -63,7 +77,7 @@ export default function PaywallScreen() {
     return () => {
       active = false;
     };
-  }, [sessionId]);
+  }, [sessionId, session?.token]);
 
   async function subscribe() {
     const current = getSession();
@@ -92,18 +106,12 @@ export default function PaywallScreen() {
 
   return (
     <AppFrame>
-      <View className="gap-8 md:flex-row md:items-end md:justify-between">
-        <View className="min-w-0 flex-1">
-          <Text className="font-label text-xs uppercase tracking-widest text-ember">Assinatura</Text>
-          <Text className="font-displayItalic mt-4 text-display text-ink">Prosa Pro</Text>
-          <Text className="mt-4 max-w-xl text-lg leading-7 text-muted">
-            A edição grátis abre uma lição por dia, num par de idiomas. A Pro acrescenta outros idiomas, o arquivo e o tema.
-          </Text>
-        </View>
-        <Figure who="lia" size={96} />
-      </View>
-
-      <View className="mt-12 h-px bg-ink" />
+      <PageMasthead
+        kicker="Assinatura"
+        title="Prosa Pro"
+        dek="A edição grátis abre uma lição por dia, num par de idiomas. A Pro acrescenta outros idiomas, o arquivo e o tema."
+        trailing={<Figure who="davinci" size={96} />}
+      />
 
       <View className="mt-8 flex-col gap-10 md:flex-row md:gap-0">
         <View className="flex-1 md:pr-10">
@@ -121,11 +129,18 @@ export default function PaywallScreen() {
               {item}
             </Text>
           ))}
-          <Text className="mt-4 text-sm leading-5 text-muted">O valor aparece no checkout da Stripe.</Text>
-          {progress.pro ? (
-            <Text className="mt-6 font-label text-base text-moss">Prosa Pro está ativo neste aparelho.</Text>
+          <Text className="mt-4 text-sm leading-5 text-muted">
+            {stripeReady === false ? "O checkout ainda não está ligado neste servidor." : "O valor aparece no checkout da Stripe."}
+          </Text>
+          {progress.pro || session?.user.plan === "pro" ? (
+            <Text className="mt-6 font-label text-base text-moss">Prosa Pro está ativo. O plano muda aqui ou no painel.</Text>
           ) : (
-            <ChunkButton className="mt-6 w-full" label={!session ? "Entrar para assinar" : pending ? "Abrindo o checkout" : "Assinar Prosa Pro"} onPress={() => void subscribe()} disabled={pending} />
+            <ChunkButton
+              className="mt-6 w-full"
+              label={!session ? "Entrar para assinar" : pending ? "Abrindo o checkout" : stripeReady === false ? "Checkout indisponível" : "Assinar Prosa Pro"}
+              onPress={() => void subscribe()}
+              disabled={pending || stripeReady === false}
+            />
           )}
           {error ? (
             <Text accessibilityRole="alert" className="mt-3 text-base leading-6 text-roseInk">

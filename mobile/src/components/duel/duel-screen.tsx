@@ -2,18 +2,18 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { AppFrame } from "@/components/shell/app-frame";
+import { ChunkButton } from "@/components/shell/chunk-button";
+import { PageMasthead } from "@/components/shell/page-masthead";
 import { fetchDuelBoard, fetchDuelRound, saveDuelScore, type DuelBoardEntry, type DuelDrill } from "@/lib/api";
 import { duelPoints } from "@/lib/duel";
 import { tap } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
 import { AudioService } from "@/services/audio/AudioService";
-import { useTheme } from "@/theme/ThemeContext";
 
 const ROUND_MS = 120_000;
 const QUESTION_MS = 4_000;
 
 export function DuelScreen() {
-  const { palette } = useTheme();
   const session = useSession();
   const token = session?.token;
   const [phase, setPhase] = useState<"loading" | "ready" | "play" | "done" | "error">("loading");
@@ -181,11 +181,10 @@ export function DuelScreen() {
   if (!session) {
     return (
       <AppFrame>
-        <Text className="font-displayItalic text-display text-ink">Duelo</Text>
-        <Text className="mt-3 max-w-xl text-lg leading-7 text-muted">Entre na conta para jogar os 120 segundos e aparecer na classificação.</Text>
-        <Pressable accessibilityRole="button" onPress={() => router.push("/account")} className="mt-6 min-h-12 items-center justify-center self-start rounded-full bg-ember px-6">
-          <Text className="text-base font-semibold text-onEmber">Entrar</Text>
-        </Pressable>
+        <PageMasthead kicker="Oficina" title="Duelo" dek="Entre na conta para jogar os 120 segundos e aparecer na classificação." />
+        <View className="mt-8 self-start">
+          <ChunkButton label="Entrar" onPress={() => router.push("/account")} />
+        </View>
       </AppFrame>
     );
   }
@@ -199,10 +198,7 @@ export function DuelScreen() {
         {phase === "play" || phase === "done" ? clock : "02:00"}
       </Text>
       {phase === "play" && current ? (
-        <View
-          className="mt-6 rounded-[28px] border border-line bg-card px-5 py-5"
-          style={combo >= 2 ? { boxShadow: `0 0 28px ${palette.primary}` } : { boxShadow: "0 10px 28px rgba(0,0,0,0.07)" }}
-        >
+        <View className={`mt-8 border-t pt-6 ${combo >= 2 ? "border-ember" : "border-ink"}`}>
           <Text className="font-label text-sm text-muted">Combo {combo}</Text>
           <Text className="mt-1 text-sm text-muted">{Math.ceil(questionLeft / 1000)} s nesta frase · {score} pontos</Text>
           <View className="mt-3 h-1.5 overflow-hidden rounded-full bg-sand">
@@ -237,9 +233,11 @@ export function DuelScreen() {
       ) : null}
       {phase === "ready" ? (
         <View className="mt-6">
-          <Text className="max-w-xl text-lg leading-7 text-muted">Doze frases do seu nível. Cada uma dura quatro segundos. A sequência aumenta a pontuação.</Text>
+          <Text className="max-w-xl text-lg leading-7 text-muted">
+            O placar já está abaixo. Doze frases, quatro segundos cada. A sequência aumenta a pontuação. Comece quando quiser.
+          </Text>
           <Pressable accessibilityRole="button" onPress={begin} className="mt-6 min-h-12 items-center justify-center self-start rounded-full bg-ember px-6">
-            <Text className="text-base font-semibold text-onEmber">Começar</Text>
+            <Text className="text-base font-semibold text-onEmber">Começar o duelo</Text>
           </Pressable>
         </View>
       ) : null}
@@ -273,7 +271,11 @@ export function DuelScreen() {
           </Pressable>
         </View>
       ) : null}
-      {error ? <Text className="mt-4 text-base text-roseInk">{error}</Text> : null}
+      {error ? (
+        <Text accessibilityRole="alert" className="mt-4 text-base leading-7 text-roseInk">
+          {error}
+        </Text>
+      ) : null}
       {phase === "error" ? (
         <Pressable
           accessibilityRole="button"

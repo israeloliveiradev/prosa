@@ -2,38 +2,48 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { Figure } from "@/components/cast/figure";
+import { WelcomeSheet } from "@/components/guide/welcome-sheet";
 import { StreakFlame } from "@/components/home/streak-flame";
+import { ActionRow } from "@/components/shell/action-row";
 import { AppFrame } from "@/components/shell/app-frame";
 import { ChunkButton } from "@/components/shell/chunk-button";
-import { CAST } from "@/design/cast";
-import { useTheme } from "@/theme/ThemeContext";
-import { activateStudyTrack, listStudyTracks, type StudyTrackChoice } from "@/lib/api";
-import { tap } from "@/lib/haptics";
-import { languageName, trackLabel } from "@/lib/languages";
-import { isoDate, useProgress } from "@/lib/progress";
+import { mindCopy, useCast } from "@/lib/cast";
+import { givenName, getLocale, useCopy } from "@/lib/i18n";
+import { languageName } from "@/lib/languages";
+import { applyRemoteFreeze, isoDate, useProgress } from "@/lib/progress";
 import { useProgressReady } from "@/lib/query";
-import { rememberProfile, useSession } from "@/lib/session";
+import { useSession } from "@/lib/session";
+import { keepWords } from "@/lib/text";
+import { useTheme } from "@/theme/ThemeContext";
 
 export default function HomeScreen() {
   const { palette } = useTheme();
+  const copy = useCopy();
+  const locale = getLocale();
+  const { people } = useCast();
+  const readyLine = `${people[0]?.name} lê, ${people[1]?.name} guarda, ${people[2]?.name} fala e ${people[3]?.name} escreve.`;
   const ready = useProgressReady();
   const session = useSession();
   const progress = useProgress();
   const [topic, setTopic] = useState("");
   const today = isoDate();
   const continuing = progress.lessonDate === today && progress.topic;
-  const learning = progress.cards.filter((card) => card.status !== "mastered").length;
-  const mastered = progress.cards.filter((card) => card.status === "mastered").length;
   const lessonToday = progress.lessonDate === today ? 100 : 0;
-  const memory = progress.cards.length === 0 ? 0 : Math.round((mastered / progress.cards.length) * 100);
+  const memory = progress.cards.length === 0 ? 0 : Math.round((progress.cards.filter((card) => card.status === "mastered").length / progress.cards.length) * 100);
   const speech = progress.badges.includes("clear_voice") ? 100 : 0;
   const journal = progress.badges.includes("journal_kept") ? 100 : 0;
   const ratios = [lessonToday, memory, speech, journal];
   const targetName = languageName(session?.user.target_lang ?? "en");
-  const throughName = languageName(session?.user.native_lang ?? "pt");
+  const freezeRemote = session?.user.streak_freeze_count;
+  const name = session ? givenName(session.user.email, session.user.display_name) : "você";
+
+  useEffect(() => {
+    if (typeof freezeRemote === "number") {
+      applyRemoteFreeze(freezeRemote);
+    }
+  }, [freezeRemote]);
 
   function start() {
-    void tap("medium");
     if (!progress.pro && topic.trim() && !continuing) {
       router.push("/paywall");
       return;
@@ -44,141 +54,100 @@ export default function HomeScreen() {
 
   return (
     <AppFrame>
-      <View className="gap-12 lg:gap-16">
-        <View className="gap-6 md:flex-row md:items-end md:justify-between">
+      {ready ? <WelcomeSheet /> : null}
+      <View className="gap-8">
+        <View className="flex-row flex-wrap items-end justify-between gap-6">
           <View className="min-w-0 flex-1">
-            <Text className="font-displayItalic text-display text-ink">Vinte minutos.</Text>
-            <Text className="mt-3 max-w-xl text-lg leading-7 text-muted">Clara lê, Bento guarda, Nuno fala e Lia escreve. Uma prosa, nessa ordem.</Text>
+            <Text className="font-label text-sm text-ember">{copy.todayKicker}</Text>
+            <Text className="font-displayItalic mt-2 text-display text-ink">{copy.greeting(name)}</Text>
           </View>
           {ready ? <StreakFlame days={progress.streakCount} freezes={progress.streakFreezeCount} /> : <View className="h-16 w-16 rounded-full bg-line" />}
         </View>
 
-        <View className="flex-row flex-wrap">
-          {CAST.map((person, index) => (
-            <Pressable
-              key={person.id}
-              accessibilityRole="button"
-              accessibilityLabel={`${person.name}, ${person.role}, progresso ${ratios[index]} por cento`}
-              onPress={() => {
-                if (ready) {
-                  start();
-                }
-              }}
-              className="w-full cursor-pointer p-2 md:w-1/2 lg:w-1/4"
-            >
-              <View className="items-center rounded-3xl border border-line bg-card px-4 py-5" style={{ boxShadow: "0 10px 28px rgba(0,0,0,0.07)" }}>
-                <Figure who={person.id} size={108} />
-                <Text className="mt-2 text-center font-displayItalic text-3xl text-ink">{person.name}</Text>
-                <Text className="mt-1 text-center font-label text-xs text-moss">{person.role}</Text>
-                <Text className="mt-2 text-center text-sm leading-5 text-muted">{person.line}</Text>
-                <Text className="mt-4 font-label text-xs text-ember">Parte {index + 1}</Text>
-                <View className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-sand">
-                  <View className="h-full rounded-full bg-ember" style={{ width: `${ratios[index]}%` }} />
-                </View>
-                <Text className="mt-2 text-sm text-muted">Progresso {ratios[index]}%</Text>
-              </View>
-            </Pressable>
-          ))}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={continuing ? copy.continueToday : copy.startToday}
+          onPress={start}
+          className="cursor-pointer overflow-hidden rounded-[28px] bg-ember px-6 py-7 md:flex-row md:items-center md:justify-between md:px-8"
+        >
+          <View className="min-w-0 flex-1">
+            <Text className="font-label text-sm text-onEmber">{targetName}</Text>
+            <Text className="font-displayItalic mt-2 text-headline text-onEmber">{copy.todayTitle}</Text>
+            <Text className="mt-3 max-w-xl text-base leading-7 text-onEmber">{keepWords(locale === "en" ? `${people[0]?.name} reads, ${people[1]?.name} keeps, ${people[2]?.name} speaks and ${people[3]?.name} writes.` : readyLine)}</Text>
+            <View className="mt-6 self-start rounded-full bg-card px-6 py-3">
+              <Text className="font-label text-base text-ember">{continuing ? copy.continueToday : copy.startToday}</Text>
+            </View>
+          </View>
+          <View className="mt-6 items-center justify-center rounded-[32px] bg-card p-3 md:mt-0">
+            <Figure who={people[0]?.id ?? "einstein"} size={132} />
+          </View>
+        </Pressable>
+
+        <View className="gap-3 md:flex-row">
+          <HomeTile title={copy.navMemory} detail={copy.reviewEmpty} href="/memory" />
+          <HomeTile title={copy.navNews} detail="O boletim de hoje, no assunto da conta." href="/news" />
+          <HomeTile title={copy.navPractice} detail="Duelo de 120 segundos ou uma cena no tom do lugar." href="/practice" />
         </View>
 
-        {ready ? (
-          <>
-            <StudySwitcher />
-            <View className="items-center gap-6">
-              <ChunkButton
-                label={continuing ? "Continuar a prosa" : `Aprender: ${targetName} (${throughName})`}
-                onPress={start}
-                className="w-full max-w-md"
-              />
-              {progress.pro ? (
-                <View className="w-full max-w-md">
-                  <Text className="font-label text-sm text-muted">Tema de hoje</Text>
-                  <TextInput
-                    value={topic}
-                    onChangeText={setTopic}
-                    accessibilityLabel="Tema de hoje"
-                    placeholder="Por exemplo, pedir um café"
-                    placeholderTextColor={palette.onSurfaceVariant}
-                    className="mt-2 min-h-14 rounded-full bg-card px-5 text-base text-ink"
-                  />
-                </View>
-              ) : (
-                <Pressable accessibilityRole="button" onPress={() => router.push("/paywall")} className="min-h-12 cursor-pointer justify-center">
-                  <Text className="font-label text-base text-ink">Tema personalizado</Text>
-                  <Text className="text-sm text-muted">Entra na Prosa Pro</Text>
+        <View className="rounded-[28px] border border-line bg-card px-5 py-6">
+          <View className="flex-row flex-wrap">
+            {people.map((person, index) => {
+              const text = mindCopy(person, locale);
+              return (
+                <Pressable
+                  key={person.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${person.name}, ${text.role}`}
+                  onPress={() => router.push("/settings")}
+                  className="w-1/2 cursor-pointer p-3 lg:w-1/4"
+                >
+                  <Text className="font-label text-xs text-ember">0{index + 1}</Text>
+                  <View className="mt-3">
+                    <Figure who={person.id} size={88} />
+                  </View>
+                  <Text className="mt-3 font-displayItalic text-2xl text-ink">{person.name}</Text>
+                  <Text className="mt-1 text-sm text-muted">{keepWords(text.role)}</Text>
+                  <View className="mt-3 h-2 overflow-hidden rounded-full bg-sand">
+                    <View className="h-full rounded-full bg-ember" style={{ width: `${ratios[index]}%` }} />
+                  </View>
                 </Pressable>
-              )}
-            </View>
-          </>
-        ) : (
-          <View className="gap-3">
-            <View className="h-12 w-48 rounded-full bg-line" />
-            <View className="h-px bg-line" />
+              );
+            })}
           </View>
-        )}
+        </View>
+
+        {ready && progress.pro ? (
+          <View className="max-w-md">
+            <Text className="font-label text-sm text-muted">Tema de hoje</Text>
+            <TextInput
+              value={topic}
+              onChangeText={setTopic}
+              accessibilityLabel="Tema de hoje"
+              placeholder="Por exemplo, pedir um café"
+              placeholderTextColor={palette.onSurfaceVariant}
+              className="mt-2 min-h-14 rounded-2xl border border-line bg-card px-5 text-base text-ink"
+            />
+          </View>
+        ) : ready ? (
+          <ActionRow title="Tema personalizado" detail="Escolher o tema do dia entra na Prosa Pro." onPress={() => router.push("/paywall")} />
+        ) : null}
+
+        {ready ? <ChunkButton label={continuing ? copy.continueToday : copy.startToday} onPress={start} className="w-full max-w-md" /> : null}
       </View>
     </AppFrame>
   );
 }
 
-function StudySwitcher() {
-  const session = useSession();
-  const progress = useProgress();
-  const [tracks, setTracks] = useState<StudyTrackChoice[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!session) {
-      setTracks([]);
-      return;
-    }
-    void listStudyTracks(session.token)
-      .then(setTracks)
-      .catch(() => setTracks([]));
-  }, [session]);
-
-  if (!session || tracks.length === 0) {
-    return null;
-  }
-
+function HomeTile({ title, detail, href }: { title: string; detail: string; href: "/memory" | "/news" | "/practice" }) {
   return (
-    <View>
-      <Text className="font-label text-sm text-muted">Idioma de hoje</Text>
-      <View accessibilityRole="radiogroup" className="mt-3 flex-row flex-wrap gap-2">
-        {tracks.map((track) => {
-          const active = session.user.target_lang === track.target_lang && session.user.native_lang === track.through_lang;
-          const label = trackLabel(track);
-          return (
-            <Pressable
-              key={`${track.target_lang}-${track.through_lang}`}
-              accessibilityRole="radio"
-              accessibilityLabel={label}
-              accessibilityState={{ selected: active, checked: active }}
-              onPress={() => {
-                if (!(progress.pro || session.user.plan === "pro") && !active) {
-                  router.push("/paywall");
-                  return;
-                }
-                void activateStudyTrack(session.token, track)
-                  .then(() => {
-                    rememberProfile({ target_lang: track.target_lang, native_lang: track.through_lang });
-                    void tap("light");
-                    setError(null);
-                  })
-                  .catch((caught: unknown) => {
-                    setError(caught instanceof Error ? caught.message : "Não foi possível trocar o idioma.");
-                  });
-              }}
-              className={`min-h-14 items-center justify-center rounded-full px-5 ${active ? "bg-ember" : "border border-line bg-card"}`}
-            >
-              <Text numberOfLines={1} className={`font-label text-base ${active ? "text-onEmber" : "text-ink"}`}>
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      {error ? <Text className="mt-2 text-base text-roseInk">{error}</Text> : null}
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      onPress={() => router.push(href)}
+      className="min-h-36 flex-1 cursor-pointer rounded-[28px] border border-line bg-card px-5 py-5"
+    >
+      <Text className="font-displayItalic text-3xl text-ink">{title}</Text>
+      <Text className="mt-3 text-base leading-6 text-muted">{detail}</Text>
+    </Pressable>
   );
 }

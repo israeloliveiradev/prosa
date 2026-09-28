@@ -1,5 +1,17 @@
 import { useSyncExternalStore } from "react";
-import { currentAccount, loginAccount, logoutAccount, registerAccount, type AccountUser } from "@/lib/api";
+import {
+  confirmAccountEmail,
+  currentAccount,
+  loginAccount,
+  logoutAccount,
+  registerAccount,
+  verifySecondFactor,
+  type AccountUser,
+  type LoginChallenge,
+  type VerifyChallenge,
+} from "@/lib/api";
+import { hydrateLocale } from "@/lib/i18n";
+import { hydrateCast } from "@/lib/cast";
 import { kv } from "@/lib/kv";
 
 const STORAGE_KEY = "prosa.session.v1";
@@ -22,6 +34,15 @@ function persist(next: SessionState | null): void {
   state = next;
   if (next) {
     kv.set(STORAGE_KEY, JSON.stringify(next));
+    if (next.user.display_locale === "en" || next.user.display_locale === "pt") {
+      hydrateLocale(next.user.display_locale);
+    }
+    hydrateCast({
+      reading: next.user.mind_reading,
+      memory: next.user.mind_memory,
+      speech: next.user.mind_speech,
+      journal: next.user.mind_journal,
+    });
   } else {
     kv.delete(STORAGE_KEY);
   }
@@ -46,6 +67,15 @@ export function hydrateSession(): void {
     const parsed = JSON.parse(raw) as Partial<SessionState>;
     if (typeof parsed.token === "string" && isUser(parsed.user)) {
       state = { token: parsed.token, user: parsed.user };
+      if (parsed.user.display_locale === "en" || parsed.user.display_locale === "pt") {
+        hydrateLocale(parsed.user.display_locale);
+      }
+      hydrateCast({
+        reading: parsed.user.mind_reading,
+        memory: parsed.user.mind_memory,
+        speech: parsed.user.mind_speech,
+        journal: parsed.user.mind_journal,
+      });
       return;
     }
   } catch {
@@ -70,8 +100,17 @@ export function useSession(): SessionState | null {
   );
 }
 
-export async function signIn(email: string, password: string): Promise<AccountUser> {
+export async function signIn(email: string, password: string): Promise<AccountUser | LoginChallenge | VerifyChallenge> {
   const session = await loginAccount(email, password);
+  if ("requires_2fa" in session || "requires_verify" in session) {
+    return session;
+  }
+  persist(session);
+  return session.user;
+}
+
+export async function finishSignIn(ticket: string, code: string): Promise<AccountUser> {
+  const session = await verifySecondFactor(ticket, code);
   persist(session);
   return session.user;
 }
@@ -82,8 +121,17 @@ export async function signUp(input: {
   native_lang: string;
   target_lang: string;
   level: AccountUser["level"];
-}): Promise<AccountUser> {
+}): Promise<AccountUser | VerifyChallenge> {
   const session = await registerAccount(input);
+  if ("requires_verify" in session) {
+    return session;
+  }
+  persist(session);
+  return session.user;
+}
+
+export async function finishVerify(email: string, code: string): Promise<AccountUser> {
+  const session = await confirmAccountEmail(email, code);
   persist(session);
   return session.user;
 }

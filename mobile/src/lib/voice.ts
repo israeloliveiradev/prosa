@@ -41,6 +41,7 @@ export function startNeuralPlayback(
   rate: number,
   onTime: (elapsedMs: number, durationMs: number) => void,
   onEnd: () => void,
+  onError?: (message: string) => void,
 ): PlaybackHandle {
-  return AudioService.play(url, rate, onTime, onEnd);
+  return AudioService.play(url, rate, onTime, onEnd, onError);
 }

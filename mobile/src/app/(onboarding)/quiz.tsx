@@ -2,7 +2,9 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { AccessibilityInfo, Pressable, Text, TextInput, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
+import { ActionRow } from "@/components/shell/action-row";
 import { AppFrame } from "@/components/shell/app-frame";
+import { PageMasthead } from "@/components/shell/page-masthead";
 import { ChunkButton } from "@/components/shell/chunk-button";
 import { CognatePreview } from "@/components/onboarding/cognate-preview";
 import { useTheme } from "@/theme/ThemeContext";
@@ -19,8 +21,9 @@ import {
 } from "@/lib/languages";
 import { useProgress } from "@/lib/progress";
 import { rememberProfile, useSession } from "@/lib/session";
+import { NEWS_THEMES } from "@/lib/themes";
 
-const INTERESTS = ["Tecnologia e IA", "Filosofia", "Viagens", "Negócios", "Cultura pop", "Cozinha", "Ciência", "Música"];
+const INTERESTS = NEWS_THEMES;
 
 const DRAFT_KEY = "prosa.onboarding.v1";
 
@@ -48,7 +51,7 @@ function readDraft(): { tracks: StudyTrack[]; interests: string[]; goal: string;
   try {
     const parsed = JSON.parse(raw) as { lang?: string; tracks?: unknown; interests?: unknown; goal?: string; level?: string };
     const interests = Array.isArray(parsed.interests)
-      ? parsed.interests.filter((item): item is string => typeof item === "string" && INTERESTS.includes(item))
+      ? parsed.interests.filter((item): item is string => typeof item === "string" && (INTERESTS as readonly string[]).includes(item))
       : [];
     const goal = typeof parsed.goal === "string" ? parsed.goal : "";
     const level = parsed.level && isLevel(parsed.level) ? parsed.level : null;
@@ -188,11 +191,11 @@ export default function OnboardingQuiz() {
 
   return (
     <AppFrame>
-      <Text className="font-label text-sm text-ember">Começo</Text>
-      <Text className="font-displayItalic mt-3 text-display text-ink">O que você quer ler.</Text>
-      <Text className="mt-4 max-w-xl text-lg leading-7 text-muted">
-        Dá para estudar mais de um idioma, e estudar um através de outro. Alemão através do inglês, por exemplo. A prosa e a tradução seguem o par marcado para hoje.
-      </Text>
+      <PageMasthead
+        kicker="Começo"
+        title="O que você quer ler."
+        dek="Dá para estudar mais de um idioma, e estudar um através de outro. Alemão através do inglês, por exemplo. A prosa e a tradução seguem o par marcado para hoje."
+      />
 
       {creating ? <CreatingPulse still={reduceMotion} /> : null}
 
@@ -209,7 +212,7 @@ export default function OnboardingQuiz() {
                       accessibilityRole="button"
                       accessibilityLabel={`Tirar ${trackLabel(track)}`}
                       onPress={() => updateTracks(tracks.filter((_, itemIndex) => itemIndex !== index))}
-                      className="min-h-12 cursor-pointer justify-center px-2"
+                      className="min-h-12 cursor-pointer items-center justify-center rounded-full border border-line px-4"
                     >
                       <Text className="font-label text-base text-ink">Tirar</Text>
                     </Pressable>
@@ -269,9 +272,9 @@ export default function OnboardingQuiz() {
                   accessibilityLabel={`Usar hoje: ${trackLabel(track)}`}
                   accessibilityState={{ selected: track.active, checked: track.active }}
                   onPress={() => updateTracks(tracks.map((current, itemIndex) => ({ ...current, active: itemIndex === index })))}
-                  className="min-h-12 cursor-pointer justify-center"
+                  className={`min-h-12 cursor-pointer items-center justify-center self-start rounded-full px-5 ${track.active ? "bg-ember" : "border border-line bg-paper"}`}
                 >
-                  <Text className={`font-label text-base ${track.active ? "text-ember" : "text-muted"}`}>
+                  <Text className={`font-label text-base ${track.active ? "text-onEmber" : "text-ink"}`}>
                     {track.active ? "Este é o de hoje" : "Usar este hoje"}
                   </Text>
                 </Pressable>
@@ -380,15 +383,9 @@ export default function OnboardingQuiz() {
           <Text className="font-label text-sm text-muted">Temas para o idioma de hoje</Text>
           <View className="mt-4">
             {topics.map((topic) => (
-              <Pressable
-                key={topic}
-                accessibilityRole="button"
-                accessibilityLabel={`Começar com ${topic}`}
-                onPress={() => openTopic(topic)}
-                className="min-h-14 cursor-pointer justify-center border-b border-line py-3"
-              >
-                <Text className="font-display text-2xl text-ink">{topic}</Text>
-              </Pressable>
+              <View key={topic} className="mt-3">
+                <ActionRow title={topic} detail="Começar a prosa com este tema." label={`Começar com ${topic}`} onPress={() => openTopic(topic)} />
+              </View>
             ))}
           </View>
           <ChunkButton label="Começar a prosa" onPress={() => openTopic(topics[0] ?? "everyday life")} className="mt-8 w-full lg:w-auto" />

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { ActionRow } from "@/components/shell/action-row";
 import type { LessonHistoryItem } from "@/lib/progress";
 
 export function NicheMatrix({ history }: { history: LessonHistoryItem[] }) {
@@ -31,17 +32,14 @@ export function NicheMatrix({ history }: { history: LessonHistoryItem[] }) {
           {rows.map(([topic, words]) => {
             const selected = open === topic;
             return (
-              <Pressable
-                key={topic}
-                accessibilityRole="button"
-                accessibilityLabel={`${topic}, ${words.length} palavras`}
-                accessibilityState={{ selected }}
-                onPress={() => setOpen(selected ? null : topic)}
-                className="min-h-14 cursor-pointer justify-center border-b border-line py-3"
-              >
-                <Text className="font-display text-xl text-ink">{topic}</Text>
-                <Text className="mt-1 text-sm text-muted">{words.length} {words.length === 1 ? "palavra" : "palavras"}</Text>
-              </Pressable>
+              <View key={topic} className="mt-3">
+                <ActionRow
+                  title={topic}
+                  detail={`${words.length} ${words.length === 1 ? "palavra" : "palavras"}`}
+                  label={`${topic}, ${words.length} palavras`}
+                  onPress={() => setOpen(selected ? null : topic)}
+                />
+              </View>
             );
           })}
         </View>

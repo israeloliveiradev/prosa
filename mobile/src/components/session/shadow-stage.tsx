@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from "expo-audio";
-import * as Speech from "expo-speech";
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, type SharedValue } from "react-native-reanimated";
 import { analyzeShadowing, speakStory } from "@/lib/api";
 import { tap } from "@/lib/haptics";
-import { speechLocale } from "@/lib/lesson";
 import { narratorVoice } from "@/lib/narrator";
 import type { ShadowingResult } from "@/lib/types";
 import { narrationToken, startNeuralPlayback, type PlaybackHandle } from "@/lib/voice";
@@ -40,15 +38,14 @@ export function ShadowStage({
   useEffect(() => {
     return () => {
       AudioService.stopAndUnload();
-      Speech.stop();
     };
   }, []);
 
   async function play() {
     AudioService.stopAndUnload();
-    Speech.stop();
     const generation = narrationToken();
     playbackRef.current = null;
+    setError(null);
     try {
       const spoken = await speakStory(sentence, language, narratorVoice(language));
       if (narrationToken() !== generation) {
@@ -56,12 +53,14 @@ export function ShadowStage({
       }
       playbackRef.current = startNeuralPlayback(spoken.audioUrl, rate, () => undefined, () => {
         playbackRef.current = null;
+      }, (message) => {
+        playbackRef.current = null;
+        setError(message);
       });
     } catch {
-      if (narrationToken() !== generation) {
-        return;
+      if (narrationToken() === generation) {
+        setError("A voz neural não abriu. Tente de novo.");
       }
-      Speech.speak(sentence, { language: speechLocale(language), rate });
     }
   }
 

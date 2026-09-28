@@ -44,6 +44,17 @@ export function handsFreeSteps(sentenceCount: number): HandsFreeStep[] {
   return steps;
 }
 
+export function sentenceRanges(story: string): Array<{ text: string; start: number; end: number }> {
+  const sentences = allSentences(story);
+  let cursor = 0;
+  return sentences.map((text) => {
+    const count = text.split(/\s+/).filter((token) => token.length > 0).length;
+    const start = cursor;
+    cursor += count;
+    return { text, start, end: start + count };
+  });
+}
+
 export function handsFreeLabel(kind: HandsFreeKind, unit: number, total: number): string {
   if (kind === "intro") {
     return "Cenário";

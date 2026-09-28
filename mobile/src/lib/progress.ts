@@ -384,6 +384,11 @@ export function setPro(pro: boolean): void {
   update((current) => ({ ...current, pro }));
 }
 
+export function applyRemoteFreeze(count: number): void {
+  const next = Math.max(0, Math.floor(count));
+  update((current) => (current.streakFreezeCount === next ? current : { ...current, streakFreezeCount: next }));
+}
+
 export type SyncPhase = "device" | "queued" | "sent" | "paused";
 
 type SyncSnapshot = { phase: SyncPhase; pending: number };

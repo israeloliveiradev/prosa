@@ -1,14 +1,17 @@
 import { Pressable, Text } from "react-native";
+import { keepWords } from "@/lib/text";
 
 const FACE = {
   primary: "bg-ember",
   moss: "bg-moss",
-  ghost: "border border-ink bg-card",
+  ink: "bg-ink",
+  ghost: "border border-line bg-card",
 } as const;
 
 const LABEL = {
   primary: "text-onEmber",
   moss: "text-onEmber",
+  ink: "text-card",
   ghost: "text-ink",
 } as const;
 
@@ -31,9 +34,9 @@ export function ChunkButton({
       accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
       onPress={onPress}
-      className={`min-h-14 cursor-pointer items-center justify-center rounded-full px-8 active:opacity-90 ${disabled ? "bg-line" : FACE[tone]} ${className}`}
+      className={`min-h-16 cursor-pointer items-center justify-center rounded-full px-10 active:opacity-90 ${disabled ? "bg-line" : FACE[tone]} ${className}`}
     >
-      <Text className={`text-center font-label text-base ${disabled ? "text-ink" : LABEL[tone]}`}>{label}</Text>
+      <Text className={`text-center font-label text-base ${disabled ? "text-ink" : LABEL[tone]}`}>{keepWords(label)}</Text>
     </Pressable>
   );
 }
