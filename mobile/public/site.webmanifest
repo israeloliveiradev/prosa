@@ -1,0 +1,22 @@
+{
+  "name": "Prosa",
+  "short_name": "Prosa",
+  "description": "Uma lição de vinte minutos por dia.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFF8F1",
+  "theme_color": "#9A3412",
+  "lang": "pt",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "48x48",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
