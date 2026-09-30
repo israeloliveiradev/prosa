@@ -1,6 +1,6 @@
-import { AudioService, type PlaybackHandle } from "@/services/audio/AudioService";
+import { AudioService, type MpegStreamHandle, type PlaybackHandle } from "@/services/audio/AudioService";
 
-export type { PlaybackHandle };
+export type { MpegStreamHandle, PlaybackHandle };
 
 export function stopNarration(): void {
   AudioService.stopAndUnload();
@@ -44,4 +44,13 @@ export function startNeuralPlayback(
   onError?: (message: string) => void,
 ): PlaybackHandle {
   return AudioService.play(url, rate, onTime, onEnd, onError);
+}
+
+export function startNeuralStream(
+  rate: number,
+  onTime: (elapsedMs: number, durationMs: number) => void,
+  onEnd: () => void,
+  onError?: (message: string) => void,
+): MpegStreamHandle {
+  return AudioService.startMpegStream(rate, onTime, onEnd, onError);
 }

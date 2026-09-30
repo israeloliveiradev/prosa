@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { GlassSheet } from "@/components/session/glass-sheet";
 import { deconstructGrammar, varyGrammar, type GrammarBlock } from "@/lib/api";
+import { chunksInSentence, type ChunkEntry } from "@/lib/chunks";
 import { tap } from "@/lib/haptics";
+import { useCopy } from "@/lib/i18n";
 import { narratorVoice } from "@/lib/narrator";
 import { useSession } from "@/lib/session";
 import { narrationToken, startNeuralPlayback } from "@/lib/voice";
@@ -19,12 +21,19 @@ const ROLES: Array<{ role: GrammarBlock["role"]; label: string; face: string }> 
 export function GrammarSheet({
   sentence,
   language,
+  vocabulary = [],
+  isSaved,
+  onSaveChunk,
   onClose,
 }: {
   sentence: string | null;
   language: string;
+  vocabulary?: ChunkEntry[];
+  isSaved?: (phrase: string) => boolean;
+  onSaveChunk?: (phrase: string, translation: string, sentence: string) => void;
   onClose: () => void;
 }) {
+  const copy = useCopy();
   const session = useSession();
   const { palette } = useTheme();
   const [blocks, setBlocks] = useState<GrammarBlock[] | null>(null);
@@ -108,6 +117,8 @@ export function GrammarSheet({
     }
   }
 
+  const expressions = chunksInSentence(vocabulary, line ?? sentence ?? "");
+
   function close() {
     AudioService.stopAndUnload();
     onClose();
@@ -160,7 +171,40 @@ export function GrammarSheet({
           })}
         </View>
       ) : null}
-      {error ? <Text className="mt-3 text-base leading-6 text-roseInk">{error}</Text> : null}
+      {onSaveChunk ? (
+        <View className="mt-5">
+          <Text className="font-label text-sm text-ink">{copy.chunkInSentence}</Text>
+          {expressions.length === 0 ? <Text className="mt-2 text-base leading-6 text-muted">{copy.noChunkHere}</Text> : null}
+          {expressions.map((entry) => {
+            const saved = isSaved?.(entry.word) === true;
+            return (
+              <View key={entry.word} className="mt-3">
+                <Text className="text-base text-ink">{entry.word}</Text>
+                <Text className="mt-1 text-sm leading-5 text-muted">{entry.translation}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: saved }}
+                  disabled={saved}
+                  onPress={() => {
+                    void tap("success");
+                    onSaveChunk(entry.word, entry.translation, line ?? sentence ?? "");
+                  }}
+                  className={`mt-2 min-h-12 cursor-pointer items-center justify-center self-start rounded-full px-4 ${saved ? "bg-mossSoft" : "bg-ember"}`}
+                >
+                  <Text className={`text-base font-semibold ${saved ? "text-moss" : "text-onEmber"}`}>
+                    {saved ? copy.alreadyInDeck : copy.saveExpression}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+      {error ? (
+        <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" className="mt-3 text-base leading-6 text-roseInk">
+          {error}
+        </Text>
+      ) : null}
     </GlassSheet>
   );
 }

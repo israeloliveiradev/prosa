@@ -229,7 +229,7 @@ export function slotForPhase(phase: string): CastSlot {
   if (phase === "shadow") {
     return "speech";
   }
-  if (phase === "journal") {
+  if (phase === "journal" || phase === "note") {
     return "journal";
   }
   return "reading";

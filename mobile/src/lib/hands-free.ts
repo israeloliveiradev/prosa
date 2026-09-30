@@ -1,4 +1,5 @@
 export const HANDS_FREE_GAP_MS = 4_000;
+export { HANDS_FREE_HOLD, handsFreeHeld } from "./hands-free-hold";
 
 export type HandsFreeKind = "intro" | "hear" | "gap" | "confirm";
 
@@ -55,15 +56,3 @@ export function sentenceRanges(story: string): Array<{ text: string; start: numb
   });
 }
 
-export function handsFreeLabel(kind: HandsFreeKind, unit: number, total: number): string {
-  if (kind === "intro") {
-    return "Cenário";
-  }
-  if (kind === "gap") {
-    return `Sua vez · frase ${unit} de ${total}`;
-  }
-  if (kind === "confirm") {
-    return `Confirmação · frase ${unit} de ${total}`;
-  }
-  return `Escute · frase ${unit} de ${total}`;
-}

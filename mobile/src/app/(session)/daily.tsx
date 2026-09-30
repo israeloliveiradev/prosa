@@ -1,24 +1,30 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { AreaHint } from "@/components/guide/area-hint";
 import { HandsFreePlayer } from "@/components/session/hands-free-player";
 import { JournalStage } from "@/components/session/journal-stage";
+import { ListenStage } from "@/components/session/listen-stage";
+import { NoteStage } from "@/components/session/note-stage";
 import { ReconstructionStage } from "@/components/session/reconstruction-stage";
 import { ProgressBar } from "@/components/session/progress-bar";
 import { ReadingStage } from "@/components/session/reading-stage";
+import { FluencyStage } from "@/components/session/fluency-stage";
 import { ShadowStage } from "@/components/session/shadow-stage";
 import { SrsStage } from "@/components/session/srs-stage";
 import { WordSheet } from "@/components/session/word-sheet";
 import { Figure } from "@/components/cast/figure";
 import { AppFrame } from "@/components/shell/app-frame";
 import { mindCopy, mindForPhase } from "@/lib/cast";
-import { getLocale } from "@/lib/i18n";
+import { getLocale, phaseName, useCopy } from "@/lib/i18n";
+import { writeClipboard } from "@/lib/clipboard";
+import { usePrefs } from "@/lib/prefs";
 import { keepWords } from "@/lib/text";
 import { useTheme } from "@/theme/ThemeContext";
 import { ChunkButton } from "@/components/shell/chunk-button";
-import { generateLesson, generatePersonalized, prefetchSpeech } from "@/lib/api";
+import { fetchCourseProfile, fetchSrsCards, generateLesson, generatePersonalized, postProfileSignals, prefetchSpeech } from "@/lib/api";
+import { fluencyDay } from "@/lib/fluency-432";
 import { allSentences, handsFreeIntro } from "@/lib/hands-free";
 import { narratorVoice } from "@/lib/narrator";
 import { useSession } from "@/lib/session";
@@ -27,21 +33,28 @@ import { AudioService } from "@/services/audio/AudioService";
 import {
   PHASES,
   SESSION_SECONDS,
+  cardFromTap,
+  cardInDeck,
   cardsFromLesson,
+  displayWord,
   findVocabulary,
   formatClock,
-  normalizeWord,
   phaseForElapsed,
   sentencesOf,
+  throughForSentence,
 } from "@/lib/lesson";
+import { countDue, listeningGap, sessionPhases, type SessionPhase } from "@/lib/session-clock";
+import type { ClockHint, CourseProfile } from "@/lib/types";
 import {
-  cardsForLesson,
+  dropForeignGlosses,
   enqueueReview,
   getProgress,
+  mergeServerCards,
   isoDate,
   markSessionComplete,
   noteCognateLesson,
   persistDeck,
+  reviewQueue,
   recordJournal,
   recordSpeaking,
   rememberLesson,
@@ -49,12 +62,15 @@ import {
   useProgress,
 } from "@/lib/progress";
 import { reconstructionDue } from "@/lib/reconstruction";
+import { cardsForThrough } from "@/lib/through-lang";
 import { useProgressReady } from "@/lib/query";
 import type { ReviewQuality } from "@/lib/sm2";
 import type { PhaseId, SessionCard } from "@/lib/types";
 
 export default function DailySession() {
   const { palette } = useTheme();
+  const copy = useCopy();
+  const prefs = usePrefs();
   const params = useLocalSearchParams<{ topic?: string; date?: string; personalized?: string }>();
   const session = useSession();
   const profile = {
@@ -74,25 +90,33 @@ export default function DailySession() {
     null;
   const allowed = progress.pro || (date === today && (progress.lessonDate !== today || Boolean(savedLesson)));
   const query = useQuery({
-    queryKey: ["lesson", date, topic, profile.target_lang, personalized ? session?.user.id : "shared"],
+    queryKey: ["lesson", date, topic, profile.target_lang, profile.native_lang, personalized ? session?.user.id : "shared"],
     queryFn: () => {
       const stored = getProgress();
-      const cognate = profile.level === "A1" && stored.cognateKeys.length < 5 && !session;
+      const cognate = profile.level === "A1" && stored.cognateKeys.length < 5;
       return personalized && session
         ? generatePersonalized(session.token, topic)
         : generateLesson({ ...profile, topic, ...(cognate ? { cognate: true } : {}) }, session?.token);
     },
-    enabled: ready && allowed && !savedLesson,
+    enabled: Boolean(session) && ready && allowed && !savedLesson,
     initialData: savedLesson ?? undefined,
     networkMode: "offlineFirst",
+    retry: 1,
+    retryDelay: 800,
     staleTime: Infinity,
   });
   const [deck, setDeck] = useState<SessionCard[]>([]);
   const [elapsed, setElapsed] = useState(0);
-  const [stage, setStage] = useState<PhaseId>("reading");
-  const [selectedToken, setSelectedToken] = useState<string | null>(null);
-  const stageRef = useRef<PhaseId>("reading");
+  const [phases, setPhases] = useState<SessionPhase[]>(PHASES);
+  const [stage, setStage] = useState<PhaseId>("review");
+  const [marks, setMarks] = useState({ reviewed: 0, missed: 0, tapped: 0, spoke: false, wrote: false });
+  const [picked, setPicked] = useState<{ token: string; sentence: string } | null>(null);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+  const [course, setCourse] = useState<CourseProfile | null>(null);
+  const stageRef = useRef<PhaseId>("review");
   const clockStarted = useRef(false);
+  const clockSet = useRef(false);
+  const elapsedRef = useRef(0);
   const seeded = useRef("");
   const lesson = query.data ?? null;
   const person = mindForPhase(stage);
@@ -107,33 +131,78 @@ export default function DailySession() {
   }, [dueReverse]);
 
   useEffect(() => {
+    if (!saveNote) {
+      return;
+    }
+    const timer = setTimeout(() => setSaveNote(null), 3200);
+    return () => clearTimeout(timer);
+  }, [saveNote]);
+
+  useEffect(() => {
     if (!ready || !lesson) {
       return;
     }
-    const key = `${date}:${topic}:${lesson.title}`;
+    const key = `${date}:${topic}:${lesson.title}:${profile.target_lang}:${profile.native_lang}`;
     if (seeded.current === key) {
       return;
     }
     seeded.current = key;
     const stored = getProgress();
-    const nextDeck = cardsForLesson(cardsFromLesson(lesson), stored.cards);
+    const lessonCards = cardsForThrough(cardsFromLesson(lesson), profile.native_lang);
+    dropForeignGlosses(profile.native_lang);
+    const nextDeck = reviewQueue(lessonCards, getProgress().cards, Date.now(), profile.native_lang);
     rememberLesson(date, topic, lesson, nextDeck, {
       targetLang: profile.target_lang,
       throughLang: profile.native_lang,
       level: profile.level,
     });
-    if (!session && lesson.anchors?.some((item) => item.kind === "true")) {
+    if (lesson.anchors?.some((item) => item.kind === "true")) {
       noteCognateLesson(date, topic);
     }
     setDeck(nextDeck);
-  }, [date, lesson, ready, topic]);
+    lockClock(stored.cards);
+    const token = session?.token;
+    if (!token) {
+      return;
+    }
+    let live = true;
+    void fetchSrsCards(token)
+      .then((remote) => {
+        if (!live) {
+          return;
+        }
+        const merged = mergeServerCards(getProgress().cards, remote);
+        persistDeck(merged);
+        dropForeignGlosses(profile.native_lang);
+        const clean = getProgress().cards;
+        setDeck(reviewQueue(lessonCards, clean, Date.now(), profile.native_lang));
+        lockClock(clean);
+      })
+      .catch(() => undefined);
+    void fetchCourseProfile(token, profile.target_lang)
+      .then((remote) => {
+        if (!live) {
+          return;
+        }
+        setCourse(remote);
+        lockClock(getProgress().cards, remote.clock);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [date, lesson, ready, session?.token, topic, profile.target_lang, profile.native_lang]);
 
   useEffect(() => {
     if (!lesson || elapsed >= SESSION_SECONDS) {
       return;
     }
     const timer = setInterval(() => {
-      setElapsed((value) => Math.min(SESSION_SECONDS, value + 1));
+      setElapsed((value) => {
+        const next = Math.min(SESSION_SECONDS, value + 1);
+        elapsedRef.current = next;
+        return next;
+      });
     }, 1000);
     return () => clearInterval(timer);
   }, [lesson, elapsed >= SESSION_SECONDS]);
@@ -159,7 +228,7 @@ export default function DailySession() {
   }, []);
 
   useEffect(() => {
-    const next = phaseForElapsed(elapsed);
+    const next = phaseForElapsed(elapsed, phases);
     if (stageRef.current === next) {
       clockStarted.current = true;
       return;
@@ -173,95 +242,191 @@ export default function DailySession() {
     clockStarted.current = true;
     stageRef.current = next;
     setStage(next);
-  }, [elapsed]);
+  }, [elapsed, phases]);
+
+  function lockClock(cards: SessionCard[], hint?: ClockHint | null) {
+    if (clockSet.current && elapsedRef.current > 20) {
+      return;
+    }
+    clockSet.current = true;
+    const gap = hint?.listeningGap ?? listeningGap(getProgress().skills);
+    setPhases(sessionPhases({ dueCount: countDue(cards), listeningGap: gap, slowStart: hint?.slowStart }));
+  }
 
   function continuePhase() {
     AudioService.stopAndUnload();
-    const next = PHASES.find((phase) => phase.start > elapsed);
-    setElapsed(next ? next.start : SESSION_SECONDS);
+    const next = phases.find((phase) => phase.start > elapsed);
+    const at = next ? next.start : SESSION_SECONDS;
+    elapsedRef.current = at;
+    setElapsed(at);
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        continuePhase();
+      }
+      if (event.key.toLowerCase() === "c" && lesson) {
+        event.preventDefault();
+        void writeClipboard(lesson.story_text);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [elapsed, lesson, phases]);
 
   function onDeck(next: SessionCard[], graded: SessionCard, quality: ReviewQuality) {
     setDeck(next);
     persistDeck(next);
     enqueueReview(graded, quality);
+    setMarks((current) => ({
+      ...current,
+      reviewed: current.reviewed + 1,
+      missed: current.missed + (quality === 0 ? 1 : 0),
+    }));
   }
 
-  const entry = lesson && selectedToken ? findVocabulary(lesson.vocabulary, selectedToken) : undefined;
-  const saved = entry ? deck.some((card) => normalizeWord(card.front_phrase) === normalizeWord(entry.word)) : false;
+  const pickedWord = picked ? displayWord(picked.token) : "";
+  const entry = lesson && picked ? findVocabulary(lesson.vocabulary, picked.token) : undefined;
+  const wordFace = entry?.word ?? pickedWord;
+  const wordGloss = entry?.translation ?? (lesson && picked ? throughForSentence(lesson.story_text, lesson.translation, picked.sentence) : "");
+  const wordSentence = entry?.example_sentence ?? picked?.sentence ?? "";
+  const saved = Boolean(picked && (cardInDeck(deck, wordFace) || cardInDeck(progress.cards, wordFace)));
 
-  function saveWord() {
-    if (!entry || saved) {
+  function keepRepairCards(cards: Array<{ front_phrase: string; back_translation: string; context_sentence: string }>) {
+    const due = new Date().toISOString();
+    const next = cards
+      .filter((card) => !cardInDeck(deck, card.front_phrase) && !cardInDeck(getProgress().cards, card.front_phrase))
+      .map((card) => ({
+        ...cardFromTap({ word: card.front_phrase, translation: card.back_translation, sentence: card.context_sentence }),
+        due,
+      }));
+    if (next.length === 0) {
       return;
     }
-    void tap("success");
+    persistDeck(next);
     setDeck((current) => {
-      const next = [
-        ...current,
-        {
-          id: `saved-${normalizeWord(entry.word)}`,
-          front_phrase: entry.word,
-          back_translation: entry.translation,
-          context_sentence: entry.example_sentence,
-          repetition_count: 0,
-          interval_days: 0,
-          ease_factor: 2.5,
-          status: "learning" as const,
-        },
-      ];
-      persistDeck(next);
-      return next;
+      const merged = [...current];
+      for (const card of next) {
+        if (!cardInDeck(merged, card.front_phrase)) {
+          merged.push(card);
+        }
+      }
+      return merged;
     });
-    setSelectedToken(null);
   }
 
-  const loading = !ready || (allowed && !lesson && (query.isPending || query.isFetching));
+  function saveChunk(phrase: string, translation: string, sentence: string) {
+    if (!phrase || !translation || cardInDeck(deck, phrase) || cardInDeck(progress.cards, phrase)) {
+      return;
+    }
+    const card = cardFromTap({ word: phrase, translation, sentence });
+    void tap("success");
+    persistDeck([card]);
+    setDeck((current) => (cardInDeck(current, card.front_phrase) ? current : [...current, card]));
+    setSaveNote(copy.savedChunk);
+  }
+
+  function saveWord() {
+    if (!lesson || !picked || saved || !pickedWord) {
+      return;
+    }
+    const card = cardFromTap({
+      word: wordFace,
+      translation: wordGloss || throughForSentence(lesson.story_text, lesson.translation, picked.sentence),
+      sentence: wordSentence || picked.sentence,
+    });
+    void tap("success");
+    persistDeck([card]);
+    setDeck((current) => (cardInDeck(current, card.front_phrase) ? current : [...current, card]));
+    setPicked(null);
+    setSaveNote(copy.savedToDeck);
+  }
+
+  const retrying = query.isFetching && Boolean(query.error);
+  const loading = !ready || (allowed && !lesson && !query.error && (query.isPending || query.isFetching));
   const blocked = ready && !allowed;
 
+  if (!session) {
+    return <Redirect href="/account" />;
+  }
+
   return (
-    <AppFrame scroll={false}>
+    <AppFrame scroll={false} compact={prefs.focusLesson}>
       <View className="min-h-0 flex-1 flex-row">
         <ScrollView className="min-w-0 flex-1" contentContainerStyle={{ flexGrow: 1, paddingBottom: 28 }} keyboardShouldPersistTaps="handled">
           <View className="px-5 py-4 md:mx-auto md:w-full md:max-w-3xl md:px-8 md:py-6">
-            <ProgressBar elapsed={elapsed} />
+            <ProgressBar elapsed={elapsed} phases={phases} />
             {loading ? (
               <View className="mt-10 gap-3">
                 <View className="h-8 w-2/3 rounded-full bg-line" />
                 <View className="h-4 w-full rounded-full bg-line" />
                 <View className="h-4 w-5/6 rounded-full bg-line" />
                 <ActivityIndicator color={palette.primary} style={{ marginTop: 24 }} />
-                <Text className="text-center font-sans text-base text-muted">Preparando a prosa de hoje</Text>
+                <Text className="text-center font-sans text-base text-muted">{copy.preparingLesson}</Text>
               </View>
             ) : null}
             {blocked ? (
               <View className="mt-10 border-t border-ink pt-6">
-                <Text className="font-displayItalic text-headline text-ink">A prosa grátis de hoje já foi aberta</Text>
-                <Text className="mt-3 max-w-xl text-base leading-7 text-muted">Outro tema e novas lições no mesmo dia ficam na Prosa Pro.</Text>
+                <Text className="font-displayItalic text-headline text-ink">{copy.freeLessonUsed}</Text>
+                <Text className="mt-3 max-w-xl text-base leading-7 text-muted">{copy.freeLessonUsedDek}</Text>
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => router.replace(progress.topic ? { pathname: "/daily", params: { topic: progress.topic } } : "/daily")}
                   className="mt-6 min-h-12 cursor-pointer items-center justify-center self-start rounded-full bg-ember px-6"
                 >
-                  <Text className="font-label text-base text-onEmber">Continuar a de hoje</Text>
+                  <Text className="font-label text-base text-onEmber">{copy.continueTodays}</Text>
                 </Pressable>
                 <Pressable accessibilityRole="button" onPress={() => router.push("/paywall")} className="mt-3 min-h-12 cursor-pointer items-center justify-center self-start rounded-full border border-line px-6">
-                  <Text className="font-label text-base text-ink">Ver Prosa Pro</Text>
+                  <Text className="font-label text-base text-ink">{copy.seePro}</Text>
                 </Pressable>
               </View>
             ) : null}
             {query.error && !lesson ? (
               <View className="mt-10">
-                <Text className="font-displayItalic text-headline text-ink">A lição não abriu</Text>
-                <Text className="mt-3 text-base leading-7 text-muted">{query.error instanceof Error ? query.error.message : "Não foi possível abrir a lição."}</Text>
-                <Pressable accessibilityRole="button" onPress={() => void query.refetch()} className="mt-6 min-h-12 cursor-pointer items-center justify-center self-start rounded-full bg-ember px-6">
-                  <Text className="font-label text-base text-onEmber">Tentar de novo</Text>
+                <Text className="font-displayItalic text-headline text-ink">{copy.lessonDidNotOpen}</Text>
+                <Text className="mt-3 max-w-xl text-base leading-7 text-muted">
+                  {keepWords(query.error instanceof Error ? lessonError(query.error.message, copy) : copy.couldNotOpenLesson)}
+                </Text>
+                {retrying ? <ActivityIndicator color={palette.primary} style={{ marginTop: 16 }} /> : null}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: retrying, disabled: retrying }}
+                  disabled={retrying}
+                  onPress={() => void query.refetch()}
+                  className="mt-6 min-h-12 cursor-pointer items-center justify-center self-start rounded-full bg-ember px-6"
+                >
+                  <Text className="font-label text-base text-onEmber">{retrying ? copy.retrying : copy.tryAgain}</Text>
                 </Pressable>
               </View>
             ) : null}
             {lesson && stage === "reading" ? (
               <View className="mt-6">
                 <AreaHint area="prosa" />
-                <ReadingStage lesson={lesson} language={profile.target_lang} active={stage === "reading"} onOpenWord={setSelectedToken} />
+                {saveNote ? <Text className="mb-3 text-base text-moss">{saveNote}</Text> : null}
+                <ReadingStage
+                  lesson={lesson}
+                  language={profile.target_lang}
+                  active={stage === "reading"}
+                  isChunkSaved={(phrase) => cardInDeck(deck, phrase) || cardInDeck(progress.cards, phrase)}
+                  onSaveChunk={saveChunk}
+                  onOpenWord={(token, sentence) => {
+                    if (!displayWord(token)) {
+                      return;
+                    }
+                    setSaveNote(null);
+                    setMarks((current) => ({ ...current, tapped: current.tapped + 1 }));
+                    setPicked({ token, sentence });
+                  }}
+                />
               </View>
             ) : null}
             {lesson ? (
@@ -279,18 +444,51 @@ export default function DailySession() {
                 <SrsStage cards={deck} onChange={onDeck} />
               </View>
             ) : null}
+            {lesson && stage === "listen" ? (
+              <ListenStage
+                story={lesson.story_text}
+                translation={lesson.translation}
+                language={profile.target_lang}
+                vocabulary={lesson.vocabulary}
+              />
+            ) : null}
             {lesson && stage === "shadow" ? (
               <View className="mt-6">
-                <ShadowStage sentences={sentencesOf(lesson.story_text)} language={profile.target_lang} onScored={recordSpeaking} />
+                {fluencyDay(date) ? (
+                  <FluencyStage
+                    title={lesson.title}
+                    story={lesson.story_text}
+                    language={profile.target_lang}
+                    nativeLang={profile.native_lang}
+                    level={profile.level}
+                    onScored={(wpm) => {
+                      recordSpeaking(wpm);
+                      setMarks((current) => ({ ...current, spoke: true }));
+                      if (session?.token) {
+                        void postProfileSignals(session.token, profile.target_lang, { fluency_wpm: wpm });
+                      }
+                    }}
+                    onCards={keepRepairCards}
+                  />
+                ) : null}
+                <ShadowStage
+                  sentences={sentencesOf(lesson.story_text)}
+                  language={profile.target_lang}
+                  throughLang={profile.native_lang}
+                  onScored={(score) => {
+                    recordSpeaking(score);
+                    setMarks((current) => ({ ...current, spoke: true }));
+                  }}
+                />
               </View>
             ) : null}
             {lesson && stage === "journal" ? (
               <View className="mt-6">
                 {pinnedReverse ? (
-                  <ReconstructionStage anchor={pinnedReverse} onCompleted={() => completeReconstruction(today)} />
+                  <ReconstructionStage anchor={pinnedReverse} onCompleted={() => completeReconstruction(today)} onCards={keepRepairCards} />
                 ) : progress.reconstruction?.date === today ? (
                   <Text className="mb-8 text-base leading-7 text-muted">
-                    No terceiro dia esta tradução volta sozinha, sem a história, para você reescrever.
+                    {copy.reconstructionNote}
                   </Text>
                 ) : null}
                 <JournalStage
@@ -301,27 +499,54 @@ export default function DailySession() {
                   onEvaluated={() => {
                     recordJournal();
                     markSessionComplete(today);
+                    setMarks((current) => ({ ...current, wrote: true }));
                   }}
+                  onCards={keepRepairCards}
                 />
-                {elapsed >= SESSION_SECONDS ? (
-                  <View className="mt-6 items-center">
-                    <Text className="text-center font-label text-base text-moss">Vinte minutos completos.</Text>
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => {
-                        AudioService.stopAndUnload();
-                        router.push(session ? "/duel" : "/account");
-                      }}
-                      className="mt-4 min-h-12 items-center justify-center rounded-full bg-ember px-6"
-                    >
-                      <Text className="text-base font-semibold text-onEmber">Duelo de 120 segundos</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
               </View>
             ) : null}
+            {lesson && stage === "note" ? (
+              <NoteStage
+                reviewed={marks.reviewed}
+                missed={marks.missed}
+                tapped={marks.tapped}
+                spoke={marks.spoke}
+                wrote={marks.wrote}
+                done={elapsed >= SESSION_SECONDS}
+                note={course?.note}
+                clock={course?.clock}
+                weeklyAim={course?.profile.weekly_aim}
+                onAim={(aim) => {
+                  const token = session?.token;
+                  if (!token || !aim) {
+                    return;
+                  }
+                  void postProfileSignals(token, profile.target_lang, { weekly_aim: aim })
+                    .then(setCourse)
+                    .catch(() => undefined);
+                }}
+                onDuel={() => {
+                  AudioService.stopAndUnload();
+                  router.push("/duel");
+                }}
+                onTalk={() => {
+                  AudioService.stopAndUnload();
+                  router.push("/prose");
+                }}
+              />
+            ) : null}
             {lesson && elapsed < SESSION_SECONDS ? (
-              <ChunkButton className="mt-8 w-full" label={`Continuar · ${formatClock(elapsed)}`} onPress={continuePhase} tone="ghost" />
+              <View>
+                <ChunkButton className="mt-8 w-full" label={`${copy.continueClock} · ${formatClock(elapsed)}`} onPress={continuePhase} tone="ghost" />
+                <Text className="mt-3 text-center text-sm text-muted">{copy.shortcuts}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => prefs.setFocusLesson(!prefs.focusLesson)}
+                  className="mt-3 min-h-12 cursor-pointer items-center justify-center"
+                >
+                  <Text className="font-label text-sm text-ember">{prefs.focusLesson ? copy.focusOff : copy.focusOn}</Text>
+                </Pressable>
+              </View>
             ) : null}
           </View>
         </ScrollView>
@@ -333,20 +558,42 @@ export default function DailySession() {
               <Text className="mt-3 text-sm leading-5 text-muted">{keepWords(personText.line)}</Text>
             </View>
             <View className="mt-8 border-t border-line pt-4">
-              {PHASES.map((phase) => {
+              {phases.map((phase) => {
                 const active = stage === phase.id;
                 return (
                   <View key={phase.id} className="min-h-12 flex-row items-center justify-between border-b border-line">
-                    <Text className={`font-label text-sm ${active ? "text-ink" : "text-muted"}`}>{phase.label}</Text>
-                    <Text className="text-xs uppercase tracking-widest text-muted">{active ? "Agora" : ""}</Text>
+                    <Text className={`font-label text-sm ${active ? "text-ink" : "text-muted"}`}>{phaseName(phase.id)}</Text>
+                    <Text className="text-xs uppercase tracking-widest text-muted">{active ? copy.now : ""}</Text>
                   </View>
                 );
               })}
             </View>
           </View>
       </View>
-      <WordSheet token={selectedToken} entry={entry} saved={saved} onClose={() => setSelectedToken(null)} onSave={saveWord} />
+      <WordSheet
+        token={picked?.token ?? null}
+        word={wordFace}
+        translation={wordGloss}
+        sentence={wordSentence}
+        extra={!entry}
+        saved={saved}
+        onClose={() => setPicked(null)}
+        onSave={saveWord}
+      />
     </AppFrame>
   );
+}
+
+function lessonError(message: string, copy: ReturnType<typeof useCopy>): string {
+  if (message.includes("Model request failed") || message.includes("empty structured") || message.includes("not valid JSON")) {
+    return copy.lessonFailed;
+  }
+  if (message.includes("busy")) {
+    return copy.modelBusy;
+  }
+  if (message.includes("unavailable")) {
+    return copy.generationOff;
+  }
+  return message;
 }
 

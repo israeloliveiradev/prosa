@@ -1,25 +1,12 @@
 import type { LessonPayload, SessionCard, VocabularyEntry } from "@/lib/types";
+import { phaseAt, sessionPhases, SESSION_SECONDS, type SessionPhase } from "@/lib/session-clock";
 
-export const SESSION_SECONDS = 20 * 60;
+export { SESSION_SECONDS };
 
-export const PHASES = [
-  { id: "reading", label: "Leitura", start: 0 },
-  { id: "review", label: "Memória", start: 7 * 60 },
-  { id: "shadow", label: "Fala", start: 12 * 60 },
-  { id: "journal", label: "Diário", start: 17 * 60 },
-] as const;
+export const PHASES: SessionPhase[] = sessionPhases({ dueCount: 3 });
 
-export function phaseForElapsed(elapsed: number): (typeof PHASES)[number]["id"] {
-  if (elapsed >= 17 * 60) {
-    return "journal";
-  }
-  if (elapsed >= 12 * 60) {
-    return "shadow";
-  }
-  if (elapsed >= 7 * 60) {
-    return "review";
-  }
-  return "reading";
+export function phaseForElapsed(elapsed: number, phases: SessionPhase[] = PHASES): SessionPhase["id"] {
+  return phaseAt(elapsed, phases);
 }
 
 export function formatClock(totalSeconds: number): string {
@@ -45,6 +32,56 @@ export function findVocabulary(vocabulary: VocabularyEntry[], token: string): Vo
     const parts = entry.word.split(/\s+/).map(normalizeWord);
     return parts.includes(normalized) || normalizeWord(entry.word) === normalized;
   });
+}
+
+export function displayWord(token: string): string {
+  return normalizeWord(token) || token.trim();
+}
+
+export function cardInDeck(cards: SessionCard[], word: string): boolean {
+  const key = normalizeWord(word);
+  if (!key) {
+    return false;
+  }
+  return cards.some((card) => normalizeWord(card.front_phrase) === key);
+}
+
+export function splitSentences(text: string): string[] {
+  const parts = text
+    .split(/(?<=[.!?。！？])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+  return parts.length > 0 ? parts : [text.trim()].filter((sentence) => sentence.length > 0);
+}
+
+export function throughForSentence(story: string, translation: string, sentence: string): string {
+  const storyParts = splitSentences(story);
+  const transParts = splitSentences(translation);
+  const index = storyParts.findIndex(
+    (item) => item === sentence || item.includes(sentence) || sentence.includes(item),
+  );
+  if (index >= 0 && transParts[index]) {
+    return transParts[index]!;
+  }
+  return translation.trim();
+}
+
+export function cardFromTap(params: {
+  word: string;
+  translation: string;
+  sentence: string;
+}): SessionCard {
+  const word = displayWord(params.word);
+  return {
+    id: `saved-${normalizeWord(word)}`,
+    front_phrase: word,
+    back_translation: params.translation,
+    context_sentence: params.sentence,
+    repetition_count: 0,
+    interval_days: 0,
+    ease_factor: 2.5,
+    status: "learning",
+  };
 }
 
 export function cardsFromLesson(lesson: LessonPayload): SessionCard[] {

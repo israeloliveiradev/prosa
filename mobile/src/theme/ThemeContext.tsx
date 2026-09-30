@@ -47,7 +47,7 @@ export function themeVars(palette: Palette) {
   });
 }
 
-function applyDocumentTheme(scheme: ThemePreference) {
+function applyDocumentTheme(scheme: ThemePreference, surface: string) {
   if (Platform.OS !== "web" || typeof document === "undefined") {
     return;
   }
@@ -55,11 +55,18 @@ function applyDocumentTheme(scheme: ThemePreference) {
   root.classList.remove("light", "dark");
   root.classList.add(scheme);
   root.style.colorScheme = scheme;
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute("content", surface);
 }
 
 function bootTheme(): ThemePreference {
   const scheme = readPreference();
-  applyDocumentTheme(scheme);
+  applyDocumentTheme(scheme, scheme === "dark" ? darkPalette.surface : lightPalette.surface);
   colorScheme.set(scheme);
   return scheme;
 }
@@ -70,14 +77,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     colorScheme.set(preference);
-    applyDocumentTheme(preference);
-  }, [preference]);
+    applyDocumentTheme(preference, palette.surface);
+  }, [preference, palette.surface]);
 
   function setPreference(next: ThemePreference) {
     setPreferenceState(next);
     kv.set(THEME_KEY, next);
     colorScheme.set(next);
-    applyDocumentTheme(next);
+    applyDocumentTheme(next, next === "dark" ? darkPalette.surface : lightPalette.surface);
   }
 
   return (
@@ -87,6 +94,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       </View>
     </ThemeContext.Provider>
   );
+}
+
+export function peekSurfaceColor(): string {
+  return readPreference() === "dark" ? darkPalette.surface : lightPalette.surface;
 }
 
 export function useTheme(): ThemeValue {

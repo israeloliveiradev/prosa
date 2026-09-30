@@ -2,11 +2,17 @@ import { Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { useTheme } from "@/theme/ThemeContext";
 
-export function Logo({ compact = false, tone = "ink" }: { compact?: boolean; tone?: "ink" | "light" }) {
+export function Logo({ compact = false, tone = "ink", decorative = false }: { compact?: boolean; tone?: "ink" | "light"; decorative?: boolean }) {
   const mark = compact ? 32 : 44;
   const light = tone === "light";
   return (
-    <View accessibilityRole="header" accessibilityLabel="Prosa" className="flex-row items-center gap-3">
+    <View
+      accessibilityRole={decorative ? undefined : "header"}
+      accessibilityLabel={decorative ? undefined : "Prosa"}
+      accessibilityElementsHidden={decorative}
+      importantForAccessibility={decorative ? "no-hide-descendants" : "auto"}
+      className="flex-row items-center gap-3"
+    >
       <Mark size={mark} light={light} />
       <View>
         <Text className={`font-displayItalic ${light ? "text-sidebarInk" : "text-ink"} ${compact ? "text-2xl leading-7" : "text-[40px] leading-[44px]"}`}>Prosa</Text>

@@ -1,12 +1,13 @@
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { Figure } from "@/components/cast/figure";
 import { WelcomeSheet } from "@/components/guide/welcome-sheet";
+import { CompetenceLine } from "@/components/home/measure-panel";
+import { PlacementCard } from "@/components/home/placement-card";
 import { StreakFlame } from "@/components/home/streak-flame";
 import { ActionRow } from "@/components/shell/action-row";
 import { AppFrame } from "@/components/shell/app-frame";
-import { ChunkButton } from "@/components/shell/chunk-button";
 import { mindCopy, useCast } from "@/lib/cast";
 import { givenName, getLocale, useCopy } from "@/lib/i18n";
 import { languageName } from "@/lib/languages";
@@ -17,6 +18,14 @@ import { keepWords } from "@/lib/text";
 import { useTheme } from "@/theme/ThemeContext";
 
 export default function HomeScreen() {
+  const session = useSession();
+  if (!session) {
+    return <Redirect href="/account" />;
+  }
+  return <SignedHome />;
+}
+
+function SignedHome() {
   const { palette } = useTheme();
   const copy = useCopy();
   const locale = getLocale();
@@ -35,7 +44,7 @@ export default function HomeScreen() {
   const ratios = [lessonToday, memory, speech, journal];
   const targetName = languageName(session?.user.target_lang ?? "en");
   const freezeRemote = session?.user.streak_freeze_count;
-  const name = session ? givenName(session.user.email, session.user.display_name) : "você";
+  const name = session ? givenName(session.user.email, session.user.display_name) : "";
 
   useEffect(() => {
     if (typeof freezeRemote === "number") {
@@ -83,10 +92,13 @@ export default function HomeScreen() {
           </View>
         </Pressable>
 
+        <PlacementCard />
+        <CompetenceLine targetLang={session?.user.target_lang ?? "en"} />
+
         <View className="gap-3 md:flex-row">
           <HomeTile title={copy.navMemory} detail={copy.reviewEmpty} href="/memory" />
-          <HomeTile title={copy.navNews} detail="O boletim de hoje, no assunto da conta." href="/news" />
-          <HomeTile title={copy.navPractice} detail="Duelo de 120 segundos ou uma cena no tom do lugar." href="/practice" />
+          <HomeTile title={copy.navNews} detail={copy.newsTileDetail} href="/news" />
+          <HomeTile title={copy.navPractice} detail={copy.practiceTileDetail} href="/practice" />
         </View>
 
         <View className="rounded-[28px] border border-line bg-card px-5 py-6">
@@ -118,21 +130,36 @@ export default function HomeScreen() {
 
         {ready && progress.pro ? (
           <View className="max-w-md">
-            <Text className="font-label text-sm text-muted">Tema de hoje</Text>
+            <Text className="font-label text-sm text-muted">{copy.todayTopic}</Text>
             <TextInput
               value={topic}
               onChangeText={setTopic}
-              accessibilityLabel="Tema de hoje"
-              placeholder="Por exemplo, pedir um café"
+              accessibilityLabel={copy.todayTopic}
+              placeholder={copy.todayTopicPlaceholder}
               placeholderTextColor={palette.onSurfaceVariant}
               className="mt-2 min-h-14 rounded-2xl border border-line bg-card px-5 text-base text-ink"
             />
+            {progress.history.length > 0 ? (
+              <View className="mt-3 flex-row flex-wrap gap-2">
+                <Text className="w-full font-label text-xs uppercase tracking-widest text-muted">{copy.recentTopics}</Text>
+                {progress.history.slice(0, 4).map((item) => (
+                  <Pressable
+                    key={`${item.date}-${item.topic}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={item.topic}
+                    onPress={() => setTopic(item.topic)}
+                    className="min-h-10 cursor-pointer justify-center rounded-full border border-line px-4"
+                  >
+                    <Text className="text-sm text-ink">{item.topic}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </View>
         ) : ready ? (
-          <ActionRow title="Tema personalizado" detail="Escolher o tema do dia entra na Prosa Pro." onPress={() => router.push("/paywall")} />
+          <ActionRow title={copy.customTopic} detail={copy.customTopicDetail} onPress={() => router.push("/paywall")} />
         ) : null}
 
-        {ready ? <ChunkButton label={continuing ? copy.continueToday : copy.startToday} onPress={start} className="w-full max-w-md" /> : null}
       </View>
     </AppFrame>
   );

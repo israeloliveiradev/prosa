@@ -1,10 +1,11 @@
-import { router } from "expo-router";
+import { Redirect } from "expo-router";
 import { useEffect, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { AppFrame } from "@/components/shell/app-frame";
 import { ChunkButton } from "@/components/shell/chunk-button";
 import { Icon } from "@/components/shell/icon";
 import { Field, Panel, PanelHead, SoftInput } from "@/components/shell/panel";
+import { CourseSwitcher } from "@/components/shell/course-switcher";
 import { ThemeSwitch } from "@/theme/theme-switch";
 import {
   changeAccountPassword,
@@ -26,6 +27,8 @@ import { CAST_SLOTS, mindsForSlot, type CastSlot, type MindId } from "@/design/m
 import { hydrateCast, mindCopy, setCastSlot, useCast } from "@/lib/cast";
 import { getLocale, hydrateLocale, useCopy, type DisplayLocale } from "@/lib/i18n";
 import { rememberProfile, useSession } from "@/lib/session";
+import { writeClipboard } from "@/lib/clipboard";
+import { usePrefs } from "@/lib/prefs";
 import { keepWords } from "@/lib/text";
 import { useTheme } from "@/theme/ThemeContext";
 
@@ -42,6 +45,7 @@ type Tab = (typeof TABS)[number]["id"];
 
 export default function SettingsScreen() {
   const copy = useCopy();
+  const prefs = usePrefs();
   const { palette } = useTheme();
   const session = useSession();
   const [tab, setTab] = useState<Tab>("profile");
@@ -61,7 +65,6 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     if (!session) {
-      router.replace("/account");
       return;
     }
     void fetchAccountSettings(session.token)
@@ -82,7 +85,7 @@ export default function SettingsScreen() {
   }, [session]);
 
   if (!session) {
-    return null;
+    return <Redirect href="/account" />;
   }
 
   async function patch(input: Parameters<typeof saveAccountSettings>[1]) {
@@ -152,7 +155,7 @@ export default function SettingsScreen() {
             <Panel>
               <PanelHead title={copy.settingsProfile} dek={copy.profileDek} />
               <Field label={copy.displayName}>
-                <SoftInput value={name} onChangeText={setName} label={copy.displayName} />
+                <SoftInput value={name} onChangeText={setName} label={copy.displayName} autoComplete="name" textContentType="name" />
               </Field>
               <Text className="mb-5 text-sm leading-6 text-muted">{keepWords(copy.displayNameHint)}</Text>
               <ChunkButton label={pending ? "..." : copy.saveName} disabled={pending || name.trim().length < 2} onPress={() => void patch({ display_name: name.trim() })} />
@@ -184,10 +187,10 @@ export default function SettingsScreen() {
               <Panel>
                 <PanelHead title={copy.passwordSection} dek={copy.passwordDek} />
                 <Field label={copy.currentPassword}>
-                  <SoftInput value={currentPassword} onChangeText={setCurrentPassword} label={copy.currentPassword} secure />
+                  <SoftInput value={currentPassword} onChangeText={setCurrentPassword} label={copy.currentPassword} secure autoComplete="current-password" textContentType="password" />
                 </Field>
                 <Field label={copy.newPassword}>
-                  <SoftInput value={password} onChangeText={setPassword} label={copy.newPassword} secure />
+                  <SoftInput value={password} onChangeText={setPassword} label={copy.newPassword} secure autoComplete="new-password" textContentType="newPassword" />
                 </Field>
                 <ChunkButton
                   label={copy.changePassword}
@@ -266,6 +269,18 @@ export default function SettingsScreen() {
                         {item}
                       </Text>
                     ))}
+                    <ChunkButton
+                      className="mt-4"
+                      label={copy.copyCodes}
+                      tone="ghost"
+                      onPress={() => {
+                        void writeClipboard(recovery.join("\n")).then((ok) => {
+                          if (ok) {
+                            setNote(copy.codesCopied);
+                          }
+                        });
+                      }}
+                    />
                   </View>
                 ) : null}
                 <Field label={copy.resetCode}>
@@ -302,7 +317,7 @@ export default function SettingsScreen() {
                 </View>
                 <View className="mt-6 border-t border-line pt-6">
                   <Field label={copy.currentPassword}>
-                    <SoftInput value={currentPassword} onChangeText={setCurrentPassword} label={copy.currentPassword} secure />
+                    <SoftInput value={currentPassword} onChangeText={setCurrentPassword} label={copy.currentPassword} secure autoComplete="current-password" textContentType="password" />
                   </Field>
                   <ChunkButton
                     label={copy.totpDisable}
@@ -372,7 +387,12 @@ export default function SettingsScreen() {
             </View>
           ) : null}
           {tab === "locale" ? (
-            <Panel>
+            <View className="gap-6">
+              <Panel>
+                <PanelHead title={copy.language} dek={copy.studyPairHint} />
+                <CourseSwitcher />
+              </Panel>
+              <Panel>
               <PanelHead title={copy.settingsLocale} dek={copy.localeHint} />
               <View className="gap-3">
                 {(["pt", "en"] as DisplayLocale[]).map((item) => {
@@ -389,8 +409,27 @@ export default function SettingsScreen() {
                     </Pressable>
                   );
                 })}
+                <Text className="mt-4 font-label text-sm text-muted">{copy.textSize}</Text>
+                <Text className="text-base leading-6 text-muted">{copy.textSizeHint}</Text>
+                {(["default", "large"] as const).map((item) => {
+                  const active = prefs.typeScale === item;
+                  return (
+                    <Pressable
+                      key={item}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                      onPress={() => prefs.setTypeScale(item)}
+                      className={`min-h-16 cursor-pointer justify-center rounded-2xl px-5 ${active ? "bg-ember" : "border border-line bg-paper"}`}
+                    >
+                      <Text className={`font-label text-base ${active ? "text-onEmber" : "text-ink"}`}>
+                        {item === "large" ? copy.textLarge : copy.textDefault}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </Panel>
+            </View>
           ) : null}
           {tab === "reminders" ? (
             <Panel>
@@ -411,17 +450,28 @@ export default function SettingsScreen() {
                 <Text className={`font-label text-base ${settings?.reminder_enabled ? "text-onEmber" : "text-ink"}`}>{keepWords(copy.reminderOn)}</Text>
               </Pressable>
               <Field label={copy.reminderHour}>
-                <SoftInput value={String(settings?.reminder_hour ?? 8)} onChangeText={(value) => {
-                  const hour = Number(value);
-                  if (Number.isInteger(hour) && hour >= 0 && hour <= 23) {
-                    void patch({ reminder_hour: hour });
-                  }
-                }} label={copy.reminderHour} code />
+                <SoftInput
+                  value={String(settings?.reminder_hour ?? 8)}
+                  onChangeText={(value) => {
+                    const hour = Number(value);
+                    if (Number.isInteger(hour) && hour >= 0 && hour <= 23) {
+                      void patch({ reminder_hour: hour });
+                    }
+                  }}
+                  label={copy.reminderHour}
+                  code
+                  autoComplete="off"
+                  textContentType="none"
+                />
               </Field>
             </Panel>
           ) : null}
           {note ? <Text className="text-base text-moss">{keepWords(note)}</Text> : null}
-          {error ? <Text className="text-base text-roseInk">{keepWords(error)}</Text> : null}
+          {error ? (
+            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" className="text-base text-roseInk">
+              {keepWords(error)}
+            </Text>
+          ) : null}
         </View>
       </View>
     </AppFrame>
@@ -443,7 +493,7 @@ function CastPanel({ pending, onPick }: { pending: boolean; onPick: (slot: CastS
           return (
             <View key={slot} className="mb-8 last:mb-0">
               <Text className="font-label text-[11px] uppercase tracking-[0.22em] text-ember">{keepWords(role)}</Text>
-              <View className="mt-4 gap-3">
+              <View accessibilityRole="radiogroup" accessibilityLabel={role} className="mt-4 gap-3">
                 {options.map((mind) => {
                   const active = mind.id === selected;
                   const text = mindCopy(mind, locale);
@@ -451,7 +501,8 @@ function CastPanel({ pending, onPick }: { pending: boolean; onPick: (slot: CastS
                     <Pressable
                       key={mind.id}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected: active, disabled: pending }}
+                      accessibilityLabel={`${mind.name}, ${mind.years}`}
+                      accessibilityState={{ selected: active, checked: active, disabled: pending }}
                       onPress={() => onPick(slot, mind.id)}
                       className={`min-h-20 cursor-pointer flex-row items-center gap-4 rounded-[24px] px-4 py-4 ${active ? "bg-emberSoft" : "border border-line bg-paper"}`}
                     >

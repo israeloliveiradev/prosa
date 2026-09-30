@@ -1,14 +1,17 @@
 import { Text, View } from "react-native";
 import { Figure } from "@/components/cast/figure";
 import { mindForPhase, mindCopy } from "@/lib/cast";
-import { getLocale } from "@/lib/i18n";
+import { getLocale, phaseName, useCopy } from "@/lib/i18n";
 import { keepWords } from "@/lib/text";
-import { PHASES, SESSION_SECONDS, formatClock, phaseForElapsed } from "@/lib/lesson";
+import { SESSION_SECONDS, formatClock, phaseForElapsed } from "@/lib/lesson";
+import type { SessionPhase } from "@/lib/session-clock";
 
-export function ProgressBar({ elapsed }: { elapsed: number }) {
+export function ProgressBar({ elapsed, phases }: { elapsed: number; phases: SessionPhase[] }) {
   const ratio = Math.max(0, Math.min(1, elapsed / SESSION_SECONDS));
   const locale = getLocale();
-  const mind = mindForPhase(phaseForElapsed(elapsed));
+  const copy = useCopy();
+  const remaining = Math.max(0, SESSION_SECONDS - elapsed);
+  const mind = mindForPhase(phaseForElapsed(elapsed, phases));
   const text = mindCopy(mind, locale);
   return (
     <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: SESSION_SECONDS, now: elapsed }}>
@@ -20,6 +23,7 @@ export function ProgressBar({ elapsed }: { elapsed: number }) {
             {formatClock(elapsed)}
             <Text className="text-muted"> / {formatClock(SESSION_SECONDS)}</Text>
           </Text>
+          <Text className="mt-1 text-sm text-muted">{`${copy.remaining} ${Math.ceil(remaining / 60)} ${copy.minutes}`}</Text>
         </View>
         <Figure who={mind.id} size={84} />
       </View>
@@ -27,12 +31,12 @@ export function ProgressBar({ elapsed }: { elapsed: number }) {
         <View className="h-full rounded-full bg-ember" style={{ width: `${ratio * 100}%` }} />
       </View>
       <View className="mt-3 flex-row">
-        {PHASES.map((phase, index) => {
-          const end = PHASES[index + 1]?.start ?? SESSION_SECONDS;
+        {phases.map((phase, index) => {
+          const end = phases[index + 1]?.start ?? SESSION_SECONDS;
           const active = elapsed >= phase.start && elapsed < end;
           return (
             <Text key={phase.id} className={`flex-1 font-label text-xs uppercase tracking-widest ${active ? "text-ink" : "text-muted"}`}>
-              {phase.label}
+              {phaseName(phase.id)}
             </Text>
           );
         })}

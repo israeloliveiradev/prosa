@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from "expo-audio";
@@ -7,6 +7,7 @@ import { PageMasthead } from "@/components/shell/page-masthead";
 import { ChunkButton } from "@/components/shell/chunk-button";
 import { fetchPersonaScenes, sendPersonaTurn, speakStory, transcribeSpeech, type PersonaScene } from "@/lib/api";
 import { tap } from "@/lib/haptics";
+import { useCopy } from "@/lib/i18n";
 import { narratorVoice } from "@/lib/narrator";
 import { useSession } from "@/lib/session";
 import { AudioService } from "@/services/audio/AudioService";
@@ -30,6 +31,7 @@ const TONE_LABEL: Record<Tone, string> = {
 
 export function PersonaScreen() {
   const { palette } = useTheme();
+  const copy = useCopy();
   const session = useSession();
   const token = session?.token;
   const targetLang = session?.user.target_lang ?? "en";
@@ -55,7 +57,6 @@ export function PersonaScreen() {
 
   useEffect(() => {
     if (!token) {
-      router.replace("/account");
       return;
     }
     let active = true;
@@ -170,7 +171,7 @@ export function PersonaScreen() {
   }
 
   if (!token) {
-    return null;
+    return <Redirect href="/account" />;
   }
 
   return (
@@ -205,6 +206,7 @@ export function PersonaScreen() {
                 <Text className="font-displayItalic text-3xl text-ink">{item.title}</Text>
                 <Text className="mt-2 text-base text-ink">{item.role}</Text>
                 <Text className="mt-1 text-base text-muted">{item.brief}</Text>
+                {item.hitch ? <Text className="mt-2 text-base text-ink">{item.hitch}</Text> : null}
                 <Text className="mt-3 font-label text-sm text-ember">{item.register === "formal" ? "Formal" : "Informal"} · Abrir</Text>
               </Pressable>
             ))}
@@ -215,7 +217,7 @@ export function PersonaScreen() {
             <PageMasthead
               kicker={scene.place}
               title={scene.title}
-              dek={`${scene.role}. ${scene.register === "formal" ? "Tom formal." : "Tom informal."}`}
+              dek={`${scene.role}. ${scene.register === "formal" ? "Tom formal." : "Tom informal."}${scene.hitch ? ` ${copy.sceneHitch}: ${scene.hitch}` : ""}`}
             />
             {turns.map((turn, index) => (
               <View key={`${turn.role}-${index}`} className={turn.role === "learner" ? "items-end" : "items-start"}>
@@ -280,7 +282,11 @@ export function PersonaScreen() {
                 <Text className="text-base font-semibold text-ink">Outras cenas</Text>
               </Pressable>
             </View>
-            {error ? <Text className="text-base text-roseInk">{error}</Text> : null}
+            {error ? (
+              <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" className="text-base text-roseInk">
+                {error}
+              </Text>
+            ) : null}
           </View>
         ) : null}
       </View>

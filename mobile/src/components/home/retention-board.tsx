@@ -1,16 +1,8 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import { getLocale, useCopy } from "@/lib/i18n";
 import { isoDate, useSyncPhase, type SyncPhase } from "@/lib/progress";
 import type { SessionCard } from "@/lib/types";
-
-const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-
-const SYNC_LABEL: Record<SyncPhase, string> = {
-  device: "No aparelho, até entrar na conta",
-  queued: "Na fila. Sincroniza quando a rede voltar",
-  sent: "Deck sincronizado",
-  paused: "Sem rede. As revisões ficam neste aparelho",
-};
 
 function recentDays(today: string): string[] {
   const [year, month, day] = today.split("-").map(Number);
@@ -31,15 +23,23 @@ export function RetentionBoard({
   historyDates: string[];
   lastLessonDate: string | null;
 }) {
+  const copy = useCopy();
+  const locale = getLocale();
   const sync = useSyncPhase();
   const [open, setOpen] = useState<SessionCard["status"] | null>(null);
   const today = isoDate();
   const days = recentDays(today);
   const practiced = new Set([...historyDates, ...(lastLessonDate ? [lastLessonDate] : [])]);
+  const syncLabel: Record<SyncPhase, string> = {
+    device: copy.syncDevice,
+    queued: copy.syncQueued,
+    sent: copy.syncSent,
+    paused: copy.syncPaused,
+  };
   const groups = [
-    { id: "learning" as const, label: "Aprendendo", count: cards.filter((card) => card.status === "learning").length, bar: "bg-ember" },
-    { id: "reviewing" as const, label: "Revisando", count: cards.filter((card) => card.status === "reviewing").length, bar: "bg-moss" },
-    { id: "mastered" as const, label: "Dominadas", count: cards.filter((card) => card.status === "mastered").length, bar: "bg-ink" },
+    { id: "learning" as const, label: copy.learningGroup, count: cards.filter((card) => card.status === "learning").length, bar: "bg-ember" },
+    { id: "reviewing" as const, label: copy.reviewingGroup, count: cards.filter((card) => card.status === "reviewing").length, bar: "bg-moss" },
+    { id: "mastered" as const, label: copy.masteredGroup, count: cards.filter((card) => card.status === "mastered").length, bar: "bg-ink" },
   ];
   const widest = Math.max(1, ...groups.map((group) => group.count));
   const shown = open ? cards.filter((card) => card.status === open).slice(0, 6) : [];
@@ -47,10 +47,10 @@ export function RetentionBoard({
   const total = cards.length;
 
   return (
-    <View accessibilityRole="summary" accessibilityLabel={`Retenção. ${kept} de ${total} palavras dominadas. ${SYNC_LABEL[sync.phase]}`}>
-      <Text className="font-label text-sm text-muted">Retenção</Text>
+    <View accessibilityRole="summary" accessibilityLabel={`${copy.retention}. ${kept} ${copy.ofWord} ${total}. ${syncLabel[sync.phase]}`}>
+      <Text className="font-label text-sm text-muted">{copy.retention}</Text>
       <Text className="mt-2 font-display text-2xl text-ink">
-        {total === 0 ? "O deck começa na primeira prosa." : `${kept} de ${total} já ficaram.`}
+        {total === 0 ? copy.retentionEmpty : `${kept} ${copy.ofWord} ${total} ${copy.retentionKept}.`}
       </Text>
       <View className="mt-5 gap-3">
         {groups.map((group) => {
@@ -84,16 +84,16 @@ export function RetentionBoard({
           ))}
         </View>
       ) : null}
-      <Text className="mt-6 font-label text-sm text-muted">Sete dias</Text>
+      <Text className="mt-6 font-label text-sm text-muted">{copy.sevenDays}</Text>
       <View className="mt-3 flex-row gap-2">
         {days.map((day) => {
           const present = practiced.has(day);
           const date = new Date(`${day}T12:00:00`);
-          const name = WEEKDAYS[date.getDay()] ?? day;
+          const name = date.toLocaleDateString(locale === "en" ? "en-US" : "pt-BR", { weekday: "short" });
           return (
             <View
               key={day}
-              accessibilityLabel={`${name}, ${present ? "prosa feita" : "sem prosa"}`}
+              accessibilityLabel={`${name}, ${present ? copy.prosaDone : copy.noProsa}`}
               className={`h-12 min-w-0 flex-1 items-center justify-center rounded-full ${present ? "bg-ember" : "border border-line bg-card"}`}
             >
               <Text className={`text-sm font-semibold ${present ? "text-onEmber" : "text-muted"}`}>{name}</Text>
@@ -101,7 +101,10 @@ export function RetentionBoard({
           );
         })}
       </View>
-      <Text className="mt-4 text-base text-muted">{SYNC_LABEL[sync.phase]}{sync.pending > 0 ? ` · ${sync.pending} na fila` : ""}</Text>
+      <Text className="mt-4 text-base text-muted">
+        {syncLabel[sync.phase]}
+        {sync.pending > 0 ? ` · ${sync.pending} ${copy.inQueue}` : ""}
+      </Text>
     </View>
   );
 }

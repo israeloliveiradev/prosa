@@ -5,6 +5,12 @@ export interface PlaybackHandle {
   stop: () => void;
 }
 
+export interface MpegStreamHandle extends PlaybackHandle {
+  push: (bytes: Uint8Array) => void;
+  end: () => void;
+  fail: (message: string) => void;
+}
+
 export interface SequenceItem {
   kind: "audio" | "gap";
   url?: string;
@@ -108,6 +114,22 @@ class AudioController {
     };
   }
 
+  startMpegStream(
+    rate: number,
+    onTime: (elapsedMs: number, durationMs: number) => void,
+    onEnd: () => void,
+    onError?: (message: string) => void,
+  ): MpegStreamHandle {
+    this.sequenceId += 1;
+    this.sequenceLive = false;
+    this.finishClip("stop");
+    this.releaseCurrent();
+    if (Platform.OS === "web" && mpegSourceSupported()) {
+      return this.bindMediaSource(rate, onTime, onEnd, onError);
+    }
+    return this.bindBufferedMpeg(rate, onTime, onEnd, onError);
+  }
+
   startSequence(items: SequenceItem[], onUpdate: (update: SequenceUpdate) => void, options?: { open?: boolean }): void {
     this.stopAndUnload();
     this.sequenceLive = true;
@@ -141,6 +163,15 @@ class AudioController {
     this.clipResume?.();
     this.openPauseGate();
     this.publishMedia("playing");
+  }
+
+  repeatUnit(unit: number): void {
+    this.skipUnit = unit;
+    if (this.paused) {
+      this.resumeSequence();
+    }
+    this.finishClip("skip");
+    this.releaseCurrent();
   }
 
   nextSequence(): void {
@@ -332,6 +363,186 @@ class AudioController {
     }
   }
 
+  private bindMediaSource(
+    rate: number,
+    onTime: (elapsedMs: number, durationMs: number) => void,
+    onEnd: () => void,
+    onError?: (message: string) => void,
+  ): MpegStreamHandle {
+    const MediaSourceCtor = (globalThis as { MediaSource?: { new (): MediaSource; isTypeSupported?: (type: string) => boolean } }).MediaSource;
+    const Factory = (globalThis as { Audio?: new (src: string) => WebAudio }).Audio;
+    if (!MediaSourceCtor || !Factory) {
+      return this.bindBufferedMpeg(rate, onTime, onEnd, onError);
+    }
+    const mediaSource = new MediaSourceCtor();
+    const objectUrl = URL.createObjectURL(mediaSource);
+    const audio = new Factory(objectUrl);
+    audio.playbackRate = rate;
+    const queue: Uint8Array[] = [];
+    let sourceBuffer: { updating: boolean; appendBuffer: (data: BufferSource) => void; addEventListener: (type: string, listener: () => void) => void } | null = null;
+    let streamEnded = false;
+    let failed = false;
+    let started = false;
+    let released = false;
+
+    const pump = () => {
+      if (!sourceBuffer || sourceBuffer.updating || failed || released) {
+        return;
+      }
+      const next = queue.shift();
+      if (next && next.byteLength > 0) {
+        try {
+          const copy = new Uint8Array(next.byteLength);
+          copy.set(next);
+          sourceBuffer.appendBuffer(copy);
+        } catch {
+          onError?.("O áudio neural não abriu.");
+        }
+        return;
+      }
+      if (streamEnded && mediaSource.readyState === "open") {
+        try {
+          mediaSource.endOfStream();
+        } catch {
+          return;
+        }
+      }
+    };
+
+    const update = () => {
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      onTime(audio.currentTime * 1000, duration * 1000);
+    };
+    audio.addEventListener("timeupdate", update);
+    audio.addEventListener("ended", onEnd);
+
+    mediaSource.addEventListener("sourceopen", () => {
+      try {
+        sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+        sourceBuffer.addEventListener("updateend", () => {
+          if (!started) {
+            started = true;
+            void audio.play().catch(() => {
+              onError?.("O navegador recusou o áudio.");
+            });
+          }
+          pump();
+        });
+        pump();
+      } catch {
+        onError?.("O áudio neural não abriu.");
+      }
+    });
+
+    const stop = () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      failed = true;
+      queue.length = 0;
+      audio.pause();
+      audio.src = "";
+      audio.removeEventListener("timeupdate", update);
+      audio.removeEventListener("ended", onEnd);
+      try {
+        if (mediaSource.readyState === "open") {
+          mediaSource.endOfStream();
+        }
+      } catch {
+        /* already closed */
+      }
+      URL.revokeObjectURL(objectUrl);
+    };
+
+    this.release = stop;
+    return {
+      push: (bytes) => {
+        if (released || failed || bytes.byteLength === 0) {
+          return;
+        }
+        queue.push(bytes);
+        pump();
+      },
+      end: () => {
+        streamEnded = true;
+        pump();
+      },
+      fail: (message) => {
+        if (released) {
+          return;
+        }
+        failed = true;
+        onError?.(message);
+      },
+      stop: () => {
+        if (this.release === stop) {
+          this.release = null;
+        }
+        stop();
+      },
+    };
+  }
+
+  private bindBufferedMpeg(
+    rate: number,
+    onTime: (elapsedMs: number, durationMs: number) => void,
+    onEnd: () => void,
+    onError?: (message: string) => void,
+  ): MpegStreamHandle {
+    const parts: Uint8Array[] = [];
+    let released = false;
+    let inner: Release | null = null;
+    const stop = () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      inner?.();
+      inner = null;
+    };
+    this.release = stop;
+    return {
+      push: (bytes) => {
+        if (!released && bytes.byteLength > 0) {
+          parts.push(bytes);
+        }
+      },
+      end: () => {
+        if (released) {
+          return;
+        }
+        const blob = new Blob(parts as BlobPart[], { type: "audio/mpeg" });
+        if (blob.size === 0) {
+          onError?.("O áudio neural não abriu.");
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        inner =
+          Platform.OS === "web"
+            ? this.bindWeb(url, rate, onTime, () => {
+                URL.revokeObjectURL(url);
+                onEnd();
+              }, null, onError)
+            : this.bindNative(url, rate, onTime, () => {
+                URL.revokeObjectURL(url);
+                onEnd();
+              }, null, onError);
+      },
+      fail: (message) => {
+        if (!released) {
+          onError?.(message);
+        }
+      },
+      stop: () => {
+        if (this.release === stop) {
+          this.release = null;
+        }
+        stop();
+      },
+    };
+  }
+
   private bindWeb(
     url: string,
     rate: number,
@@ -415,6 +626,11 @@ class AudioController {
       player.remove();
     };
   }
+}
+
+function mpegSourceSupported(): boolean {
+  const MediaSourceCtor = (globalThis as { MediaSource?: { isTypeSupported?: (type: string) => boolean } }).MediaSource;
+  return MediaSourceCtor?.isTypeSupported?.("audio/mpeg") === true;
 }
 
 function mediaSession(): MediaSessionLike | null {

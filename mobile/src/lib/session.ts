@@ -10,8 +10,8 @@ import {
   type LoginChallenge,
   type VerifyChallenge,
 } from "@/lib/api";
-import { hydrateLocale } from "@/lib/i18n";
 import { hydrateCast } from "@/lib/cast";
+import { hydrateLocale } from "@/lib/i18n";
 import { kv } from "@/lib/kv";
 
 const STORAGE_KEY = "prosa.session.v1";
@@ -121,6 +121,7 @@ export async function signUp(input: {
   native_lang: string;
   target_lang: string;
   level: AccountUser["level"];
+  display_locale?: "pt" | "en";
 }): Promise<AccountUser | VerifyChallenge> {
   const session = await registerAccount(input);
   if ("requires_verify" in session) {

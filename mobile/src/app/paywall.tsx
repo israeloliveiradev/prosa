@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
 import { Platform, Text, View } from "react-native";
@@ -8,18 +8,16 @@ import { PageMasthead } from "@/components/shell/page-masthead";
 import { ChunkButton } from "@/components/shell/chunk-button";
 import { confirmCheckout, fetchBillingStatus, startCheckout } from "@/lib/api";
 import { tap } from "@/lib/haptics";
+import { useCopy } from "@/lib/i18n";
 import { setPro, useProgress } from "@/lib/progress";
 import { getSession, refreshSession, useSession } from "@/lib/session";
 
-const FREE = ["1 prosa por dia", "1 par de idiomas", "Revisão e áudio da lição do dia, também sem rede"];
-const PRO = ["Vários idiomas, um através do outro", "Histórico ilimitado de lições", "Tema personalizado e prosa além do limite diário"];
-
-function checkoutMessage(message: string): string {
+function checkoutMessage(message: string, ui: ReturnType<typeof useCopy>): string {
   if (message.includes("Authentication required")) {
-    return "Entre na conta antes de assinar.";
+    return ui.authToSubscribe;
   }
   if (message.includes("Stripe is not configured")) {
-    return "O checkout ainda não está ligado neste servidor.";
+    return ui.stripeNotOn;
   }
   return message;
 }
@@ -27,6 +25,7 @@ function checkoutMessage(message: string): string {
 export default function PaywallScreen() {
   const progress = useProgress();
   const session = useSession();
+  const ui = useCopy();
   const params = useLocalSearchParams<{ session_id?: string }>();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,12 +60,12 @@ export default function PaywallScreen() {
           void refreshSession();
           setError(null);
         } else {
-          setError("O pagamento ainda não foi confirmado.");
+          setError(ui.paymentNotConfirmed);
         }
       })
       .catch((caught: unknown) => {
         if (active) {
-          setError(checkoutMessage(caught instanceof Error ? caught.message : "Não foi possível confirmar a assinatura."));
+          setError(checkoutMessage(caught instanceof Error ? caught.message : ui.checkoutConfirmFailed, ui));
         }
       })
       .finally(() => {
@@ -77,7 +76,7 @@ export default function PaywallScreen() {
     return () => {
       active = false;
     };
-  }, [sessionId, session?.token]);
+  }, [sessionId, session?.token, ui]);
 
   async function subscribe() {
     const current = getSession();
@@ -98,25 +97,29 @@ export default function PaywallScreen() {
       }
       await WebBrowser.openBrowserAsync(url);
     } catch (caught) {
-      setError(checkoutMessage(caught instanceof Error ? caught.message : "Não foi possível abrir o checkout."));
+      setError(checkoutMessage(caught instanceof Error ? caught.message : ui.checkoutOpenFailed, ui));
     } finally {
       setPending(false);
     }
   }
 
+  if (!session) {
+    return <Redirect href="/account" />;
+  }
+
   return (
     <AppFrame>
       <PageMasthead
-        kicker="Assinatura"
+        kicker={ui.paywallKicker}
         title="Prosa Pro"
-        dek="A edição grátis abre uma lição por dia, num par de idiomas. A Pro acrescenta outros idiomas, o arquivo e o tema."
+        dek={ui.paywallDek}
         trailing={<Figure who="davinci" size={96} />}
       />
 
       <View className="mt-8 flex-col gap-10 md:flex-row md:gap-0">
         <View className="flex-1 md:pr-10">
-          <Text className="font-displayItalic text-headline text-ink">Grátis</Text>
-          {FREE.map((item) => (
+          <Text className="font-displayItalic text-headline text-ink">{ui.paywallFree}</Text>
+          {[ui.freeLessonDay, ui.freeLangPair, ui.freeReviewAudio].map((item) => (
             <Text key={item} className="mt-4 border-b border-line pb-3 text-base leading-6 text-ink">
               {item}
             </Text>
@@ -124,22 +127,22 @@ export default function PaywallScreen() {
         </View>
         <View className="flex-1 md:border-l md:border-ink md:pl-10">
           <Text className="font-displayItalic text-headline text-ember">Pro</Text>
-          {PRO.map((item) => (
+          {[ui.proHistory, ui.proTopic].map((item) => (
             <Text key={item} className="mt-4 border-b border-line pb-3 text-base leading-6 text-ink">
               {item}
             </Text>
           ))}
-          <Text className="mt-4 text-sm leading-5 text-muted">
-            {stripeReady === false ? "O checkout ainda não está ligado neste servidor." : "O valor aparece no checkout da Stripe."}
+          <Text className="mt-4 w-full max-w-xl text-sm leading-6 text-muted">
+            {stripeReady === false ? ui.stripeNotOn : ui.stripeValue}
           </Text>
           {progress.pro || session?.user.plan === "pro" ? (
-            <Text className="mt-6 font-label text-base text-moss">Prosa Pro está ativo. O plano muda aqui ou no painel.</Text>
+            <Text className="mt-6 font-label text-base text-moss">{ui.paywallProActive}</Text>
           ) : (
             <ChunkButton
               className="mt-6 w-full"
-              label={!session ? "Entrar para assinar" : pending ? "Abrindo o checkout" : stripeReady === false ? "Checkout indisponível" : "Assinar Prosa Pro"}
+              label={!session ? ui.signInToSubscribe : pending ? ui.openingCheckout : stripeReady === true ? ui.subscribePro : ui.checkoutUnavailable}
               onPress={() => void subscribe()}
-              disabled={pending || stripeReady === false}
+              disabled={pending || Boolean(session && stripeReady !== true)}
             />
           )}
           {error ? (

@@ -64,6 +64,8 @@
 html,
 body,
 #root {
+  width: 100%;
+  overflow-x: hidden;
   background: var(--paper);
   color: var(--ink);
   font-family: "Source Sans 3", "Segoe UI", sans-serif;
@@ -93,8 +95,11 @@ body,
 #root [class*="css-text"],
 #root [class*="css-textHasAncestor"] {
   display: inline-block !important;
+  box-sizing: border-box;
+  max-width: 100%;
   white-space: pre-wrap !important;
-  word-spacing: 0.16em !important;
+  overflow-wrap: break-word;
+  word-spacing: normal !important;
 }
 
 #root .font-display {
@@ -137,8 +142,19 @@ textarea:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html,
+  body,
+  #root {
+    transition: none !important;
+  }
   #root * {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+html.type-large,
+html.type-large body,
+html.type-large #root {
+  font-size: 18px;
 }

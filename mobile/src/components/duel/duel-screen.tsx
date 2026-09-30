@@ -1,9 +1,7 @@
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { AppFrame } from "@/components/shell/app-frame";
-import { ChunkButton } from "@/components/shell/chunk-button";
-import { PageMasthead } from "@/components/shell/page-masthead";
 import { fetchDuelBoard, fetchDuelRound, saveDuelScore, type DuelBoardEntry, type DuelDrill } from "@/lib/api";
 import { duelPoints } from "@/lib/duel";
 import { tap } from "@/lib/haptics";
@@ -26,6 +24,7 @@ export function DuelScreen() {
   const [combo, setCombo] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [focus, setFocus] = useState<string[]>([]);
   const drillsRef = useRef<DuelDrill[]>([]);
   const statsRef = useRef({ score: 0, combo: 0, best: 0, correct: 0, index: 0 });
   const endsAt = useRef(0);
@@ -44,12 +43,13 @@ export function DuelScreen() {
     let active = true;
     setPhase("loading");
     void Promise.all([fetchDuelRound(token), fetchDuelBoard(token)])
-      .then(([drills, entries]) => {
+      .then(([round, entries]) => {
         if (!active) {
           return;
         }
-        drillsRef.current = drills;
-        setCurrent(drills[0] ?? null);
+        drillsRef.current = round.drills;
+        setFocus(round.focus);
+        setCurrent(round.drills[0] ?? null);
         setBoard(entries);
         setPhase("ready");
       })
@@ -179,14 +179,7 @@ export function DuelScreen() {
   }
 
   if (!session) {
-    return (
-      <AppFrame>
-        <PageMasthead kicker="Oficina" title="Duelo" dek="Entre na conta para jogar os 120 segundos e aparecer na classificação." />
-        <View className="mt-8 self-start">
-          <ChunkButton label="Entrar" onPress={() => router.push("/account")} />
-        </View>
-      </AppFrame>
-    );
+    return <Redirect href="/account" />;
   }
 
   const clock = `${String(Math.floor(remaining / 60000)).padStart(2, "0")}:${String(Math.floor((remaining % 60000) / 1000)).padStart(2, "0")}`;
@@ -236,6 +229,9 @@ export function DuelScreen() {
           <Text className="max-w-xl text-lg leading-7 text-muted">
             O placar já está abaixo. Doze frases, quatro segundos cada. A sequência aumenta a pontuação. Comece quando quiser.
           </Text>
+          {focus.length > 0 ? (
+            <Text className="mt-3 max-w-xl text-base leading-7 text-ink">Estas frases vêm do que ainda falha: {focus.join(" · ")}.</Text>
+          ) : null}
           <Pressable accessibilityRole="button" onPress={begin} className="mt-6 min-h-12 items-center justify-center self-start rounded-full bg-ember px-6">
             <Text className="text-base font-semibold text-onEmber">Começar o duelo</Text>
           </Pressable>
@@ -255,9 +251,10 @@ export function DuelScreen() {
               setPhase("loading");
               setError(null);
               void fetchDuelRound(token)
-                .then((drills) => {
-                  drillsRef.current = drills;
-                  setCurrent(drills[0] ?? null);
+                .then((round) => {
+                  drillsRef.current = round.drills;
+                  setFocus(round.focus);
+                  setCurrent(round.drills[0] ?? null);
                   setPhase("ready");
                 })
                 .catch((caught: unknown) => {
@@ -286,9 +283,10 @@ export function DuelScreen() {
               return;
             }
             void Promise.all([fetchDuelRound(token), fetchDuelBoard(token)])
-              .then(([drills, entries]) => {
-                drillsRef.current = drills;
-                setCurrent(drills[0] ?? null);
+              .then(([round, entries]) => {
+                drillsRef.current = round.drills;
+                setFocus(round.focus);
+                setCurrent(round.drills[0] ?? null);
                 setBoard(entries);
                 setPhase("ready");
               })
@@ -310,7 +308,7 @@ export function DuelScreen() {
 function Board({ entries }: { entries: DuelBoardEntry[] }) {
   return (
     <View className="mt-10">
-      <Text className="font-label text-xs uppercase tracking-widest text-muted">Classificação</Text>
+      <Text className="font-label text-xs uppercase tracking-widest text-muted">Seus resultados</Text>
       {entries.length === 0 ? <Text className="mt-4 text-base leading-7 text-muted">Ainda não há pontuações neste idioma.</Text> : null}
       {entries.map((entry, index) => (
         <View key={`${entry.label}-${index}`} className="min-h-14 flex-row items-center justify-between border-b border-line">

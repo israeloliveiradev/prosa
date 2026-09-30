@@ -1,7 +1,9 @@
 import { Platform } from "react-native";
-import { audioCacheKey, bytesToBase64, readAudioCache, writeAudioCache } from "@/lib/audio-cache";
+import { audioCacheKey, base64ToBytes, bytesToBase64, readAudioCache, writeAudioCache } from "@/lib/audio-cache";
 import { getCast } from "@/lib/cast";
-import type { CognateAnchor, JournalEvaluation, LessonPayload, LessonRequest, ReconstructionReport, ShadowingResult, VocabularyEntry } from "@/lib/types";
+import { copy } from "@/lib/i18n";
+import { readSse } from "@/lib/sse";
+import type { CognateAnchor, CourseProfile, JournalEvaluation, LessonPayload, LessonRequest, ReconstructionReport, RepairCard, SessionCard, ShadowingResult, SoundNote, VocabularyEntry } from "@/lib/types";
 
 function apiUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
@@ -18,15 +20,25 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(`${apiUrl()}${path}`, init);
   } catch {
-    throw new Error("A API não abriu. Confira se o servidor está em :3000.");
+    throw new Error(copy().apiDown);
   }
 }
 
 async function readError(response: Response): Promise<string> {
+  const ui = copy();
   const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-  const message = payload?.error ?? "A API do Prosa não respondeu.";
+  const message = payload?.error ?? ui.apiSilent;
   if (message.includes("Body cannot be empty") || message.includes("content-type")) {
-    return "O pedido não saiu completo. Tente de novo.";
+    return ui.requestIncomplete;
+  }
+  if (message.includes("The model is busy") || message.includes("busy") || message.includes("high demand") || message.includes("UNAVAILABLE")) {
+    return ui.modelBusy;
+  }
+  if (message.includes("Model request failed") || message.includes("empty structured") || message.includes("not valid JSON")) {
+    return ui.lessonFailed;
+  }
+  if (message.includes("Lesson generation is unavailable")) {
+    return ui.generationOff;
   }
   return message;
 }
@@ -109,7 +121,45 @@ export async function analyzeShadowing(uri: string, referenceText: string, langu
           (bar.note === "apressou" || bar.note === "alongou" || bar.note === "no tempo"),
       )
     : [];
-  return { ...report, bars };
+  return { ...report, bars, sounds: readSounds(report.sounds) };
+}
+
+function readSounds(value: unknown): SoundNote[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+    const note = item as SoundNote;
+    if (!note.word?.trim() || !note.sound?.pt || !note.sound?.en || typeof note.held !== "boolean" || !note.hint?.pt || !note.hint?.en) {
+      return [];
+    }
+    return [{ ...note, heard: note.heard ?? "" }];
+  }).slice(0, 4);
+}
+
+function readCards(value: unknown): RepairCard[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+    const card = item as RepairCard;
+    if (!card.front_phrase?.trim() || !card.back_translation?.trim() || !card.context_sentence?.trim()) {
+      return [];
+    }
+    return [
+      {
+        front_phrase: card.front_phrase.trim(),
+        back_translation: card.back_translation.trim(),
+        context_sentence: card.context_sentence.trim(),
+      },
+    ];
+  });
 }
 
 export async function evaluateJournal(input: {
@@ -118,16 +168,20 @@ export async function evaluateJournal(input: {
   target_lang: string;
   native_lang: string;
   level: LessonRequest["level"];
+  attempt: number;
+  token?: string;
 }): Promise<JournalEvaluation> {
+  const { token, ...body } = input;
   const response = await fetch(`${apiUrl()}/api/v1/journal/evaluate`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw new Error(await readError(response));
   }
-  return (await response.json()) as JournalEvaluation;
+  const evaluation = (await response.json()) as JournalEvaluation;
+  return { ...evaluation, cards: readCards(evaluation.cards) };
 }
 
 export async function reconstructStory(input: {
@@ -137,11 +191,14 @@ export async function reconstructStory(input: {
   target_lang: string;
   through_lang: string;
   level: LessonRequest["level"];
+  try_index: number;
+  token?: string;
 }): Promise<ReconstructionReport> {
+  const { token, ...body } = input;
   const response = await fetch(`${apiUrl()}/api/v1/journal/reconstruct`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw new Error(await readError(response));
@@ -151,6 +208,8 @@ export async function reconstructStory(input: {
     score: typeof report.score === "number" ? report.score : 0,
     grammar: Array.isArray(report.grammar) ? report.grammar : [],
     literals: Array.isArray(report.literals) ? report.literals : [],
+    step: report.step,
+    cards: readCards(report.cards),
   };
 }
 
@@ -167,7 +226,7 @@ export interface DuelBoardEntry {
   you: boolean;
 }
 
-export async function fetchDuelRound(token: string): Promise<DuelDrill[]> {
+export async function fetchDuelRound(token: string): Promise<{ drills: DuelDrill[]; focus: string[] }> {
   const response = await fetch(`${apiUrl()}/api/v1/duel/round`, {
     method: "POST",
     headers: authHeaders(token),
@@ -176,12 +235,13 @@ export async function fetchDuelRound(token: string): Promise<DuelDrill[]> {
   if (!response.ok) {
     throw new Error(await readError(response));
   }
-  const body = (await response.json()) as { drills?: DuelDrill[] };
+  const body = (await response.json()) as { drills?: DuelDrill[]; focus?: string[] };
   const drills = Array.isArray(body.drills) ? body.drills.filter((drill) => Array.isArray(drill.options) && drill.options.length === 4 && typeof drill.answer === "number") : [];
   if (drills.length < 8) {
     throw new Error("O duelo não trouxe frases suficientes.");
   }
-  return drills;
+  const focus = Array.isArray(body.focus) ? body.focus.filter((item) => typeof item === "string" && item.trim().length > 0) : [];
+  return { drills, focus };
 }
 
 export async function saveDuelScore(token: string, score: { score: number; best_combo: number; correct_count: number }): Promise<void> {
@@ -214,6 +274,7 @@ export interface PersonaScene {
   role: string;
   brief: string;
   opener: string;
+  hitch?: string;
 }
 
 export interface PersonaTurnResult {
@@ -258,6 +319,64 @@ export async function sendPersonaTurn(
   };
 }
 
+export interface ProseTurnResult {
+  reply: string;
+  through_note: string;
+  move?: "clarify" | "rephrase" | "continue";
+  repair?: { step: "none" | "prompt" | "hint" | "correction"; mark: string; fix: string };
+  memory?: { facts: string[]; goals: string[]; thread: string };
+}
+
+export async function fetchProseMemory(token: string): Promise<{ facts: string[]; goals: string[]; thread: string }> {
+  const response = await fetch(`${apiUrl()}/api/v1/prose/memory`, { headers: authHeaders(token) });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  const body = (await response.json()) as { facts?: string[]; goals?: string[]; thread?: string };
+  return {
+    facts: Array.isArray(body.facts) ? body.facts.filter((item) => typeof item === "string") : [],
+    goals: Array.isArray(body.goals) ? body.goals.filter((item) => typeof item === "string") : [],
+    thread: typeof body.thread === "string" ? body.thread : "",
+  };
+}
+
+export async function sendProseTurn(
+  token: string,
+  input: {
+    userLine: string;
+    topic: string;
+    story?: string;
+    mind?: string;
+    history: Array<{ role: "mind" | "learner"; text: string }>;
+  },
+): Promise<ProseTurnResult> {
+  const response = await fetch(`${apiUrl()}/api/v1/prose/turn`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      user_line: input.userLine,
+      topic: input.topic,
+      story: input.story,
+      mind: input.mind,
+      history: input.history,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  const body = (await response.json()) as Partial<ProseTurnResult>;
+  if (!body.reply) {
+    throw new Error("A conversa não devolveu a fala.");
+  }
+  return {
+    reply: body.reply,
+    through_note: typeof body.through_note === "string" ? body.through_note : "",
+    move: body.move === "clarify" || body.move === "rephrase" || body.move === "continue" ? body.move : "continue",
+    repair: body.repair,
+    memory: body.memory,
+  };
+}
+
 export async function transcribeSpeech(uri: string, language: string): Promise<string> {
   const body = new FormData();
   if (Platform.OS === "web") {
@@ -279,6 +398,575 @@ export async function transcribeSpeech(uri: string, language: string): Promise<s
   }
   const payload = (await response.json()) as { transcription?: string };
   return payload.transcription?.trim() ?? "";
+}
+
+export async function fetchCourseProfile(token: string, targetLang: string): Promise<CourseProfile> {
+  const response = await fetch(`${apiUrl()}/api/v1/profile?target_lang=${encodeURIComponent(targetLang)}`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as CourseProfile;
+}
+
+export async function postProfileSignals(
+  token: string,
+  targetLang: string,
+  signals: Record<string, number | string>,
+): Promise<CourseProfile> {
+  const response = await fetch(`${apiUrl()}/api/v1/profile/signals`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ target_lang: targetLang, ...signals }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as CourseProfile;
+}
+
+export interface PairItem {
+  id: string;
+  target_lang: string;
+  prompt: string;
+  body: string;
+  understood: string;
+  correction: string;
+  question: string;
+  status: "offered" | "taken" | "done";
+  matched: boolean;
+  created_at: string;
+}
+
+export interface PairInbox {
+  inbox: PairItem[];
+  sent: PairItem[];
+}
+
+export async function fetchPairs(token: string): Promise<PairInbox> {
+  const response = await fetch(`${apiUrl()}/api/v1/pairs`, { headers: authHeaders(token) });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as PairInbox;
+}
+
+export async function offerPair(token: string, body: { target_lang: string; prompt: string; body: string }): Promise<{ pair: PairItem; matched: boolean }> {
+  const response = await fetch(`${apiUrl()}/api/v1/pairs/offer`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as { pair: PairItem; matched: boolean };
+}
+
+export async function reviewPair(
+  token: string,
+  id: string,
+  body: { understood: string; correction: string; question: string },
+): Promise<PairItem> {
+  const response = await fetch(`${apiUrl()}/api/v1/pairs/${id}/review`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as PairItem;
+}
+
+export interface MeasurePanel {
+  cefr: Array<{ level: string; score: number; finished_at: string }>;
+  retention: number | null;
+  retention_aim: number;
+  lexicon: number;
+  fluency_wpm: number;
+  errors: string[];
+  listening: number;
+  reading: number;
+}
+
+export async function fetchMeasure(token: string, targetLang: string): Promise<MeasurePanel> {
+  const response = await fetch(`${apiUrl()}/api/v1/measure?target_lang=${encodeURIComponent(targetLang)}`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as MeasurePanel;
+}
+
+export interface OwnlifeNote {
+  id: string;
+  calibrated: string;
+  through_note: string;
+  mission_prompt: string;
+  mission_hold: string;
+  mission_done: boolean;
+  created_at: string;
+  vocabulary?: Array<{ word: string; translation: string; example_sentence: string }>;
+}
+
+export async function fetchOwnlife(token: string, targetLang: string): Promise<OwnlifeNote | null> {
+  const response = await fetch(`${apiUrl()}/api/v1/ownlife?target_lang=${encodeURIComponent(targetLang)}`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  const body = (await response.json()) as { note?: OwnlifeNote | null };
+  return body.note ?? null;
+}
+
+export async function calibrateOwnlife(token: string, targetLang: string, source: string): Promise<OwnlifeNote> {
+  const response = await fetch(`${apiUrl()}/api/v1/ownlife`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ target_lang: targetLang, source }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as OwnlifeNote;
+}
+
+export async function checkOwnlifeMission(
+  token: string,
+  targetLang: string,
+  spoken: string,
+): Promise<{ held: boolean; hold: string; prompt: string }> {
+  const response = await fetch(`${apiUrl()}/api/v1/ownlife/mission`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ target_lang: targetLang, spoken }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as { held: boolean; hold: string; prompt: string };
+}
+
+export interface ExamTrackInfo {
+  id: string;
+  title: string;
+  scale: { min: number; max: number; step: number };
+}
+
+export interface ExamForecast {
+  exam_id: string;
+  predicted: number;
+  band: string;
+  display: string;
+  attempts: number;
+}
+
+export interface ExamHistoryEntry {
+  predicted: number;
+  raw: number;
+  band: string;
+  exam_id: string;
+  finished_at: string;
+  display: string;
+}
+
+export interface ExamStatus {
+  exams: ExamTrackInfo[];
+  track: string;
+  forecast: ExamForecast | null;
+  history: ExamHistoryEntry[];
+  seed: number;
+}
+
+export interface ExamChoiceItem {
+  id: string;
+  section: "reading" | "listening" | "use";
+  prompt: string;
+  passage?: string;
+  audio?: string;
+  options: string[];
+}
+
+export interface ExamMock {
+  exam_id: string;
+  seconds: number;
+  items: ExamChoiceItem[];
+  writing: string;
+  speaking: string;
+}
+
+export interface ExamFinish {
+  predicted: number;
+  previous: number | null;
+  band: string;
+  raw: number;
+  display: string;
+  sections: { reading: number; listening: number; writing: number; speaking: number };
+  seconds: number;
+}
+
+export async function fetchExamStatus(token: string, targetLang: string): Promise<ExamStatus> {
+  const response = await fetch(`${apiUrl()}/api/v1/exams?target_lang=${encodeURIComponent(targetLang)}`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as ExamStatus;
+}
+
+export async function chooseExam(token: string, targetLang: string, examId: string): Promise<ExamStatus> {
+  const response = await fetch(`${apiUrl()}/api/v1/exams/choose`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ target_lang: targetLang, exam_id: examId }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as ExamStatus;
+}
+
+export async function fetchExamMock(token: string, targetLang: string, examId: string): Promise<ExamMock> {
+  const response = await fetch(`${apiUrl()}/api/v1/exams/mock?target_lang=${encodeURIComponent(targetLang)}&exam_id=${encodeURIComponent(examId)}`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  const body = (await response.json()) as ExamMock;
+  if (!Array.isArray(body.items) || body.items.length === 0) {
+    throw new Error("O simulado não trouxe itens.");
+  }
+  return body;
+}
+
+export async function finishExam(
+  token: string,
+  body: {
+    target_lang: string;
+    exam_id: string;
+    answers: Record<string, number>;
+    writing: string;
+    speaking: string;
+    seconds: number;
+  },
+): Promise<ExamFinish> {
+  const response = await fetch(`${apiUrl()}/api/v1/exams/finish`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as ExamFinish;
+}
+
+export interface ScoreLatest {
+  score: number;
+  band: string;
+  share_token: string | null;
+  finished_at: string | null;
+  held: boolean;
+}
+
+export interface ScoreStatus {
+  due: boolean;
+  reason: string;
+  days_until: number | null;
+  open_attempt_id: string | null;
+  latest: ScoreLatest | null;
+}
+
+export interface ScoreAttempt {
+  attempt_id: string;
+  target_lang: string;
+  through_lang: string;
+  items: PlacementItem[];
+  answered: Record<string, number>;
+  index: number;
+  adaptive: boolean;
+  cap: number;
+  produce: boolean;
+  prompts: { writing: string; speaking: string } | null;
+}
+
+export interface ScoreStep {
+  saved: boolean;
+  done: boolean;
+  asked: number;
+  cap: number;
+  next: PlacementItem | null;
+  prompts: { writing: string; speaking: string } | null;
+}
+
+export interface ScoreFinish {
+  attempt_id: string;
+  score: number;
+  band: string;
+  previous: number | null;
+  sections: { reading: number; listening: number; writing: number; speaking: number };
+  flags: string[];
+  held: boolean;
+  share_token: string | null;
+  target_lang: string;
+}
+
+export interface ScoreCertificate {
+  score: number;
+  band: string;
+  target_lang: string;
+  finished_at: string;
+  sections: { reading: number; listening: number; writing: number; speaking: number };
+}
+
+export async function fetchScoreStatus(token: string, targetLang: string): Promise<ScoreStatus> {
+  const response = await fetch(`${apiUrl()}/api/v1/score?target_lang=${encodeURIComponent(targetLang)}`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as ScoreStatus;
+}
+
+export async function startScore(token: string, track?: { target_lang?: string; through_lang?: string }): Promise<ScoreAttempt> {
+  const response = await fetch(`${apiUrl()}/api/v1/score/start`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(track ?? {}),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as ScoreAttempt;
+}
+
+export async function answerScore(
+  token: string,
+  attemptId: string,
+  itemId: string,
+  choice: number,
+  elapsedMs: number,
+): Promise<ScoreStep> {
+  const response = await fetch(`${apiUrl()}/api/v1/score/answer`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ attempt_id: attemptId, item_id: itemId, choice, elapsed_ms: elapsedMs }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as ScoreStep;
+}
+
+export async function finishScore(
+  token: string,
+  attemptId: string,
+  writing: string,
+  speaking: string,
+): Promise<ScoreFinish> {
+  const response = await fetch(`${apiUrl()}/api/v1/score/finish`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ attempt_id: attemptId, writing, speaking }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as ScoreFinish;
+}
+
+export async function fetchScoreCertificate(token: string): Promise<ScoreCertificate> {
+  const response = await fetch(`${apiUrl()}/api/v1/score/cert/${encodeURIComponent(token)}`);
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as ScoreCertificate;
+}
+
+export interface DossierCheckpoint {
+  id: string;
+  focus: string;
+  note: string;
+  due_on: string | null;
+  done: boolean;
+}
+
+export interface DossierView {
+  target_lang: string;
+  level: string;
+  practice: string;
+  errors: string[];
+  sounds: string[];
+  lexicon: number;
+  fluency_wpm: number;
+  listening: number;
+  reading: number;
+  last_placement: { level: string; score: number; finished_at: string } | null;
+  prosa_score: { score: number; band: string } | null;
+  checkpoints: DossierCheckpoint[];
+}
+
+export interface DossierMine extends DossierView {
+  share_token: string | null;
+}
+
+export async function fetchDossier(token: string, targetLang: string): Promise<DossierMine> {
+  const response = await fetch(`${apiUrl()}/api/v1/dossier?target_lang=${encodeURIComponent(targetLang)}`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as DossierMine;
+}
+
+export async function publishDossier(token: string, targetLang: string): Promise<DossierMine> {
+  const response = await fetch(`${apiUrl()}/api/v1/dossier/publish`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ target_lang: targetLang }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as DossierMine;
+}
+
+export async function addDossierCheckpoint(
+  token: string,
+  body: { target_lang: string; focus: string; note?: string; due_on?: string },
+): Promise<DossierMine> {
+  const response = await fetch(`${apiUrl()}/api/v1/dossier/checkpoint`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as DossierMine;
+}
+
+export async function closeDossierCheckpoint(token: string, id: string): Promise<DossierMine> {
+  const response = await fetch(`${apiUrl()}/api/v1/dossier/checkpoint/${encodeURIComponent(id)}/done`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as DossierMine;
+}
+
+export async function fetchPublicDossier(token: string): Promise<DossierView> {
+  const response = await fetch(`${apiUrl()}/api/v1/dossier/view/${encodeURIComponent(token)}`);
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as DossierView;
+}
+
+export interface OrgTerm {
+  phrase: string;
+  gloss: string;
+  source: "org" | "catalog";
+}
+
+export interface OrgRosterRow {
+  name: string | null;
+  level: string;
+  target_lang: string;
+  prosa_score: { score: number; band: string } | null;
+  lexicon: number | null;
+}
+
+export interface OrgPack {
+  org: { name: string; sector: "technology" | "health" | "sales"; invite_code: string | null } | null;
+  role: "owner" | "hr" | "member" | null;
+  terms: OrgTerm[];
+  roster: OrgRosterRow[];
+}
+
+export async function fetchOrg(token: string): Promise<OrgPack> {
+  const response = await fetch(`${apiUrl()}/api/v1/org`, { headers: authHeaders(token) });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as OrgPack;
+}
+
+export async function createOrg(token: string, name: string, sector: "technology" | "health" | "sales"): Promise<OrgPack> {
+  const response = await fetch(`${apiUrl()}/api/v1/org`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ name, sector }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as OrgPack;
+}
+
+export async function joinOrg(token: string, code: string): Promise<OrgPack> {
+  const response = await fetch(`${apiUrl()}/api/v1/org/join`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ code }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as OrgPack;
+}
+
+export async function addOrgTerm(
+  token: string,
+  body: { target_lang: string; phrase: string; gloss?: string },
+): Promise<OrgPack> {
+  const response = await fetch(`${apiUrl()}/api/v1/org/term`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as OrgPack;
+}
+
+export async function leaveOrg(token: string): Promise<OrgPack> {
+  const response = await fetch(`${apiUrl()}/api/v1/org/leave`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as OrgPack;
+}
+
+export async function fetchSrsCards(token: string): Promise<SessionCard[]> {
+  const response = await fetch(`${apiUrl()}/api/v1/srs/cards`, { headers: authHeaders(token) });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  const body = (await response.json()) as { cards?: SessionCard[] };
+  return (body.cards ?? []).filter(
+    (card) =>
+      typeof card?.front_phrase === "string" &&
+      typeof card.back_translation === "string" &&
+      typeof card.context_sentence === "string" &&
+      (card.status === "learning" || card.status === "reviewing" || card.status === "mastered"),
+  );
 }
 
 export async function recordRetention(
@@ -472,12 +1160,22 @@ function isLoginChallenge(value: unknown): value is LoginChallenge {
   return body.requires_2fa === true && typeof body.ticket === "string";
 }
 
+export async function pingApi(): Promise<boolean> {
+  try {
+    const response = await fetch(`${apiUrl()}/health`);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function registerAccount(input: {
   email: string;
   password: string;
   native_lang: string;
   target_lang: string;
   level: AccountUser["level"];
+  display_locale?: "pt" | "en";
 }): Promise<{ token: string; user: AccountUser } | VerifyChallenge> {
   const response = await apiFetch("/api/v1/auth/register", {
     method: "POST",
@@ -565,6 +1263,15 @@ export async function currentAccount(token: string): Promise<AccountUser> {
     throw new Error("A conta não voltou da API.");
   }
   return body.user;
+}
+
+export async function fetchMailInbox(): Promise<string | null> {
+  const response = await apiFetch("/api/v1/auth/mail");
+  if (!response.ok) {
+    return null;
+  }
+  const payload = (await response.json()) as { inbox_url?: string | null };
+  return typeof payload.inbox_url === "string" && payload.inbox_url.length > 0 ? payload.inbox_url : null;
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
@@ -742,6 +1449,14 @@ export interface AdminEvent {
   created_at: string;
 }
 
+export interface AdminCost {
+  calls: number;
+  cache_hits: number;
+  cache_misses: number;
+  cost_micros: number;
+  per_session_micros: number | null;
+}
+
 export interface AdminDashboard {
   users: number;
   pro: number;
@@ -750,9 +1465,12 @@ export interface AdminDashboard {
   duels_today: number;
   audio_today: number;
   gemini_errors_today: number;
+  cost: AdminCost;
   generation_paused: boolean;
   stripe_configured: boolean;
   gemini_configured: boolean;
+  groq_configured: boolean;
+  openrouter_configured: boolean;
   series: AdminDay[];
   events: AdminEvent[];
 }
@@ -791,6 +1509,27 @@ export async function fetchAdminDashboard(token: string): Promise<AdminDashboard
     throw new Error(await readError(response));
   }
   return (await response.json()) as AdminDashboard;
+}
+
+export async function fetchAdminEvents(
+  token: string,
+  filters?: { kind?: AdminEvent["kind"]; limit?: number },
+): Promise<AdminEvent[]> {
+  const params = new URLSearchParams();
+  if (filters?.kind) {
+    params.set("kind", filters.kind);
+  }
+  if (filters?.limit) {
+    params.set("limit", String(filters.limit));
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const response = await fetch(`${apiUrl()}/api/v1/admin/events${suffix}`, { headers: authHeaders(token) });
+  adminDenied(response.status);
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  const body = (await response.json()) as { events?: AdminEvent[] };
+  return Array.isArray(body.events) ? body.events : [];
 }
 
 export async function fetchAdminUsers(
@@ -905,7 +1644,7 @@ export async function submitOnboarding(
   input: {
     interests: string[];
     goal?: string;
-    tracks: Array<{ target_lang: string; through_lang: string; active: boolean }>;
+    tracks: Array<{ target_lang: string; through_lang: string; level?: string; active: boolean }>;
     level?: "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
   },
 ): Promise<{ interests: string[]; topics: string[]; target_lang: string; native_lang: string; level?: string }> {
@@ -949,6 +1688,7 @@ export async function generatePersonalized(token: string, selectedTopic: string)
 export interface StudyTrackChoice {
   target_lang: string;
   through_lang: string;
+  level: string;
   active: boolean;
 }
 
@@ -963,7 +1703,138 @@ export async function listStudyTracks(token: string): Promise<StudyTrackChoice[]
   return body.tracks ?? [];
 }
 
-export async function activateStudyTrack(token: string, track: { target_lang: string; through_lang: string }): Promise<void> {
+export interface PlacementItem {
+  id: string;
+  band: "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+  kind: "vocab" | "grammar" | "reading" | "listening";
+  prompt: string;
+  hint: string;
+  options: string[];
+  passage?: string;
+  audio_text?: string;
+}
+
+export interface PlacementHistoryEntry {
+  id: string;
+  kind: "placement" | "progress";
+  finished_at: string;
+  score: number;
+  result_level: string;
+  previous_level: string | null;
+  correct_count: number;
+  item_count: number;
+}
+
+export interface PlacementStatus {
+  target_lang: string;
+  through_lang: string;
+  current_level: string;
+  last: {
+    finished_at: string;
+    result_level: string | null;
+    previous_level: string | null;
+    score: number | null;
+    kind: "placement" | "progress";
+  } | null;
+  due: boolean;
+  due_reason: "never" | "scheduled" | "lessons" | "wait";
+  days_until: number | null;
+  open_attempt_id: string | null;
+  history: PlacementHistoryEntry[];
+}
+
+export interface PlacementAttempt {
+  attempt_id: string;
+  target_lang: string;
+  through_lang: string;
+  kind: "placement" | "progress";
+  items: PlacementItem[];
+  answered: Record<string, number>;
+  index: number;
+  adaptive?: boolean;
+  cap?: number;
+}
+
+export interface PlacementStep {
+  saved: boolean;
+  done: boolean;
+  asked: number;
+  cap: number;
+  next: PlacementItem | null;
+}
+
+export interface PlacementFinish {
+  attempt_id: string;
+  target_lang: string;
+  through_lang: string;
+  kind: "placement" | "progress";
+  level: string;
+  previous_level: string;
+  score: number;
+  correct: number;
+  total: number;
+  bands: Array<{ band: string; correct: number; total: number }>;
+  skills?: Array<{ skill: "vocab" | "grammar" | "reading" | "listening"; correct: number; total: number }>;
+  history: PlacementHistoryEntry[];
+}
+
+export async function fetchPlacementStatus(token: string, targetLang?: string): Promise<PlacementStatus> {
+  const suffix = targetLang ? `?target_lang=${encodeURIComponent(targetLang)}` : "";
+  const response = await fetch(`${apiUrl()}/api/v1/placement/status${suffix}`, { headers: authHeaders(token) });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as PlacementStatus;
+}
+
+export async function startPlacement(
+  token: string,
+  track?: { target_lang?: string; through_lang?: string },
+): Promise<PlacementAttempt> {
+  const response = await fetch(`${apiUrl()}/api/v1/placement/start`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(track ?? {}),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as PlacementAttempt;
+}
+
+export async function answerPlacement(
+  token: string,
+  attemptId: string,
+  itemId: string,
+  choice: number,
+): Promise<PlacementStep> {
+  const response = await fetch(`${apiUrl()}/api/v1/placement/answer`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ attempt_id: attemptId, item_id: itemId, choice }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as PlacementStep;
+}
+
+export async function finishPlacement(token: string, attemptId: string): Promise<PlacementFinish> {
+  const response = await fetch(`${apiUrl()}/api/v1/placement/finish`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ attempt_id: attemptId }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as PlacementFinish;
+}
+
+export async function activateStudyTrack(
+  token: string,
+  track: { target_lang: string; through_lang: string; level?: string },
+): Promise<{ target_lang: string; through_lang: string; level: string }> {
   const response = await fetch(`${apiUrl()}/api/v1/study/activate`, {
     method: "POST",
     headers: authHeaders(token),
@@ -972,6 +1843,12 @@ export async function activateStudyTrack(token: string, track: { target_lang: st
   if (!response.ok) {
     throw new Error(await readError(response));
   }
+  const body = (await response.json()) as { target_lang?: string; through_lang?: string; level?: string };
+  return {
+    target_lang: body.target_lang ?? track.target_lang,
+    through_lang: body.through_lang ?? track.through_lang,
+    level: body.level ?? track.level ?? "A2",
+  };
 }
 
 export interface AdaptedNews {
@@ -1136,4 +2013,126 @@ export async function speakStories(texts: string[], lang: string, voice?: string
 
 export function prefetchSpeech(texts: string[], lang: string, voice?: string): void {
   void speakStories(texts.filter((text) => text.trim().length > 0), lang, voice).catch(() => undefined);
+}
+
+export async function speakStoryStream(
+  text: string,
+  lang: string,
+  voice: string | undefined,
+  handlers: {
+    onAudio: (bytes: Uint8Array) => void;
+    onWord: (word: { text: string; offsetMs: number }) => void;
+    onDone: () => void;
+  },
+  signal?: AbortSignal,
+): Promise<SpokenStory> {
+  const language = lang.slice(0, 2).toLowerCase();
+  const key = audioCacheKey(text, language, voice ?? "");
+  const cached = readAudioCache(key);
+  if (cached) {
+    const bytes = await audioBytes(cached.audioUrl, signal);
+    if (bytes.length > 0) {
+      handlers.onAudio(bytes);
+    }
+    for (const word of cached.words) {
+      handlers.onWord(word);
+    }
+    handlers.onDone();
+    return cached;
+  }
+  const response = await fetch(`${apiUrl()}/api/v1/audio/speak-stream`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "text/event-stream" },
+    body: JSON.stringify({
+      text,
+      lang: language,
+      ...(voice ? { voice } : {}),
+    }),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(await readError(response));
+  }
+  const words: SpokenStory["words"] = [];
+  const chunks: Uint8Array[] = [];
+  let remote = "";
+  let failed = "";
+  for await (const frame of readSse(response.body)) {
+    if (signal?.aborted) {
+      return { audioUrl: "", words: [] };
+    }
+    if (frame.event === "audio") {
+      const bytes = base64ToBytes(frame.data);
+      if (bytes.length > 0) {
+        chunks.push(bytes);
+        handlers.onAudio(bytes);
+      }
+      continue;
+    }
+    if (frame.event === "word") {
+      try {
+        const parsed = JSON.parse(frame.data) as { text?: string; offset_ms?: number };
+        if (typeof parsed.text === "string" && typeof parsed.offset_ms === "number") {
+          const word = { text: parsed.text, offsetMs: parsed.offset_ms };
+          words.push(word);
+          handlers.onWord(word);
+        }
+      } catch {
+        continue;
+      }
+      continue;
+    }
+    if (frame.event === "done") {
+      try {
+        const parsed = JSON.parse(frame.data) as { audio_url?: string };
+        if (typeof parsed.audio_url === "string") {
+          remote = audioUrl(parsed.audio_url);
+        }
+      } catch {
+        remote = "";
+      }
+      continue;
+    }
+    if (frame.event === "error") {
+      failed = copy().neuralVoiceFailed;
+    }
+  }
+  if (failed) {
+    throw new Error(failed);
+  }
+  if (chunks.length === 0) {
+    throw new Error(copy().neuralVoiceFailed);
+  }
+  handlers.onDone();
+  const spoken: SpokenStory = remote
+    ? { audioUrl: remote, words }
+    : { audioUrl: `data:audio/mpeg;base64,${bytesToBase64(concatBytes(chunks))}`, words };
+  if (remote) {
+    warmAudioCache(key, remote, words);
+  } else {
+    writeAudioCache(key, spoken);
+  }
+  return spoken;
+}
+
+async function audioBytes(url: string, signal?: AbortSignal): Promise<Uint8Array> {
+  if (url.startsWith("data:audio/mpeg;base64,")) {
+    return base64ToBytes(url.slice("data:audio/mpeg;base64,".length));
+  }
+  const file = await fetch(url, { signal });
+  if (!file.ok) {
+    return new Uint8Array();
+  }
+  return new Uint8Array(await file.arrayBuffer());
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
 }

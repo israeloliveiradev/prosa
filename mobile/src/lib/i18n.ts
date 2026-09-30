@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { kv } from "@/lib/kv";
+import { MESSAGES } from "@/lib/messages";
 
 export type DisplayLocale = "pt" | "en";
 
@@ -8,10 +9,10 @@ const STORAGE_KEY = "prosa.locale.v1";
 const COPY = {
   pt: {
     navHome: "Início",
-    navMemory: "Revisão",
+    navMemory: "Memória",
     navNews: "Notícias",
     navPractice: "Prática",
-    navLesson: "Prosa",
+    navLesson: "Lição",
     navPro: "Pro",
     account: "Conta",
     settings: "Perfil e configurações",
@@ -19,11 +20,20 @@ const COPY = {
     signOut: "Sair",
     signIn: "Entrar",
     language: "Idioma de estudo",
-    greeting: (name: string) => `Que bom ver você, ${name}`,
+    logoHome: "Início, Prosa",
+    openMenu: "Abrir menu",
+    closeMenu: "Fechar menu",
+    greeting: (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed || trimmed.toLowerCase() === "você") {
+        return "Que bom ver você";
+      }
+      return `Que bom ver você, ${trimmed}`;
+    },
     todayKicker: "Hoje",
-    todayTitle: "A prosa de vinte minutos",
+    todayTitle: "A lição de vinte minutos",
     todayReady: "Einstein lê, Curie guarda, Feynman fala e Leonardo escreve.",
-    continueToday: "Continuar a prosa",
+    continueToday: "Continuar a lição",
     startToday: "Começar a lição",
     reviewEmpty: "Faça uma lição para continuar construindo sua lista de vocabulário.",
     settingsProfile: "Perfil",
@@ -38,7 +48,7 @@ const COPY = {
     emailDek: "O código chega no endereço novo. A senha atual confirma que é você.",
     securityDek: "O autenticador e o e-mail pedem um segundo passo no login.",
     profileDek: "Como a Prosa te chama, e o tema desta tela.",
-    castDek: "Quatro mentes. Cada uma com a personalidade delas, no papel da prosa.",
+    castDek: "Quatro mentes. Cada uma com a personalidade delas, no papel da lição.",
     houseCast: "Elenco histórico",
     displayName: "Nome de exibição",
     displayNameHint: "É assim que a Prosa te cumprimenta.",
@@ -54,12 +64,14 @@ const COPY = {
     resetTitle: "Escolher senha nova",
     resetSave: "Redefinir senha",
     resetCode: "Código de 6 dígitos",
-    localeHint: "Muda os menus e os avisos. A prosa continua no idioma que você estuda.",
-    reminderHint: "Um e-mail no horário escolhido, se a prosa do dia ainda não abriu.",
+    localeHint: "Muda os menus e os avisos. A lição continua no idioma que você estuda.",
+    reminderHint: "Um e-mail no horário escolhido, se a lição do dia ainda não abriu.",
     reminderOn: "Lembrar da lição",
     reminderHour: "Horário (UTC)",
-    mailOff: "O correio local está em localhost:8025. Abra a caixa para ver códigos e lembretes.",
+    mailOff: "O código chega no e-mail da conta. Confira a caixa de entrada e o spam.",
     mailBox: "Abrir a caixa de e-mail",
+    showPassword: "Mostrar senha",
+    hidePassword: "Ocultar senha",
     saved: "Guardado.",
     saveName: "Guardar nome",
     admin: "Administração",
@@ -85,10 +97,10 @@ const COPY = {
   },
   en: {
     navHome: "Home",
-    navMemory: "Review",
+    navMemory: "Memory",
     navNews: "News",
     navPractice: "Practice",
-    navLesson: "Prosa",
+    navLesson: "Lesson",
     navPro: "Pro",
     account: "Account",
     settings: "Profile and settings",
@@ -96,7 +108,13 @@ const COPY = {
     signOut: "Sign out",
     signIn: "Sign in",
     language: "Study language",
-    greeting: (name: string) => `Good to see you, ${name}`,
+    logoHome: "Home, Prosa",
+    openMenu: "Open menu",
+    closeMenu: "Close menu",
+    greeting: (name: string) => {
+      const trimmed = name.trim();
+      return trimmed ? `Good to see you, ${trimmed}` : "Good to see you";
+    },
     todayKicker: "Today",
     todayTitle: "The twenty-minute lesson",
     todayReady: "Einstein reads, Curie keeps, Feynman speaks and Leonardo writes.",
@@ -135,8 +153,10 @@ const COPY = {
     reminderHint: "An email at the chosen hour if today's lesson is still closed.",
     reminderOn: "Remind me of the lesson",
     reminderHour: "Hour (UTC)",
-    mailOff: "Local mail is at localhost:8025. Open the inbox to read codes and reminders.",
+    mailOff: "The code arrives in the account email. Check the inbox and the spam folder.",
     mailBox: "Open the inbox",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
     saved: "Saved.",
     saveName: "Save name",
     admin: "Admin",
@@ -175,17 +195,20 @@ export function hydrateLocale(next?: DisplayLocale | null): DisplayLocale {
   if (next === "en" || next === "pt") {
     locale = next;
     kv.set(STORAGE_KEY, next);
+    applyDocumentLocale(locale);
     emit();
     return locale;
   }
   const stored = kv.getString(STORAGE_KEY);
   locale = stored === "en" ? "en" : "pt";
+  applyDocumentLocale(locale);
   return locale;
 }
 
 export function setLocale(next: DisplayLocale): void {
   locale = next;
   kv.set(STORAGE_KEY, next);
+  applyDocumentLocale(locale);
   emit();
 }
 
@@ -194,7 +217,7 @@ export function getLocale(): DisplayLocale {
 }
 
 export function copy(next = locale) {
-  return COPY[next];
+  return { ...COPY[next], ...MESSAGES[next] };
 }
 
 export function useCopy() {
@@ -206,7 +229,35 @@ export function useCopy() {
     () => locale,
     () => locale,
   );
-  return COPY[current];
+  return { ...COPY[current], ...MESSAGES[current] };
+}
+
+export function applyDocumentLocale(next = locale): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  document.documentElement.lang = next === "en" ? "en" : "pt";
+  document.title = "Prosa";
+}
+
+export function phaseName(id: "review" | "listen" | "reading" | "shadow" | "journal" | "note", next = locale): string {
+  const ui = copy(next);
+  if (id === "review") {
+    return ui.navMemory;
+  }
+  if (id === "listen") {
+    return ui.listenPhase;
+  }
+  if (id === "reading") {
+    return ui.reading;
+  }
+  if (id === "shadow") {
+    return ui.speech;
+  }
+  if (id === "note") {
+    return ui.note;
+  }
+  return ui.journal;
 }
 
 export function givenName(email: string, displayName?: string | null): string {
@@ -214,8 +265,12 @@ export function givenName(email: string, displayName?: string | null): string {
   if (named) {
     return named.split(/\s+/)[0] ?? named;
   }
-  const local = email.split("@")[0] ?? "você";
+  const local = email.split("@")[0] ?? "";
+  if (!local) {
+    return "";
+  }
   return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
 hydrateLocale();
+applyDocumentLocale();

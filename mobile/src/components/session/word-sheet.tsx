@@ -1,40 +1,43 @@
 import { Pressable, Text } from "react-native";
 import { GlassSheet } from "@/components/session/glass-sheet";
-import type { VocabularyEntry } from "@/lib/types";
+import { useCopy } from "@/lib/i18n";
+import { keepWords } from "@/lib/text";
 
 export function WordSheet({
   token,
-  entry,
+  word,
+  translation,
+  sentence,
+  extra,
   saved,
   onClose,
   onSave,
 }: {
   token: string | null;
-  entry: VocabularyEntry | undefined;
+  word: string;
+  translation: string;
+  sentence: string;
+  extra: boolean;
   saved: boolean;
   onClose: () => void;
   onSave: () => void;
 }) {
+  const copy = useCopy();
   return (
-    <GlassSheet visible={token !== null} onClose={onClose} label="Tradução">
-      <Text className="font-display mt-2 text-3xl text-ink">{entry?.word ?? token}</Text>
-      {entry ? (
-        <>
-          <Text className="mt-3 text-xl text-ink">{entry.translation}</Text>
-          <Text className="mt-3 text-base leading-6 text-muted">{entry.example_sentence}</Text>
-        </>
-      ) : (
-        <Text className="mt-3 text-base leading-6 text-muted">Esta palavra não entrou no vocabulário de hoje.</Text>
-      )}
+    <GlassSheet visible={token !== null} onClose={onClose} label={copy.guideWordTitle}>
+      <Text className="font-display mt-2 text-3xl text-ink">{word || token}</Text>
+      {translation ? <Text className="mt-3 text-xl text-ink">{keepWords(translation)}</Text> : null}
+      {sentence ? <Text className="mt-3 text-base leading-6 text-muted">{keepWords(sentence)}</Text> : null}
+      {extra ? <Text className="mt-3 text-base leading-6 text-muted">{keepWords(copy.extraWordNote)}</Text> : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityState={{ disabled: !entry || saved }}
-        disabled={!entry || saved}
+        accessibilityState={{ disabled: saved }}
+        disabled={saved}
         onPress={onSave}
-        className={`mt-6 min-h-12 items-center justify-center rounded-full px-4 ${!entry || saved ? "bg-line" : "bg-ember"}`}
+        className={`mt-6 min-h-12 cursor-pointer items-center justify-center rounded-full px-4 ${saved ? "bg-mossSoft" : "bg-ember"}`}
       >
-        <Text className={`text-base font-semibold ${!entry || saved ? "text-muted" : "text-onEmber"}`}>
-          {saved ? "Já está no deck" : "Salvar no deck"}
+        <Text className={`text-base font-semibold ${saved ? "text-moss" : "text-onEmber"}`}>
+          {saved ? copy.alreadyInDeck : copy.saveToDeck}
         </Text>
       </Pressable>
     </GlassSheet>

@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { kv } from "@/lib/kv";
+import { dayIndex, localDate } from "@/lib/listen-pace";
 
 export interface NarrationVoice {
   id: string;
@@ -41,8 +42,12 @@ export function voicesFor(lang: string): NarrationVoice[] {
   return VOICES.filter((voice) => voice.lang === code);
 }
 
-export function defaultVoiceId(lang: string): string {
-  return voicesFor(lang)[0]?.id ?? "";
+export function defaultVoiceId(lang: string, date = localDate()): string {
+  const options = voicesFor(lang);
+  if (options.length === 0) {
+    return "";
+  }
+  return options[dayIndex(date, options.length)]?.id ?? "";
 }
 
 export function sampleLine(lang: string): string {

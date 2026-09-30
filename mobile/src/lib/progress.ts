@@ -8,6 +8,7 @@ import {
 } from "@/lib/reconstruction";
 import { getSession } from "@/lib/session";
 import type { ReviewQuality } from "@/lib/sm2";
+import { cardsForThrough } from "@/lib/through-lang";
 import type { LessonPayload, LessonRequest, SessionCard } from "@/lib/types";
 
 const STORAGE_KEY = "prosa.progress.v1";
@@ -44,10 +45,11 @@ export interface ProgressState {
   reconstruction: ReconstructionAnchor | null;
   reconstructionNext: ReconstructionAnchor | null;
   cognateKeys: string[];
+  skills: { reading: number; listening: number } | null;
 }
 
 export const BADGES = [
-  { code: "first_flame", name: "Primeira fogueira", description: "Conclua uma prosa de 20 minutos." },
+  { code: "first_flame", name: "Primeira fogueira", description: "Conclua uma lição de 20 minutos." },
   { code: "streak_3", name: "Três dias", description: "Mantenha a ofensiva por 3 dias." },
   { code: "streak_7", name: "Semana inteira", description: "Mantenha a ofensiva por 7 dias." },
   { code: "words_10", name: "Dez palavras", description: "Domine 10 palavras no SM-2." },
@@ -73,6 +75,28 @@ function emptyProgress(): ProgressState {
     reconstruction: null,
     reconstructionNext: null,
     cognateKeys: [],
+    skills: null,
+  };
+}
+
+function skillPercent(item: { correct: number; total: number } | undefined): number | null {
+  if (!item || item.total <= 0) {
+    return null;
+  }
+  return Math.max(0, Math.min(100, Math.round((item.correct / item.total) * 100)));
+}
+
+function readSkills(value: unknown): { reading: number; listening: number } | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const row = value as { reading?: unknown; listening?: unknown };
+  if (typeof row.reading !== "number" || typeof row.listening !== "number") {
+    return null;
+  }
+  return {
+    reading: Math.max(0, Math.min(100, Math.round(row.reading))),
+    listening: Math.max(0, Math.min(100, Math.round(row.listening))),
   };
 }
 
@@ -116,6 +140,7 @@ function parseProgress(raw: string): ProgressState {
       reconstruction: isAnchor(value.reconstruction) ? value.reconstruction : null,
       reconstructionNext: isAnchor(value.reconstructionNext) ? value.reconstructionNext : null,
       cognateKeys: Array.isArray(value.cognateKeys) ? value.cognateKeys.filter((item) => typeof item === "string").slice(0, 5) : [],
+      skills: readSkills(value.skills),
     };
   } catch {
     return emptyProgress();
@@ -243,29 +268,182 @@ function mergeCards(existing: SessionCard[], incoming: SessionCard[]): SessionCa
   return [...byPhrase.values()];
 }
 
+type LaneState = Omit<ProgressState, "pro" | "streakCount" | "lastLessonDate" | "streakFreezeCount">;
+
+interface ProgressBag {
+  version: 2;
+  pro: boolean;
+  streakCount: number;
+  lastLessonDate: string | null;
+  streakFreezeCount: number;
+  activeLang: string;
+  lanes: Record<string, LaneState>;
+}
+
+function takeLane(state: ProgressState): LaneState {
+  const { pro: _pro, streakCount: _streak, lastLessonDate: _last, streakFreezeCount: _freeze, ...lane } = state;
+  return lane;
+}
+
+function emptyLane(): LaneState {
+  return takeLane(emptyProgress());
+}
+
+function emptyBag(): ProgressBag {
+  return {
+    version: 2,
+    pro: false,
+    streakCount: 0,
+    lastLessonDate: null,
+    streakFreezeCount: 1,
+    activeLang: "pending",
+    lanes: { pending: emptyLane() },
+  };
+}
+
+function parseLane(value: unknown): LaneState {
+  return takeLane(parseProgress(JSON.stringify({ ...emptyProgress(), ...(value && typeof value === "object" ? value : {}) })));
+}
+
+function parseBag(raw: string): ProgressBag {
+  try {
+    const value = JSON.parse(raw) as Partial<ProgressBag> & Partial<ProgressState>;
+    if (value && value.version === 2 && value.lanes && typeof value.lanes === "object") {
+      const lanes: Record<string, LaneState> = {};
+      for (const [lang, lane] of Object.entries(value.lanes)) {
+        lanes[lang] = parseLane(lane);
+      }
+      if (Object.keys(lanes).length === 0) {
+        lanes.pending = emptyLane();
+      }
+      return {
+        version: 2,
+        pro: value.pro === true,
+        streakCount: Math.max(0, numberOr(value.streakCount, 0)),
+        lastLessonDate: typeof value.lastLessonDate === "string" ? value.lastLessonDate : null,
+        streakFreezeCount: Math.max(0, numberOr(value.streakFreezeCount, 1)),
+        activeLang: typeof value.activeLang === "string" && value.activeLang ? value.activeLang : "pending",
+        lanes,
+      };
+    }
+  } catch {
+    return emptyBag();
+  }
+  const legacy = parseProgress(raw);
+  return {
+    version: 2,
+    pro: legacy.pro,
+    streakCount: legacy.streakCount,
+    lastLessonDate: legacy.lastLessonDate,
+    streakFreezeCount: legacy.streakFreezeCount,
+    activeLang: "pending",
+    lanes: { pending: takeLane(legacy) },
+  };
+}
+
 const serverProgress = emptyProgress();
-let state = serverProgress;
+let bag = emptyBag();
+let snapshot = composeView(bag);
 const listeners = new Set<() => void>();
 
+function composeView(next: ProgressBag): ProgressState {
+  const lane = next.lanes[next.activeLang] ?? emptyLane();
+  return {
+    ...lane,
+    pro: next.pro,
+    streakCount: next.streakCount,
+    lastLessonDate: next.lastLessonDate,
+    streakFreezeCount: next.streakFreezeCount,
+  };
+}
+
+function view(): ProgressState {
+  return snapshot;
+}
+
 function emit(): void {
-  kv.set(STORAGE_KEY, JSON.stringify(state));
+  snapshot = composeView(bag);
+  kv.set(STORAGE_KEY, JSON.stringify(bag));
   listeners.forEach((listener) => listener());
 }
 
 function update(recipe: (current: ProgressState) => ProgressState): void {
-  state = recipe(state);
+  const current = view();
+  const next = recipe(current);
+  if (next === current) {
+    return;
+  }
+  bag = {
+    ...bag,
+    pro: next.pro,
+    streakCount: next.streakCount,
+    lastLessonDate: next.lastLessonDate,
+    streakFreezeCount: next.streakFreezeCount,
+    lanes: { ...bag.lanes, [bag.activeLang]: takeLane(next) },
+  };
   emit();
 }
 
 export function hydrateProgress(): void {
   const raw = kv.getString(STORAGE_KEY);
   if (raw) {
-    state = parseProgress(raw);
+    bag = parseBag(raw);
   }
+  snapshot = composeView(bag);
 }
 
 export function getProgress(): ProgressState {
-  return state;
+  return snapshot;
+}
+
+export function switchProgressLang(lang: string): void {
+  const key = lang.trim().toLowerCase();
+  if (!key || key === bag.activeLang) {
+    if (!bag.lanes[key]) {
+      bag = { ...bag, lanes: { ...bag.lanes, [key]: emptyLane() } };
+      emit();
+    }
+    return;
+  }
+  const lanes = { ...bag.lanes };
+  if (!lanes[key]) {
+    lanes[key] = emptyLane();
+  }
+  bag = { ...bag, activeLang: key, lanes };
+  emit();
+}
+
+export function bindProgressLang(lang: string): void {
+  const key = lang.trim().toLowerCase();
+  if (!key) {
+    return;
+  }
+  const lanes = { ...bag.lanes };
+  let changed = false;
+  if (lanes.pending && key !== "pending" && !lanes[key]) {
+    lanes[key] = lanes.pending;
+    delete lanes.pending;
+    changed = true;
+  }
+  if (!lanes[key]) {
+    lanes[key] = emptyLane();
+    changed = true;
+  }
+  if (bag.activeLang === key && !changed) {
+    return;
+  }
+  bag = { ...bag, activeLang: key, lanes };
+  emit();
+}
+
+export function laneStats(lang: string): { learning: number; mastered: number; words: number } {
+  const lane = bag.lanes[lang.trim().toLowerCase()];
+  if (!lane) {
+    return { learning: 0, mastered: 0, words: 0 };
+  }
+  const mastered = lane.cards.filter((card) => card.status === "mastered").length;
+  const learning = lane.cards.filter((card) => card.status !== "mastered").length;
+  return { learning, mastered, words: lane.cards.length };
 }
 
 export function subscribeProgress(listener: () => void): () => void {
@@ -280,6 +458,46 @@ export function useProgress(): ProgressState {
 export function cardsForLesson(lessonCards: SessionCard[], stored: SessionCard[]): SessionCard[] {
   const byPhrase = new Map(stored.map((card) => [card.front_phrase.toLowerCase(), card]));
   return lessonCards.map((card) => byPhrase.get(card.front_phrase.toLowerCase()) ?? card);
+}
+
+export function mergeServerCards(local: SessionCard[], remote: SessionCard[]): SessionCard[] {
+  const byPhrase = new Map(local.map((card) => [card.front_phrase.toLowerCase(), card]));
+  for (const card of remote) {
+    const key = card.front_phrase.toLowerCase();
+    const existing = byPhrase.get(key);
+    byPhrase.set(key, existing ? { ...existing, ...card, id: card.id || existing.id } : card);
+  }
+  return [...byPhrase.values()];
+}
+
+export function reviewQueue(
+  lessonCards: SessionCard[],
+  stored: SessionCard[],
+  now = Date.now(),
+  throughLang?: string,
+): SessionCard[] {
+  const held = throughLang ? cardsForThrough(stored, throughLang) : stored;
+  const incoming = throughLang ? cardsForThrough(lessonCards, throughLang) : lessonCards;
+  const lesson = cardsForLesson(incoming, held);
+  const keys = new Set(lesson.map((card) => card.front_phrase.toLowerCase()));
+  const due = held.filter((card) => {
+    if (keys.has(card.front_phrase.toLowerCase()) || !card.due) {
+      return false;
+    }
+    const at = Date.parse(card.due);
+    return Number.isFinite(at) && at <= now;
+  });
+  return [...due.slice(0, 12), ...lesson];
+}
+
+export function dropForeignGlosses(throughLang: string): void {
+  update((current) => {
+    const cards = cardsForThrough(current.cards, throughLang);
+    if (cards.length === current.cards.length) {
+      return current;
+    }
+    return { ...current, cards };
+  });
 }
 
 export function rememberLesson(
@@ -363,6 +581,18 @@ export function recordJournal(): void {
   update((current) => withBadges({ ...current, journalCount: current.journalCount + 1 }));
 }
 
+export function rememberSkills(skills: Array<{ skill: string; correct: number; total: number }>): void {
+  const reading = skillPercent(skills.find((item) => item.skill === "reading"));
+  const listening = skillPercent(skills.find((item) => item.skill === "listening"));
+  if (reading === null || listening === null) {
+    return;
+  }
+  update((current) => ({
+    ...current,
+    skills: { reading, listening },
+  }));
+}
+
 export function noteCognateLesson(date: string, topic: string): void {
   const key = `${date}:${topic}`;
   update((current) => {
@@ -384,6 +614,11 @@ export function setPro(pro: boolean): void {
   update((current) => ({ ...current, pro }));
 }
 
+export function clearLocalProgress(): void {
+  bag = emptyBag();
+  emit();
+}
+
 export function applyRemoteFreeze(count: number): void {
   const next = Math.max(0, Math.floor(count));
   update((current) => (current.streakFreezeCount === next ? current : { ...current, streakFreezeCount: next }));
@@ -397,7 +632,7 @@ let syncSnapshot: SyncSnapshot = { phase: "device", pending: 0 };
 const syncListeners = new Set<() => void>();
 
 function publishSync(phase: SyncPhase): void {
-  syncSnapshot = { phase, pending: state.pendingReviews.length };
+  syncSnapshot = { phase, pending: view().pendingReviews.length };
   syncListeners.forEach((listener) => listener());
 }
 
@@ -420,7 +655,7 @@ export async function flushReviews(): Promise<void> {
     publishSync("device");
     return;
   }
-  if (state.pendingReviews.length === 0) {
+  if (view().pendingReviews.length === 0) {
     publishSync("sent");
     return;
   }
@@ -430,7 +665,7 @@ export async function flushReviews(): Promise<void> {
   }
   flushing = true;
   publishSync("queued");
-  const batch = state.pendingReviews.slice(0, 50);
+  const batch = view().pendingReviews.slice(0, 50);
   try {
     const synced = await syncReviews(session.token, session.user.id, batch);
     const done = new Set(synced);
@@ -438,7 +673,7 @@ export async function flushReviews(): Promise<void> {
       ...current,
       pendingReviews: current.pendingReviews.filter((review) => !done.has(review.client_id)),
     }));
-    publishSync(state.pendingReviews.length === 0 ? "sent" : "queued");
+    publishSync(view().pendingReviews.length === 0 ? "sent" : "queued");
   } catch {
     publishSync("paused");
   } finally {

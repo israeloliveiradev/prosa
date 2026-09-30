@@ -27,25 +27,46 @@ export interface CadenceBar {
   note: "apressou" | "alongou" | "no tempo";
 }
 
+export interface SoundNote {
+  word: string;
+  sound: { pt: string; en: string };
+  held: boolean;
+  heard: string;
+  hint: { pt: string; en: string };
+}
+
 export interface ShadowingResult {
   transcription: string;
   accuracy_score: number;
   mispronounced_words: string[];
+  sounds?: SoundNote[];
   pitch_rhythm_match?: number;
   cadence_match?: number;
   bars?: CadenceBar[];
 }
 
+export type RepairStep = "none" | "prompt" | "hint" | "correction";
+
 export interface JournalCorrection {
   original: string;
   corrected: string;
   reason: string;
+  kind?: string;
+  step?: RepairStep;
+}
+
+export interface RepairCard {
+  front_phrase: string;
+  back_translation: string;
+  context_sentence: string;
 }
 
 export interface JournalEvaluation {
   score: number;
   corrections: JournalCorrection[];
   native_upgrade: string;
+  step?: RepairStep;
+  cards?: RepairCard[];
 }
 
 export interface ReconstructionNote {
@@ -64,6 +85,8 @@ export interface ReconstructionReport {
   score: number;
   grammar: ReconstructionNote[];
   literals: ReconstructionLiteral[];
+  step?: RepairStep;
+  cards?: RepairCard[];
 }
 
 export type CardStatus = "learning" | "reviewing" | "mastered";
@@ -77,9 +100,50 @@ export interface SessionCard {
   interval_days: number;
   ease_factor: number;
   status: CardStatus;
+  stability?: number;
+  difficulty?: number;
+  due?: string;
+  reviewed_at?: string;
 }
 
-export type PhaseId = "reading" | "review" | "shadow" | "journal";
+export type PhaseId = "review" | "listen" | "reading" | "shadow" | "journal" | "note";
+
+export interface LearnerProfile {
+  reading: number;
+  listening: number;
+  vocabulary: number;
+  grammar: number;
+  pronunciation: number;
+  fluency: number;
+  writing: number;
+  hearing: number;
+  lexicon_size: number;
+  coverage: number;
+  error_kinds: string[];
+  weak_sounds: string[];
+  goal: string;
+  weekly_aim: string;
+  minutes_per_day: number;
+  exam_track: string;
+  fluency_wpm: number;
+}
+
+export interface ProfileNote {
+  force: "listen" | "reading" | "none";
+  gap: number;
+  weak: keyof Pick<LearnerProfile, "reading" | "listening" | "vocabulary" | "grammar" | "pronunciation" | "fluency" | "writing"> | null;
+}
+
+export interface ClockHint {
+  listeningGap: number;
+  slowStart: boolean;
+}
+
+export interface CourseProfile {
+  profile: LearnerProfile;
+  note: ProfileNote;
+  clock: ClockHint;
+}
 
 export interface LessonRequest {
   target_lang: string;

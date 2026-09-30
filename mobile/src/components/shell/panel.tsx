@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
-import { Text, TextInput, View } from "react-native";
+import { useState } from "react";
+import { Pressable, Text, TextInput, View, type TextInputProps } from "react-native";
+import { Icon } from "@/components/shell/icon";
+import { useCopy } from "@/lib/i18n";
+import { normalizeOtp } from "@/lib/otp";
 import { keepWords } from "@/lib/text";
 import { useTheme } from "@/theme/ThemeContext";
 
@@ -34,6 +38,11 @@ export function SoftInput({
   email,
   code,
   placeholder,
+  autoComplete,
+  textContentType,
+  nativeID,
+  invalid,
+  describedBy,
 }: {
   value: string;
   onChangeText: (value: string) => void;
@@ -42,20 +51,51 @@ export function SoftInput({
   email?: boolean;
   code?: boolean;
   placeholder?: string;
+  autoComplete?: TextInputProps["autoComplete"];
+  textContentType?: TextInputProps["textContentType"];
+  nativeID?: string;
+  invalid?: boolean;
+  describedBy?: string;
 }) {
   const { palette } = useTheme();
-  return (
+  const copy = useCopy();
+  const [revealed, setRevealed] = useState(false);
+  const complete = autoComplete ?? (code ? "one-time-code" : email ? "email" : secure ? "new-password" : undefined);
+  const content = textContentType ?? (code ? "oneTimeCode" : email ? "emailAddress" : secure ? "newPassword" : undefined);
+  const field = (
     <TextInput
       value={value}
-      onChangeText={onChangeText}
+      onChangeText={code ? (next) => onChangeText(normalizeOtp(next)) : onChangeText}
+      nativeID={nativeID}
       accessibilityLabel={label}
+      aria-invalid={invalid}
+      aria-describedby={describedBy}
       placeholder={placeholder}
-      secureTextEntry={secure}
+      secureTextEntry={Boolean(secure) && !revealed}
       autoCapitalize="none"
       autoCorrect={false}
+      autoComplete={complete}
+      textContentType={content}
       keyboardType={code ? "number-pad" : email ? "email-address" : "default"}
       placeholderTextColor={palette.onSurfaceVariant}
-      className={`min-h-14 rounded-2xl border border-line bg-paper px-5 text-base text-ink ${code ? "text-center font-label tracking-[0.4em]" : ""}`}
+      className={`min-h-14 rounded-2xl border border-line bg-paper px-5 text-base text-ink ${secure ? "pr-14" : ""} ${code ? "text-center font-label tracking-[0.4em]" : ""}`}
     />
+  );
+  if (!secure) {
+    return field;
+  }
+  return (
+    <View className="relative">
+      {field}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={revealed ? copy.hidePassword : copy.showPassword}
+        accessibilityState={{ selected: revealed }}
+        onPress={() => setRevealed((open) => !open)}
+        className="absolute bottom-0 right-0 top-0 z-10 min-w-12 cursor-pointer items-center justify-center"
+      >
+        <Icon name={revealed ? "eyeOff" : "eye"} color={palette.onSurfaceVariant} />
+      </Pressable>
+    </View>
   );
 }

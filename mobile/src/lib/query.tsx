@@ -4,8 +4,8 @@ import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persist
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { hydrateGuide } from "@/lib/guide";
 import { kv } from "@/lib/kv";
-import { flushReviews, hydrateProgress, setPro } from "@/lib/progress";
-import { hydrateSession, refreshSession } from "@/lib/session";
+import { bindProgressLang, dropForeignGlosses, flushReviews, hydrateProgress, setPro } from "@/lib/progress";
+import { getSession, hydrateSession, refreshSession } from "@/lib/session";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,10 +46,18 @@ export function ProsaQueryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     hydrateProgress();
     hydrateSession();
+    const current = getSession();
+    if (current) {
+      bindProgressLang(current.user.target_lang);
+      dropForeignGlosses(current.user.native_lang);
+    }
+    kv.delete("prosa.guest.v1");
     hydrateGuide();
     setReady(true);
     void refreshSession().then((user) => {
       if (user) {
+        bindProgressLang(user.target_lang);
+        dropForeignGlosses(user.native_lang);
         setPro(user.plan === "pro");
       }
     });
