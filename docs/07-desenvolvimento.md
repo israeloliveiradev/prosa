@@ -16,7 +16,7 @@ cp secrets/runtime.env.example secrets/runtime.env
 
 Preencha as senhas e `GEMINI_API_KEY`. `GEMINI_MODEL` pode ficar no exemplo ou apontar para o modelo da conta Google. `STRIPE_SECRET_KEY` e `STRIPE_PRICE_ID` podem ficar vazios até existir um preço. `ADMIN_EMAILS` é a lista, separada por vírgula, dos e-mails que entram em `/admin`. `CORS_ORIGINS` é opcional: origens extras do app web, além de `APP_PUBLIC_URL` e `localhost:8081`.
 
-O Compose local já define `SMTP_HOST=mailpit` e `MAIL_INBOX_URL=http://localhost:8025`. Sem um desses canais de correio, o registro responde 503.
+O Compose local usa o Mailpit só se não houver Mailjet (`MAILJET_API_KEY` + `MAILJET_API_SECRET`), Resend ou Brevo em `secrets/runtime.env`. Com essas chaves, a API entrega na caixa real e ignora o Mailpit. `MAIL_FROM` precisa ser um remetente verificado no provedor. Sem nenhum canal de correio, o registro responde 503.
 
 O arquivo real está no `.gitignore` (`secrets/*.env`, `.env`, `.env.*`). Não o commite. A imagem Docker também não o copia (`.dockerignore`).
 
@@ -90,6 +90,14 @@ A URL da API é `EXPO_PUBLIC_API_URL`. Sem ela, o cliente usa `http://127.0.0.1:
 ```bash
 cd mobile
 npx tsc --noEmit
+```
+
+## QA
+
+O agente de qualidade mora em `.cursor/skills/prosa-qa/`. Ele anda API, Mailpit, rotas web e heurísticas de UI/UX, grava `docs/qa/` e abre issue para o desenvolvedor — não corrige produto sozinho.
+
+```bash
+node .cursor/skills/prosa-qa/scripts/smoke.mjs
 ```
 
 ## Onde mexer

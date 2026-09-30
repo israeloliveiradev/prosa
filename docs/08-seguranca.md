@@ -115,7 +115,7 @@ O `fetch` de RSS só aceita HTTPS nos hosts do catálogo e usa `redirect: error`
 ## Ações manuais antes de produção
 
 1. Preencher `secrets/runtime.env` na máquina (nunca no Git): senhas, `GEMINI_API_KEY`, `ADMIN_EMAILS`.
-2. Ligar correio de verdade (`SMTP_HOST` ou Resend/Brevo). Sem isso o registro fica 503, de propósito.
+2. Ligar correio de verdade (`MAILJET_API_KEY` e `MAILJET_API_SECRET`, ou Resend/Brevo, com `MAIL_FROM` verificado). Sem isso o Compose cai no Mailpit local; sem nenhum canal o registro fica 503.
 3. Ajustar `APP_PUBLIC_URL` para a origem pública do app. Se houver mais origens, `CORS_ORIGINS`.
 4. Se houver Stripe: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, e de preferência um webhook além do GET de sessão.
 5. Não expor 3000, 5433, 6380, 8077, 8025 nem 1025 em `0.0.0.0`. O Compose local já prende em `127.0.0.1`.

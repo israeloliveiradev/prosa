@@ -87,7 +87,7 @@ A documentação longa está em `docs/`.
 cp secrets/runtime.env.example secrets/runtime.env
 ```
 
-Preencha `POSTGRES_PASSWORD`, `REDIS_PASSWORD` e `GEMINI_API_KEY`. O modelo em uso é o que estiver em `GEMINI_MODEL`. Sem a chave, as rotas de geração respondem 503. Sem correio, o registro responde 503. `ADMIN_EMAILS` lista os e-mails que abrem a administração.
+Preencha `POSTGRES_PASSWORD`, `REDIS_PASSWORD` e `GEMINI_API_KEY`. O modelo em uso é o que estiver em `GEMINI_MODEL`. Sem a chave, as rotas de geração respondem 503. `MAILJET_API_KEY` e `MAILJET_API_SECRET` (ou Resend/Brevo) entregam o correio na caixa real; sem isso o Compose usa o Mailpit. Sem nenhum canal, o registro responde 503. `ADMIN_EMAILS` lista os e-mails que abrem a administração.
 
 ```bash
 docker compose up -d --build

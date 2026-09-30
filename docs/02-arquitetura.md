@@ -87,7 +87,7 @@ Login, verificação, reset e 2FA têm lockout: dez falhas na mesma identidade e
 
 ## Correio
 
-`Mailer` escolhe o primeiro canal configurado: SMTP (`SMTP_HOST` / `SMTP_PORT`), depois Brevo, depois Resend. O envelope SMTP rejeita CR, LF e endereço que não passa no validador. As cartas são HTML multipart com Newsreader e Source Sans 3, geradas em `src/services/mail-templates.ts`. O Mailpit local aparece só se o host do inbox for loopback.
+`Mailer` escolhe o primeiro canal configurado: Mailjet, depois Resend, depois Brevo, depois SMTP (`SMTP_HOST` / `SMTP_PORT`). Com Mailjet, Resend ou Brevo, o Mailpit local não entra na rota. O envelope SMTP rejeita CR, LF e endereço que não passa no validador. As cartas são HTML multipart com Newsreader e Source Sans 3, geradas em `src/services/mail-templates.ts`. O Mailpit local aparece só se o canal ativo for SMTP no host `mailpit`.
 
 ## Notícia
 
