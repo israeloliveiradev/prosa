@@ -26,6 +26,14 @@ describe("generateLessonBodySchema", () => {
     const parsed = generateLessonBodySchema.safeParse({ topic: "coffee" });
     assert.equal(parsed.success, false);
   });
+
+  it("rejects a guest body that only names another account", () => {
+    const parsed = generateLessonBodySchema.safeParse({
+      user_id: "6f1b1c2a-3d4e-4f50-8a61-123456789abc",
+      topic: "coffee",
+    });
+    assert.equal(parsed.success, false);
+  });
 });
 
 describe("syncReviewsBodySchema", () => {

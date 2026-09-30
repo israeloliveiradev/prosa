@@ -1,8 +1,6 @@
 import type { Pool } from "pg";
 import type { Redis } from "ioredis";
-import { z } from "zod";
 import { AppError } from "../http/errors.js";
-import { CEFR_LEVELS } from "../types/database.js";
 import {
   type GenerateLessonBody,
   type LessonPayload,
@@ -75,7 +73,7 @@ export class LessonService {
     const existing = await this.cache.get(hash);
     if (existing) {
       this.noteLessonCache();
-      await this.persistDailyLesson(user?.id ?? input.user_id, existing, profile);
+      await this.persistDailyLesson(user?.id, existing, profile);
       if (user && cognate) {
         await this.noteCognateLesson(user.id);
       }
@@ -90,7 +88,7 @@ export class LessonService {
         throw new AppError(503, "Lesson generation is already in progress");
       }
       this.noteLessonCache();
-      await this.persistDailyLesson(user?.id ?? input.user_id, waited, profile);
+      await this.persistDailyLesson(user?.id, waited, profile);
       if (user && cognate) {
         await this.noteCognateLesson(user.id);
       }
@@ -101,7 +99,7 @@ export class LessonService {
       const again = await this.cache.get(hash);
       if (again) {
         this.noteLessonCache();
-        await this.persistDailyLesson(user?.id ?? input.user_id, again, profile);
+        await this.persistDailyLesson(user?.id, again, profile);
         if (user && cognate) {
           await this.noteCognateLesson(user.id);
         }
@@ -113,7 +111,7 @@ export class LessonService {
       }
       const created = await this.gemini.generateLesson(profile, cognate ? anchors : []);
       const stored = await this.cache.put(hash, created);
-      await this.persistDailyLesson(user?.id ?? input.user_id, stored, profile);
+      await this.persistDailyLesson(user?.id, stored, profile);
       if (user && cognate) {
         await this.noteCognateLesson(user.id);
       }
@@ -204,40 +202,21 @@ export class LessonService {
   }
 
   private async resolveProfile(input: GenerateLessonBody): Promise<LessonProfile> {
-    if (!input.user_id) {
-      if (!input.target_lang || !input.native_lang || !input.level) {
-        throw new AppError(400, "target_lang, native_lang and level are required when user_id is absent");
-      }
-      return {
-        target_lang: input.target_lang.toLowerCase(),
-        native_lang: input.native_lang.toLowerCase(),
-        level: input.level,
-        topic: input.topic,
-        interests: input.interests ?? [],
-        minds: parseCast({
-          reading: input.mind_reading,
-          memory: input.mind_memory,
-          speech: input.mind_speech,
-          journal: input.mind_journal,
-        }),
-      };
-    }
-
-    const result = await this.pool.query<{ native_lang: string; target_lang: string; level: string }>(
-      "SELECT native_lang, target_lang, level FROM users WHERE id = $1",
-      [input.user_id],
-    );
-    const row = result.rows[0];
-    if (!row) {
-      throw new AppError(404, "User not found");
+    if (!input.target_lang || !input.native_lang || !input.level) {
+      throw new AppError(400, "target_lang, native_lang and level are required");
     }
     return {
-      target_lang: row.target_lang.toLowerCase(),
-      native_lang: row.native_lang.toLowerCase(),
-      level: z.enum(CEFR_LEVELS).parse(row.level),
+      target_lang: input.target_lang.toLowerCase(),
+      native_lang: input.native_lang.toLowerCase(),
+      level: input.level,
       topic: input.topic,
       interests: input.interests ?? [],
-      minds: await this.loadMinds(input.user_id, input),
+      minds: parseCast({
+        reading: input.mind_reading,
+        memory: input.mind_memory,
+        speech: input.mind_speech,
+        journal: input.mind_journal,
+      }),
     };
   }
 
@@ -271,6 +250,7 @@ export class LessonService {
        )`,
       [userId, lesson.title, lesson.story_text, JSON.stringify(lesson.vocabulary), profile.target_lang, category],
     );
+    await this.pool.query("UPDATE users SET last_lesson_at = NOW() WHERE id = $1", [userId]);
   }
 
   private noteLessonCache(): void {

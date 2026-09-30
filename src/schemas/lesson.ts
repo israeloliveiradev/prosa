@@ -35,13 +35,10 @@ export const generateLessonBodySchema = z
     mind_journal: mindIdSchema.optional(),
   })
   .superRefine((value, context) => {
-    if (value.user_id) {
-      return;
-    }
     if (!value.target_lang || !value.native_lang || !value.level) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "target_lang, native_lang and level are required when user_id is absent",
+        message: "target_lang, native_lang and level are required",
       });
     }
   });

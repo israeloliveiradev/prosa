@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Pool } from "pg";
 import { readBearer, requireUser } from "../auth/session.js";
+import { AppError } from "../http/errors.js";
 import { generateLessonBodySchema } from "../schemas/lesson.js";
 import { listCognates } from "../services/cognates.js";
 import type { LessonService } from "../services/lesson-service.js";
@@ -24,8 +25,12 @@ export function registerLessonRoutes(app: FastifyInstance, lessons: LessonServic
       },
     },
     async (request, reply) => {
-      const body = generateLessonBodySchema.parse(request.body);
+      const parsed = generateLessonBodySchema.parse(request.body);
       const user = readBearer(request) ? await requireUser(pool, request) : undefined;
+      const body = user ? { ...parsed, user_id: user.id } : { ...parsed, user_id: undefined };
+      if (!user && (!body.target_lang || !body.native_lang || !body.level)) {
+        throw new AppError(400, "target_lang, native_lang and level are required");
+      }
       const result = await lessons.generate(body, user);
       reply.header("x-prosa-cache", result.cached ? "hit" : "miss");
       return { ...result.lesson, anchors: result.anchors };
