@@ -12,9 +12,12 @@ export async function promoteAdmin(pool: Pool, user: AuthUser, emails: ReadonlyS
 }
 
 export async function requireAdmin(pool: Pool, request: FastifyRequest, emails: ReadonlySet<string>): Promise<AuthUser> {
-  const user = await promoteAdmin(pool, await requireUser(pool, request), emails);
-  if (user.role !== "admin") {
+  const user = await requireUser(pool, request);
+  if (!emails.has(user.email.toLowerCase())) {
+    if (user.role === "admin") {
+      await pool.query("UPDATE users SET role = 'learner' WHERE id = $1 AND role = 'admin'", [user.id]);
+    }
     throw new AppError(403, "Administrator access required");
   }
-  return user;
+  return promoteAdmin(pool, user, emails);
 }

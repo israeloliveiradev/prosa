@@ -4,7 +4,14 @@ import type { Redis } from "ioredis";
 import { DATABASE_SCHEMA_VERSION } from "../types/database.js";
 
 export function registerHealthRoute(app: FastifyInstance, pool: Pool, redis: Redis): void {
-  app.get("/health", { config: { rateLimit: false } }, async (_request, reply) => {
+  app.get(
+    "/health",
+    {
+      config: {
+        rateLimit: { max: 60, timeWindow: "1 minute" },
+      },
+    },
+    async (_request, reply) => {
     try {
       await pool.query("SELECT 1");
       const pong = await redis.ping();

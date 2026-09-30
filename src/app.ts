@@ -85,7 +85,7 @@ export async function buildApp(env: Env) {
   const redis = createRedis(env);
   await redis.connect();
 
-  registerSecurityHeaders(app);
+  registerSecurityHeaders(app, env.APP_PUBLIC_URL);
 
   await app.register(cors, {
     origin: (origin, callback) => {
@@ -185,6 +185,7 @@ export async function buildApp(env: Env) {
   const factors = new SecondFactor(pool, redis, mailer);
   const verify = new EmailVerify(pool, redis, mailer);
   const reminders = new ReminderService(pool, redis, mailer);
+  void reminders.tick();
   const reminderTick = setInterval(() => {
     void reminders.tick();
   }, 15 * 60 * 1000);

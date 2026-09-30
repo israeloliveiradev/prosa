@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { requireUser } from "../auth/session.js";
@@ -146,12 +147,22 @@ async function applyReviews(client: PoolClient, body: SyncReviewsBody, targetLan
 
   const synced: string[] = [];
   for (const review of body.reviews) {
-    const existing = await client.query("SELECT client_id FROM srs_sync_events WHERE client_id = $1", [
-      review.client_id,
-    ]);
+    let eventId = review.client_id;
+    const existing = await client.query<{ user_id: string }>(
+      "SELECT user_id FROM srs_sync_events WHERE client_id = $1",
+      [review.client_id],
+    );
     if ((existing.rowCount ?? 0) > 0) {
-      synced.push(review.client_id);
-      continue;
+      if (existing.rows[0]?.user_id === body.user_id) {
+        synced.push(review.client_id);
+        continue;
+      }
+      eventId = createHash("sha256").update(`${body.user_id}:${review.client_id}`).digest("hex").slice(0, 32);
+      const remapped = await client.query("SELECT 1 FROM srs_sync_events WHERE client_id = $1", [eventId]);
+      if ((remapped.rowCount ?? 0) > 0) {
+        synced.push(review.client_id);
+        continue;
+      }
     }
 
     const found = await client.query<{
@@ -221,7 +232,7 @@ async function applyReviews(client: PoolClient, body: SyncReviewsBody, targetLan
     await client.query(
       `INSERT INTO srs_sync_events (client_id, user_id, card_id, quality)
        VALUES ($1, $2, $3, $4)`,
-      [review.client_id, body.user_id, card.id, review.quality],
+      [eventId, body.user_id, card.id, review.quality],
     );
     synced.push(review.client_id);
   }

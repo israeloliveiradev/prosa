@@ -181,6 +181,9 @@ export function registerAuthRoutes(
     },
     async (request) => {
       const body = forgotBodySchema.parse(request.body);
+      const lock = lockoutKey("verify-resend", body.email);
+      await assertNotLocked(redis, lock);
+      await recordFailure(redis, lock);
       const found = await pool.query<{ id: string; email: string; display_locale: "pt" | "en"; email_verified_at: Date | null }>(
         `SELECT id, email, display_locale, email_verified_at FROM users WHERE email = $1`,
         [body.email],
@@ -250,6 +253,9 @@ export function registerAuthRoutes(
     },
     async (request) => {
       const body = forgotBodySchema.parse(request.body);
+      const lock = lockoutKey("forgot", body.email);
+      await assertNotLocked(redis, lock);
+      await recordFailure(redis, lock);
       await reset.request(body.email);
       return { ok: true };
     },

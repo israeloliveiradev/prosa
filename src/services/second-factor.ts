@@ -187,7 +187,7 @@ export class SecondFactor {
 
   private async issueRecovery(userId: string): Promise<string[]> {
     await this.pool.query("DELETE FROM user_recovery_codes WHERE user_id = $1", [userId]);
-    const codes = Array.from({ length: 8 }, () => randomBytes(4).toString("hex"));
+    const codes = Array.from({ length: 8 }, () => randomBytes(16).toString("hex"));
     for (const code of codes) {
       await this.pool.query("INSERT INTO user_recovery_codes (user_id, code_hash) VALUES ($1, $2)", [
         userId,
