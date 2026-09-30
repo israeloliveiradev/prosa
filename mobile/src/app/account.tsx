@@ -12,8 +12,10 @@ import type { AccountUser } from "@/lib/api";
 import { confirmPasswordReset, fetchMailInbox, requestPasswordReset, resendAccountEmail } from "@/lib/api";
 import { tap } from "@/lib/haptics";
 import { givenName, getLocale, useCopy } from "@/lib/i18n";
+import { firstDayHref, syncFirstDay } from "@/lib/first-day";
 import { clearLocalProgress, setPro } from "@/lib/progress";
-import { finishSignIn, finishVerify, signIn, signOut, signUp, useSession } from "@/lib/session";
+import { finishSignIn, finishVerify, getSession, signIn, signOut, signUp, useSession } from "@/lib/session";
+import { wipeDeviceStudy } from "@/lib/wipe-device";
 import { normalizeOtp } from "@/lib/otp";
 import { passwordStrength } from "@/lib/prefs";
 import { keepWords } from "@/lib/text";
@@ -132,6 +134,11 @@ export default function AccountScreen() {
       }
       setPassword("");
       setOtp("");
+      const opened = getSession();
+      if (opened) {
+        await syncFirstDay(opened.token, opened.user);
+        router.replace(firstDayHref(opened.user.id) as Href);
+      }
     } catch (caught) {
       setError(accountMessage(caught instanceof Error ? caught.message : copy.apiSilent, copy));
     } finally {
@@ -143,7 +150,9 @@ export default function AccountScreen() {
     void tap("light");
     setPending(true);
     try {
+      const userId = session?.user.id;
       await signOut();
+      wipeDeviceStudy(userId);
       clearLocalProgress();
       router.replace("/account");
     } finally {

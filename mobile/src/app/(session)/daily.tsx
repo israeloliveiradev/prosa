@@ -208,10 +208,10 @@ export default function DailySession() {
   }, [lesson, elapsed >= SESSION_SECONDS]);
 
   useEffect(() => {
-    if (elapsed >= SESSION_SECONDS && lesson) {
+    if (elapsed >= SESSION_SECONDS && lesson && marks.wrote) {
       markSessionComplete(today);
     }
-  }, [elapsed, lesson, today]);
+  }, [elapsed, lesson, marks.wrote, today]);
 
   useEffect(() => {
     if (!lesson) {

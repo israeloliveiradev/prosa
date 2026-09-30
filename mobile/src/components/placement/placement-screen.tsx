@@ -38,10 +38,18 @@ function deltaLabel(copy: ReturnType<typeof useCopy>, previous: string | null, n
   return order.indexOf(next) > order.indexOf(previous) ? copy.placeUp : copy.placeDown;
 }
 
-export function PlacementScreen() {
+export function PlacementScreen({
+  embedded,
+  autoStart,
+  onDone,
+}: {
+  embedded?: boolean;
+  autoStart?: boolean;
+  onDone?: (level: string) => void;
+} = {}) {
   const session = useSession();
   const copy = useCopy();
-  const [phase, setPhase] = useState<Phase>("intro");
+  const [phase, setPhase] = useState<Phase>(autoStart ? "loading" : "intro");
   const [status, setStatus] = useState<PlacementStatus | null>(null);
   const [attempt, setAttempt] = useState<PlacementAttempt | null>(null);
   const [result, setResult] = useState<PlacementFinish | null>(null);
@@ -66,6 +74,40 @@ export function PlacementScreen() {
   useEffect(() => {
     void loadStatus();
   }, [loadStatus]);
+
+  const begin = useCallback(async () => {
+    if (!session) {
+      return;
+    }
+    setPending(true);
+    setError(null);
+    setPhase("loading");
+    try {
+      const next = await startPlacement(session.token, {
+        target_lang: session.user.target_lang,
+        through_lang: session.user.native_lang,
+      });
+      setAttempt(next);
+      const current = next.items[next.index];
+      setPicked(current ? (next.answered[current.id] ?? null) : null);
+      setPhase("play");
+      void tap("medium");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : copy.placeFailed);
+      setPhase("error");
+    } finally {
+      setPending(false);
+    }
+  }, [copy.placeFailed, session]);
+
+  const autoBegan = useRef(false);
+  useEffect(() => {
+    if (!autoStart || !session || autoBegan.current) {
+      return;
+    }
+    autoBegan.current = true;
+    void begin();
+  }, [autoStart, begin, session]);
 
   const clip = phase === "play" && itemKind(attempt) === "listening" ? currentAudio(attempt) : undefined;
   const clipLang = session?.user.target_lang ?? "en";
@@ -99,28 +141,6 @@ export function PlacementScreen() {
   const total = attempt?.items.length ?? 0;
   const cap = attempt?.adaptive ? (attempt.cap ?? 24) : total;
   const lastQuestion = Boolean(attempt && !attempt.adaptive && attempt.index >= total - 1);
-
-  async function begin() {
-    setPending(true);
-    setError(null);
-    setPhase("loading");
-    try {
-      const next = await startPlacement(token, {
-        target_lang: user.target_lang,
-        through_lang: user.native_lang,
-      });
-      setAttempt(next);
-      const current = next.items[next.index];
-      setPicked(current ? (next.answered[current.id] ?? null) : null);
-      setPhase("play");
-      void tap("medium");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : copy.placeFailed);
-      setPhase("error");
-    } finally {
-      setPending(false);
-    }
-  }
 
   function choose(choice: number) {
     if (!attempt || !item || pending) {
@@ -202,9 +222,8 @@ export function PlacementScreen() {
   }
 
   const target = user.target_lang;
-
-  return (
-    <AppFrame>
+  const body = (
+    <>
       {phase === "play" && attempt && item ? (
         <View className="gap-6">
           <View className="flex-row items-center justify-between gap-3">
@@ -339,14 +358,39 @@ export function PlacementScreen() {
               ))}
             </View>
           </View>
-          <HistoryList entries={result.history} empty={copy.placeEmptyHistory} title={copy.placeHistory} />
+          {embedded ? null : <HistoryList entries={result.history} empty={copy.placeEmptyHistory} title={copy.placeHistory} />}
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.replace("/" as Href)}
+            onPress={() => {
+              if (onDone) {
+                onDone(result.level);
+                return;
+              }
+              router.replace("/" as Href);
+            }}
             className="min-h-14 cursor-pointer items-center justify-center rounded-full bg-ember"
           >
-            <Text className="font-label text-base text-onEmber">{copy.navHome}</Text>
+            <Text className="font-label text-base text-onEmber">{embedded ? copy.startPlaceContinue : copy.navHome}</Text>
           </Pressable>
+        </View>
+      ) : autoStart ? (
+        <View className="gap-4">
+          <Text className="text-base text-muted">{copy.placePreparing}</Text>
+          {error ? (
+            <Text accessibilityRole="alert" className="text-sm text-roseInk">
+              {error}
+            </Text>
+          ) : null}
+          {phase === "error" ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={pending}
+              onPress={() => void begin()}
+              className="min-h-14 cursor-pointer items-center justify-center self-start rounded-full bg-ember px-6"
+            >
+              <Text className="font-label text-base text-onEmber">{copy.placeStart}</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : (
         <View className="gap-8">
@@ -388,8 +432,9 @@ export function PlacementScreen() {
           ) : null}
         </View>
       )}
-    </AppFrame>
+    </>
   );
+  return embedded ? body : <AppFrame>{body}</AppFrame>;
 }
 
 function currentAudio(attempt: PlacementAttempt | null): string | undefined {

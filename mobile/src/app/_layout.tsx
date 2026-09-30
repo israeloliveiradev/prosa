@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "@/global.css";
 import { isPublicPath } from "@/lib/guest";
+import { journeyFinished } from "@/lib/journey";
 import { ProsaQueryProvider, useProgressReady } from "@/lib/query";
 import { useSession } from "@/lib/session";
 import { peekSurfaceColor, ThemeProvider, useTheme } from "@/theme/ThemeContext";
@@ -68,6 +69,21 @@ function ThemedStack() {
     }
   }, [ready, open, publicPath, router]);
 
+  useEffect(() => {
+    if (!ready || !session) {
+      return;
+    }
+    if (pathname === "/start" || pathname === "/settings" || pathname === "/guide" || pathname === "/placement" || pathname === "/paywall" || pathname === "/quiz") {
+      return;
+    }
+    if (publicPath && pathname !== "/account") {
+      return;
+    }
+    if (!journeyFinished(session.user.id)) {
+      router.replace("/start");
+    }
+  }, [ready, session, publicPath, pathname, router]);
+
   if (!ready) {
     return <View style={{ flex: 1, backgroundColor: palette.surface }} accessibilityLabel="Carregando Prosa" />;
   }
@@ -87,6 +103,7 @@ function ThemedStack() {
           <Stack.Screen name="practice" />
           <Stack.Screen name="(session)" />
           <Stack.Screen name="(onboarding)" />
+          <Stack.Screen name="start" />
           <Stack.Screen name="paywall" />
           <Stack.Screen name="admin" />
           <Stack.Screen name="settings" />

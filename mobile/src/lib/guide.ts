@@ -46,6 +46,12 @@ export function guideSeen(area: GuideArea): boolean {
   return state.seen.includes(area);
 }
 
+export function resetGuide(): void {
+  state = { seen: [] };
+  kv.delete(STORAGE_KEY);
+  emit();
+}
+
 export function markGuideSeen(area: GuideArea): void {
   if (state.seen.includes(area)) {
     return;
