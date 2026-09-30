@@ -13,6 +13,7 @@ export default function GuideScreen() {
   const { people } = useCast();
   const names = people.map((person) => person.name);
   const sections = [
+    { title: copy.guideStartTitle, body: copy.guideStartBody },
     { title: copy.guideHomeTitle, body: copy.guideHomeBody },
     {
       title: copy.guideLessonTitle,
@@ -28,6 +29,8 @@ export default function GuideScreen() {
     { title: copy.guideNewsTitle, body: copy.guideNewsBody },
     { title: copy.guidePracticeTitle, body: copy.guidePracticeBody },
     { title: copy.guideMemoryTitle, body: copy.guideMemoryBody },
+    { title: copy.guideMoreTitle, body: copy.guideMoreBody },
+    { title: copy.guideMaxTitle, body: copy.guideMaxBody },
     { title: copy.guideAccountTitle, body: copy.guideAccountBody },
   ];
 

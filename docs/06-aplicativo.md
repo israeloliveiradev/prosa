@@ -30,7 +30,18 @@ npx expo start --web --port 8081
 | `src/app/reset.tsx` | `/reset` | Código de seis dígitos da carta de senha |
 | `src/app/guide.tsx` | `/guide` | Como usar o aplicativo |
 | `src/app/admin.tsx` | `/admin` | Resumo e plano das contas. Só admin |
-| `src/app/(onboarding)/quiz.tsx` | `/quiz` | Interesses e nível |
+| `src/app/start.tsx` | `/start` | Primeiro dia em fio: história → par → interesses → nivelamento → prosa |
+| `src/app/(onboarding)/quiz.tsx` | `/quiz` | Ajuste de interesses e pares depois do primeiro dia |
+| `src/app/placement.tsx` | `/placement` | Teste adaptativo do idioma ativo |
+| `src/app/exam.tsx` | `/exam` | Mock de exame, prompt original |
+| `src/app/score.tsx` | `/score` | Prosa Score |
+| `src/app/cert/[token].tsx` | `/cert/:token` | Certificado público |
+| `src/app/pairs.tsx` | `/pairs` | Fila de tandem |
+| `src/app/life.tsx` | `/life` | Ownlife, sem URL |
+| `src/app/org.tsx` | `/org` | Organização e setor |
+| `src/app/dossier/index.tsx` | `/dossier` | Pedido do dossiê |
+| `src/app/dossier/[token].tsx` | `/dossier/:token` | Dossiê público |
+| `src/app/prose.tsx` | `/prose` | Conversa com a mente do dia |
 
 O quadro `AppFrame` desenha a barra no topo. Abaixo de 1024 px o menu compacta. Não há barra inferior de abas.
 

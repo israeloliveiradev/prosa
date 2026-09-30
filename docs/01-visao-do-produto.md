@@ -1,34 +1,90 @@
 # Visão do produto
 
-O Prosa é uma sessão diária de vinte minutos para estudar um idioma através de outro. A pessoa lê uma história, revisa o vocabulário, fala em voz alta e escreve um diário curto. Não é um curso infinito: é uma prosa por dia, no idioma de estudo, explicada pelo idioma de apoio.
+O Prosa é uma sessão diária de **vinte minutos** para estudar um idioma **através de outro**. Não é um curso infinito: é uma prosa por dia, no idioma de estudo, explicada pelo idioma de apoio (o *through*). Português brasileiro é through, nunca alvo.
 
 O aplicativo nunca chama Gemini, Stripe nem Edge-TTS. Tudo passa pela API Fastify.
 
 O repositório público é [israeloliveiradev/prosa](https://github.com/israeloliveiradev/prosa).
 
-## A sessão
+## Como o dia se encaixa
 
-`SESSION_SECONDS` no aplicativo marca os vinte minutos. O relógio escolhe a etapa:
+```text
+conta  →  /start (história → par → interesses → nivelamento → prosa)
+      ↓
+início  →  prosa de 20 min  →  memória / notícia / prática
+      ↓
+a cada 3º dia: reconstrução e, no calendário, fluência 4/3/2
+      ↓
+quando quiser: pares, ownlife, exame, score, dossiê, org
+```
+
+1. Cria a conta e confirma o e-mail. Sem placement neste idioma, a Prosa abre `/start`.
+2. O primeiro dia é um fio: vinte minutos, o par, os interesses, o teste adaptativo, depois a prosa. O can-do descreve o que você já segura; **não muda** o nível.
+3. O botão terracota do Início abre `/daily`. Se já começou hoje, continua.
+4. O relógio divide os vinte minutos sozinho. Continuar pula a etapa e para o áudio.
+5. Notícia, duelo, cena e prosa viva **não substituem** a lição do dia. Servem para alongar o mesmo idioma.
+
+## A sessão de vinte minutos
+
+`SESSION_SECONDS` é 1200. O relógio monta as fases pelo tamanho da fila FSRS e pelo ouvido:
 
 | Etapa | Id | Quem ensina (padrão) | O que acontece |
 | --- | --- | --- | --- |
-| Leitura | `reading` | Einstein | História, áudio neural, viva-voz, toque na palavra, duplo toque gramatical |
-| Revisão | `review` | Curie | Cartas do vocabulário da lição, SM-2, palácio da memória quando a carta sofre |
-| Fala | `shadow` | Feynman | Até quatro frases para repetir, com acurácia e cadência |
-| Diário | `journal` | da Vinci | Texto curto. No terceiro dia, a reconstrução entra antes |
+| Revisão | `review` | Curie | Cartas devidas + vocabulário da lição, FSRS, palácio se a carta sofre |
+| Ouvir | `listen` | — | Escolha pelo ouvido, ritmo 0,75 / 1 / 1,15 |
+| Leitura | `reading` | Einstein | História, voz neural, viva-voz, toque na palavra, duplo toque gramatical |
+| Fala | `shadow` | Feynman | Repetir frases: acurácia e cadência |
+| Diário | `journal` | da Vinci | Texto curto. Escada: prompt → dica → correção. Só fecha quando a escada fecha |
+| Nota | `note` | — | Fecho curto do dia |
 
-Cada etapa tem quatro mentes famosas. A pessoa troca o elenco na conta. A personalidade entra no prompt da lição e na chave de cache (`:m:`), então Einstein e Platão não devolvem a mesma história.
+Se o ouvido está fraco, o relógio **tira tempo da leitura e dá para ouvir**. Se não há carta devida, a revisão encolhe e a leitura cresce.
 
-O botão Continuar pula para o início da etapa seguinte e para o áudio. O relógio, ao cruzar a fronteira sozinho, também para a narração comum. A fila do viva-voz continua enquanto a pessoa não toca em Continuar, Encerrar ou sai da sessão.
+**Reconstrução** (não é o diário comum): no dia 1 a tradução fica guardada. Dois dias depois a pessoa reescreve a história só a partir da tradução. A história original só aparece depois do envio.
 
-No fim, com os vinte minutos completos, aparece o convite para o duelo.
+**Fluência 4/3/2**: em todo dia de calendário cujo número % 3 === 0, a fala vira três voltas que encolhem. A primeira tentativa do diário falado pode nascer carta de reparo.
+
+Cada papel tem quatro mentes. O padrão é Einstein, Curie, Feynman e da Vinci. A personalidade entra no prompt e na chave de cache (`:m:`).
+
+No fim dos vinte minutos completos aparece o convite para o duelo.
+
+## Como aproveitar o máximo
+
+Faça **uma prosa completa por dia civil**, no mesmo par. O streak, o FSRS e a reconstrução do terceiro dia dependem disso. Pular a escada do diário ou sair no meio não conta o dia.
+
+Estude **através do português** se for o seu L1. Toda glosa e toda tradução devem nascer em português brasileiro. Se aparecer *ción / sión / ía*, a carta é lixo: o filtro descarta; não decore.
+
+No quiz, liste interesses de verdade (trabalho, café, cinema). Eles alimentam a história, a notícia, o duelo, o palácio e a cena.
+
+No placement, responda sem chute apressado. Depois marque o can-do do que já sai na vida. Isso muda o perfil, não a faixa CEFR.
+
+Na leitura: um toque guarda a palavra com a frase; dois toques na mesma frase abrem sujeito / tempo / verbo / objeto. As sublinhadas já estão na revisão de hoje.
+
+Na revisão: note com honestidade. FSRS alonga o intervalo só quando o “bom” é bom de verdade.
+
+Na fala: use viva-voz quando puder falar alto. Troque a voz embaixo da história. O ritmo 0,75 ajuda no começo.
+
+No diário: reescreva até a correção aparecer. A primeira tentativa é a que gera carta de reparo; as seguintes só ensinam.
+
+Notícia: “estudar esta matéria” **é** a prosa do dia. Na edição grátis, se já houve outra lição hoje, vai para o paywall.
+
+Score e certificado: não apresse item. Se metade for corrida, o certificado público some.
+
+Pares: escreva no idioma que o outro estuda. Brasileiro com through PT entra na fila mesmo sem estudar português.
+
+Ownlife: cole um texto seu (mensagem, e-mail), sem URL. A reescrita fica no seu nível.
+
+Org: uma empresa, um setor (tech, saúde, vendas). O léxico do trabalho entra no due. Sem ranking.
+
+Dossiê: gere o token e imprima. Não manda e-mail.
+
+Pro: histórico, tema escrito no dia, mais de um idioma. Grátis: um par e a lição de hoje.
 
 ## Planos
 
 A edição grátis:
 
 - uma lição por dia;
-- um par de idiomas, inclusive um par como alemão através do inglês;
+- um par de idiomas, inclusive alemão através do inglês;
 - o histórico local guarda essa lição do dia.
 
 A Prosa Pro:
@@ -40,35 +96,29 @@ A Prosa Pro:
 
 Trocar de par sem ser Pro abre a assinatura. Abrir uma lição antiga sem ser Pro faz o mesmo. O tema personalizado na edição grátis também leva ao paywall.
 
-O plano mora em `users.plan` (`free` ou `pro`). O checkout usa Stripe quando `STRIPE_SECRET_KEY` e `STRIPE_PRICE_ID` existem. Sem essas chaves a rota explica que a cobrança não está configurada. Confirmar o pagamento exige a mesma conta que abriu o checkout. O aplicativo também tem um estado local `pro` para a interface; a fonte da conta é o banco.
+O plano mora em `users.plan` (`free` ou `pro`). O checkout usa Stripe quando as chaves existem. Confirmar o pagamento exige a mesma conta que abriu o checkout.
 
 ## Idiomas e interesses
 
 Alvos de estudo: `en`, `es`, `de`, `ru`, `fr`, `it`, `ja`.
 
-Idiomas de apoio: os mesmos, mais `pt`. Português não é alvo.
+Idiomas de apoio: os mesmos, mais `pt`. Português não é alvo. Estudar um idioma através dele mesmo é recusado.
 
-Uma trilha é o par (`target_lang`, `through_lang`) em `study_tracks`. Os dois códigos precisam ser diferentes. Uma conta pode ter várias trilhas; uma delas fica `active`. A edição grátis permanece num único par.
+Uma trilha é o par (`target_lang`, `through_lang`) em `study_tracks`, agora com `level`. Uma delas fica `active`. A bandeira no topo troca o par de hoje. Cada idioma tem deck, nível e prosa próprios.
 
-Interesses são um `text[]` de no máximo doze itens, cada um entre 1 e 48 caracteres, validados por `fn_interests_valid`. Eles entram na história personalizada, na notícia, no duelo, no palácio e na escolha das cenas. Não são JSON.
+Interesses são um `text[]` de no máximo doze itens (1 a 48 caracteres). Não são JSON.
 
 ## Conta
 
-Criar conta pede e-mail, senha (8 a 72 caracteres) e o par inicial. A API só emite sessão depois que o código de seis dígitos do e-mail entra. Sem SMTP, Resend ou Brevo configurados, o registro responde 503: a produção não auto-confirma a caixa.
+Criar conta pede e-mail, senha (8 a 72) e o par inicial. A sessão só nasce depois do código de seis dígitos. Sem canal de correio (Mailjet, Resend, Brevo ou SMTP/Mailpit), o registro responde 503.
 
-Há também:
+Há também troca de senha (outras sessões caem), troca de e-mail com código, 2FA TOTP e/ou carta, reset com TTL de 15 minutos, lembrete diário na hora UTC escolhida. O tick corre na subida da API e a cada 15 minutos. A carta só sai se o lembrete estiver ligado e a prosa daquele dia civil ainda não tiver começado. Canal: Mailjet, depois Resend, Brevo ou SMTP.
 
-- troca de senha (as outras sessões caem);
-- troca de e-mail com código na caixa nova;
-- 2FA por TOTP (RFC 6238) e/ou código por e-mail, com códigos de recuperação;
-- redefinição de senha por código de seis dígitos, TTL 15 minutos;
-- lembrete diário opcional na hora escolhida.
-
-A interface da conta e das cartas usa Newsreader nos títulos e Source Sans 3 no corpo. O tema é terracota e creme no claro (`#9A3412` / `#FFF8F1`) e o par correspondente no escuro.
+Newsreader nos títulos, Source Sans 3 no corpo. Terracota e creme no claro (`#9A3412` / `#FFF8F1`).
 
 ## Elenco
 
-São dezesseis figuras históricas em bonecos de vinil originais, nunca mascotes de casa. Cada uma ocupa um único papel pedagógico:
+Dezesseis figuras históricas em vinil, um papel cada:
 
 | Papel | Mentes |
 | --- | --- |
@@ -77,64 +127,64 @@ São dezesseis figuras históricas em bonecos de vinil originais, nunca mascotes
 | Fala | Feynman, Sócrates, Tesla, Cícero |
 | Diário | da Vinci, Confúcio, Hipátia, Marco Aurélio |
 
-O padrão da conta nova é Einstein, Curie, Feynman e da Vinci.
+## As peças
 
-## As dez peças
+### Palácio da memória
 
-### 1. Palácio da memória
+Abre quando a carta já tem repetições e a taxa de falha passa de 60%. A associação nasce na língua de apoio e fica em `srs_mnemonics`.
 
-O servidor olha o histórico de revisões da carta. A lâmpada abre quando `repetition_count > 3`, já houve revisão e a taxa de falha passa de 60%. O modelo devolve uma associação sensorial na língua de apoio. O texto fica em `srs_mnemonics`, uma linha por carta. A imagem é opcional e pode ficar vazia.
+### Gramática em quatro blocos
 
-### 2. Desconstrução gramatical
+Dois toques pedem sujeito, conector, verbo e objeto. `vary` monta a frase nova e toca o áudio.
 
-Na leitura, dois toques na mesma frase pedem `POST /api/v1/grammar/deconstruct`. A resposta tem exatamente quatro papéis, nesta ordem: `subject`, `connector`, `verb`, `object`. Se o modelo embaralhar, `orderGrammarBlocks` recoloca. Cada bloco traz o texto atual e alternativas. `POST /api/v1/grammar/vary` monta a frase nova e devolve o áudio para o aplicativo tocar.
+### Notícia
 
-### 3. Notícia
+RSS allowlist, reescrito no nível (A2 / B1 / C1), com tradução no through. O cache separa por `native_lang`. Dictogloss: ouvir duas vezes e reescrever.
 
-`POST /api/v1/news/fetch-adapted` lê um item de RSS de hosts HTTPS conhecidos, reescreve no nível pedido e devolve história, vocabulário, tradução e áudio. O cliente pede um índice de 0 a 2 e uma faixa CEFR (`A2`, `B1` ou `C1`). A chave local inclui interesse, índice e faixa. Uma notícia antiga sem vocabulário é tratada como incompleta e lida de novo.
+### Cadência
 
-"Estudar esta notícia" abre a sessão de vinte minutos com aquela história, sem uma segunda geração de lição. Se a edição grátis já tem outra lição hoje, a pessoa vai para o paywall.
+A gravação vai ao Gemini; os offsets vêm do Edge-TTS. Razão &lt; 0,75 apressou; &gt; 1,35 alongou.
 
-### 4. Radar de cadência
+### Reconstrução bidirecional
 
-A gravação vai para `POST /api/v1/audio/analyze-shadowing-phonetic`. O Gemini transcreve e devolve a duração de cada palavra. O Edge-TTS já guardou o offset de cada palavra da referência. `cadenceReport` compara as duas sequências.
+Âncora no dia 1; no vencimento a pessoa vê só a tradução. Nota, gramática e calques depois do envio.
 
-- razão abaixo de 0,75: a pessoa apressou;
-- razão acima de 1,35: a pessoa alongou;
-- se um dos lados vier vazio, a nota cai no ritmo geral e as barras somem.
+### Duelo
 
-Não há decodificação da amplitude do MP3. Não há Whisper.
+120 segundos, lacuna, combo. Placar de contas reais daquele idioma. Sem ranking fictício.
 
-### 5. Reconstrução bidirecional
+### Cognatos no A1
 
-No dia 1, se a lição tem história e tradução, o aplicativo guarda uma âncora: data, tema, par, nível, texto e tradução. A âncora é independente do único item de histórico da edição grátis, para o dia 3 ainda existir.
+As cinco primeiras lições A1 usam cognatos verdadeiros. Falsos amigos na leitura, não na história.
 
-A revisão vence quando a distância em dias é pelo menos 2 e `completedOn` está vazio. Nesse dia o diário mostra só a tradução. A pessoa escreve ou dita. Ditar transcreve; não compara antes do envio. `POST /api/v1/journal/reconstruct` devolve nota, erros gramaticais e calques. A história original só aparece depois do envio.
+### Viva-voz
 
-### 6. Duelo
+Tema, frase, quatro segundos, a mesma frase. Só voz neural.
 
-Cento e vinte segundos, quatro segundos por lacuna, quatro opções, combo de dez pontos vezes a sequência. O placar lista contas reais daquele idioma de estudo. Não há ranking fictício nem comunidade inventada.
+### Mapa de retenção
 
-### 7. Cognatos no A1
+Até quatro palavras por célula. A célula em risco abre só essas cartas.
 
-As cinco primeiras lições A1 de uma conta usam cognatos verdadeiros e verbos frequentes. Falsos amigos aparecem na leitura, não na história.
+### Cena e prosa viva
 
-### 8. Viva-voz
+A cena segura um obstáculo e devolve dica cultural no through. A prosa viva conversa com a mente do dia sobre o tema, sem virar quiz de loja.
 
-A leitura pode tocar sem a tela: cenário na língua de apoio, frase, quatro segundos de silêncio e a mesma frase de novo. A voz é neural. O sintetizador do aparelho não entra nesse caminho.
+### Placement e can-do
 
-### 9. Mapa de retenção
+Teste adaptativo, itens originais. Volta em três semanas ou após dez prosas. Can-do é checklist do nível atual.
 
-Cada célula reúne até quatro palavras. Em risco, esquecendo, firmando ou memória longa (intervalo acima de 21 dias). A célula em risco abre a revisão só dessas palavras. A conta grava o dia em `user_retention_logs`.
+### Exame e Prosa Score
 
-### 10. Cena
+Trilhas públicas (TOEFL, IELTS e as do idioma) com prompt nosso. O score some se a sessão foi corrida. `/cert/:token` é página pública.
 
-Uma persona fala no idioma de estudo, no registro da situação. A dica cultural volta na língua de apoio e classifica o tom: serviu, direto demais, informal demais ou fora do costume.
+### Pares, ownlife, medida, dossiê, org
+
+Tandem por through/alvo. Texto da vida sem fetch. Retrievability FSRS e erros que saíram. Token para imprimir. Uma org, léxico do setor, custo real por sessão no admin.
 
 ## Administração
 
-Uma conta cujo e-mail está em `ADMIN_EMAILS` ganha `role = admin` no login. O painel em `/admin` mostra contas, planos, eventos de operação e o interruptor da geração. Quem não é admin recebe 403.
+`ADMIN_EMAILS` vira `role = admin` no login. `/admin` vê contas, eventos e o interruptor da geração. Sem o papel: 403.
 
 ## O que o produto não é
 
-Não há feed social, ranking inventado, segundo modelo de linguagem, mascote de casa, chamada direta do cliente a provedores pagos, nem auto-confirmação de e-mail em produção.
+Não há feed social, ranking inventado, segundo modelo no cliente, mascote de casa, chamada direta a provedores pagos, nem auto-confirmação de e-mail em produção. Português não se estuda como alvo.

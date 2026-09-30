@@ -48,7 +48,7 @@ const COPY = {
       subject: "Os seus vinte minutos estão prontos",
       kicker: "Edição do dia",
       title: "A prosa de hoje espera.",
-      body: "Leitura, memória, fala e diário, nessa ordem. Vinte minutos. Abra a Prosa e comece quando puder.",
+      body: "Revisão, ouvir, leitura, fala e diário. Vinte minutos. Abra a Prosa e comece quando puder.",
       action: "Se já estudou hoje, ignore este aviso.",
     },
     verify: {
@@ -96,7 +96,7 @@ const COPY = {
       subject: "Your twenty minutes are ready",
       kicker: "Today's edition",
       title: "Today's Prosa is waiting.",
-      body: "Reading, memory, speech and journal, in that order. Twenty minutes. Open Prosa when you can.",
+      body: "Review, listen, reading, speech and journal. Twenty minutes. Open Prosa when you can.",
       action: "If you already studied today, ignore this note.",
     },
     verify: {

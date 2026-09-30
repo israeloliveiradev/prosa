@@ -8,18 +8,23 @@ O repositório público é [israeloliveiradev/prosa](https://github.com/israelol
 
 | Destino | Rota | O que guarda |
 | --- | --- | --- |
-| Início | `/` | A prosa do dia, o elenco e o idioma ativo |
-| Notícias | `/news` | Até três histórias adaptadas ao nível |
-| Prática | `/practice` | Duelo de 120 segundos e cena cultural |
+| Início | `/` | A prosa do dia, o elenco, o idioma ativo, placement e o que você já faz |
+| Notícias | `/news` | Até três histórias adaptadas ao nível e ao through |
+| Prática | `/practice` | Duelo, cena, prosa viva |
 | Memória | `/memory` | Mapa de retenção, deck, histórico e selos |
 | Prosa | `/daily` | A sessão de vinte minutos |
+| Nivelamento | `/placement` | Teste adaptativo deste idioma |
+| Exame / score | `/exam`, `/score` | Mock original e Prosa Score |
+| Pares / vida | `/pairs`, `/life` | Tandem e texto da própria vida |
+| Dossiê | `/dossier/:token` | Página pública para imprimir |
+| Trabalho | `/org` | Uma org, léxico do setor |
 | Pro | `/paywall` | A assinatura Prosa Pro |
 | Conta | `/account` | Entrada, verificação de e-mail, 2FA |
 | Ajustes | `/settings` | Nome, senha, e-mail, lembrete, mentes, tema |
-| Como usar | `/guide` | O caminho das telas |
-| Administração | `/admin` | Clientes, gráficos de 14 dias, eventos e interruptor da geração. Só admin |
+| Como usar | `/guide` | O caminho do dia e como aproveitar |
+| Administração | `/admin` | Clientes, gráficos, eventos, custo, interruptor. Só admin |
 
-A sessão segue quatro etapas, nessa ordem: leitura, revisão, fala e diário. Cada etapa tem um gênio em boneco de vinil (Einstein, Curie, Feynman, da Vinci no padrão). O relógio avança sozinho. No fim dos vinte minutos a pessoa pode abrir o duelo.
+A sessão segue esta ordem: revisão, ouvir, leitura, fala, diário e um fecho. Cada papel tem um gênio em vinil (Einstein, Curie, Feynman, da Vinci no padrão). O relógio avança sozinho e alonga a escuta se o ouvido está fraco. No fim dos vinte minutos a pessoa pode abrir o duelo.
 
 A interface usa Newsreader nos títulos e Source Sans 3 no corpo, com tema terracota e creme.
 
@@ -63,14 +68,14 @@ aplicativo Expo  -->  API Fastify  -->  Gemini
 | Segurança | `src/security/` | CORS, lockout, URLs de retorno, SMTP, RSS |
 | Voz | `services/edge-tts/` | MP3 neural e offsets de palavra |
 | App | `mobile/` | Expo SDK 57, NativeWind, expo-audio |
-| Esquema | `migrations/` | PostgreSQL 16, aditivo, até `015_verify` |
+| Esquema | `migrations/` | PostgreSQL 16, aditivo, até `029_news_native` |
 | Testes | `test/` | Regras puras, sem rede |
 
 A documentação longa está em `docs/`.
 
 | Documento | Conteúdo |
 | --- | --- |
-| [Visão do produto](docs/01-visao-do-produto.md) | Sessão, planos, elenco, as dez peças |
+| [Visão do produto](docs/01-visao-do-produto.md) | O dia inteiro, como aproveitar, planos, elenco, as peças |
 | [Arquitetura](docs/02-arquitetura.md) | Processos, cache, modelo, limites |
 | [Banco de dados](docs/03-banco-de-dados.md) | Tabelas, SM-2, ordem das migrações, Redis |
 | [API](docs/04-api.md) | Cada rota, autenticação e códigos |
@@ -93,7 +98,7 @@ Preencha `POSTGRES_PASSWORD`, `REDIS_PASSWORD` e `GEMINI_API_KEY`. O modelo em u
 docker compose up -d --build
 ```
 
-Na primeira criação do volume, só `migrations/001_init_prosa_enterprise.sql` roda sozinha. As migrações seguintes são aditivas e entram com `psql`, até `015_verify`. O passo a passo está em [Banco de dados](docs/03-banco-de-dados.md).
+Na primeira criação do volume, só `migrations/001_init_prosa_enterprise.sql` roda sozinha. As migrações seguintes são aditivas e entram com `psql`, até `029_news_native`. O passo a passo está em [Banco de dados](docs/03-banco-de-dados.md).
 
 Portas no host, todas em `127.0.0.1`:
 
@@ -114,7 +119,7 @@ A saúde da API:
 curl -sS http://127.0.0.1:3000/health
 ```
 
-A resposta esperada é `{"status":"ok","schema":"015_verify"}`.
+A resposta esperada é `{"status":"ok","schema":"029_news_native"}`.
 
 O aplicativo, a partir de `mobile/`:
 
