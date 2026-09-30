@@ -78,7 +78,7 @@ describe("error leakage", () => {
   it("hides 5xx text that looks like a secret", () => {
     assert.equal(publicErrorMessage(new AppError(400, "Invalid credentials"), 400), "Invalid credentials");
     assert.equal(publicErrorMessage(new AppError(503, "Mail is not configured"), 503), "Mail is not configured");
-    assert.equal(publicErrorMessage(new AppError(502, "GEMINI_API_KEY=secret"), 502), "Internal server error");
+    assert.equal(publicErrorMessage(new AppError(502, "gsk_ABCDEF123 leaked"), 502), "Internal server error");
     assert.equal(publicErrorMessage(new Error("ECONNREFUSED postgres://"), 500), "Internal server error");
   });
 });

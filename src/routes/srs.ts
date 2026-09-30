@@ -4,9 +4,58 @@ import { requireUser } from "../auth/session.js";
 import { AppError } from "../http/errors.js";
 import { mnemonicBodySchema, retentionBodySchema, syncReviewsBodySchema, type SyncReviewsBody } from "../schemas/srs.js";
 import type { MnemonicService } from "../services/mnemonic-service.js";
+import { scheduleFsrs } from "../services/fsrs.js";
 import { retentionSnapshot } from "../services/retention.js";
 
 export function registerSrsRoutes(app: FastifyInstance, pool: Pool, mnemonics: MnemonicService): void {
+  app.get(
+    "/api/v1/srs/cards",
+    {
+      config: {
+        rateLimit: { max: 30, timeWindow: "1 minute" },
+      },
+    },
+    async (request) => {
+      const user = await requireUser(pool, request);
+      const result = await pool.query<{
+        id: string;
+        front_phrase: string;
+        back_translation: string;
+        context_sentence: string;
+        repetition_count: number;
+        interval_days: number;
+        ease_factor: string | number;
+        status: "learning" | "reviewing" | "mastered";
+        stability: number;
+        difficulty: number;
+        next_review_at: Date;
+      }>(
+        `SELECT id, front_phrase, back_translation, context_sentence, repetition_count, interval_days,
+                ease_factor, status, stability, difficulty, next_review_at
+         FROM srs_cards
+         WHERE user_id = $1 AND target_lang = $2
+         ORDER BY next_review_at ASC
+         LIMIT 300`,
+        [user.id, user.target_lang],
+      );
+      return {
+        cards: result.rows.map((row) => ({
+          id: row.id,
+          front_phrase: row.front_phrase,
+          back_translation: row.back_translation,
+          context_sentence: row.context_sentence,
+          repetition_count: row.repetition_count,
+          interval_days: row.interval_days,
+          ease_factor: Number(row.ease_factor),
+          status: row.status,
+          stability: row.stability,
+          difficulty: row.difficulty,
+          due: row.next_review_at.toISOString(),
+        })),
+      };
+    },
+  );
+
   app.post(
     "/api/v1/srs/sync",
     {
@@ -26,7 +75,7 @@ export function registerSrsRoutes(app: FastifyInstance, pool: Pool, mnemonics: M
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const synced = await applyReviews(client, body);
+        const synced = await applyReviews(client, body, account.target_lang);
         await client.query("COMMIT");
         return { synced_ids: synced };
       } catch (error) {
@@ -89,7 +138,7 @@ export function registerSrsRoutes(app: FastifyInstance, pool: Pool, mnemonics: M
   );
 }
 
-async function applyReviews(client: PoolClient, body: SyncReviewsBody): Promise<string[]> {
+async function applyReviews(client: PoolClient, body: SyncReviewsBody, targetLang: string): Promise<string[]> {
   const user = await client.query("SELECT id FROM users WHERE id = $1", [body.user_id]);
   if (user.rowCount === 0) {
     throw new AppError(404, "User not found");
@@ -105,33 +154,74 @@ async function applyReviews(client: PoolClient, body: SyncReviewsBody): Promise<
       continue;
     }
 
-    const found = await client.query<{ id: string }>(
-      `SELECT id
+    const found = await client.query<{
+      id: string;
+      stability: number;
+      difficulty: number;
+      repetition_count: number;
+      last_review_at: Date | null;
+    }>(
+      `SELECT id, stability, difficulty, repetition_count, last_review_at
        FROM srs_cards
-       WHERE user_id = $1 AND front_phrase = $2
+       WHERE user_id = $1 AND target_lang = $2 AND lower(front_phrase) = lower($3)
        ORDER BY next_review_at ASC
        LIMIT 1`,
-      [body.user_id, review.front_phrase],
+      [body.user_id, targetLang, review.front_phrase],
     );
-    let cardId = found.rows[0]?.id;
-    if (!cardId) {
-      const inserted = await client.query<{ id: string }>(
-        `INSERT INTO srs_cards (user_id, front_phrase, back_translation, context_sentence)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id`,
-        [body.user_id, review.front_phrase, review.back_translation, review.context_sentence],
+    let card = found.rows[0];
+    if (!card) {
+      const inserted = await client.query<{
+        id: string;
+        stability: number;
+        difficulty: number;
+        repetition_count: number;
+        last_review_at: Date | null;
+      }>(
+        `INSERT INTO srs_cards (user_id, target_lang, front_phrase, back_translation, context_sentence)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, stability, difficulty, repetition_count, last_review_at`,
+        [body.user_id, targetLang, review.front_phrase, review.back_translation, review.context_sentence],
       );
-      cardId = inserted.rows[0]?.id;
+      card = inserted.rows[0];
     }
-    if (!cardId) {
+    if (!card) {
       throw new AppError(500, "Card was not created");
     }
-
-    await client.query("SELECT fn_execute_sm2_review($1::uuid, $2::smallint)", [cardId, review.quality]);
+    const scheduled = scheduleFsrs(
+      {
+        stability: Number(card.stability) || 0,
+        difficulty: Number(card.difficulty) || 0,
+        reps: card.repetition_count,
+        lastReviewAt: card.last_review_at ? card.last_review_at.getTime() : null,
+      },
+      review.quality,
+    );
+    await client.query(
+      `UPDATE srs_cards
+       SET repetition_count = $2,
+           interval_days = $3,
+           ease_factor = $4,
+           status = $5,
+           next_review_at = $6,
+           stability = $7,
+           difficulty = $8,
+           last_review_at = now()
+       WHERE id = $1`,
+      [
+        card.id,
+        scheduled.reps,
+        scheduled.intervalDays,
+        scheduled.easeFactor,
+        scheduled.status,
+        new Date(scheduled.dueAt).toISOString(),
+        scheduled.stability,
+        scheduled.difficulty,
+      ],
+    );
     await client.query(
       `INSERT INTO srs_sync_events (client_id, user_id, card_id, quality)
        VALUES ($1, $2, $3, $4)`,
-      [review.client_id, body.user_id, cardId, review.quality],
+      [review.client_id, body.user_id, card.id, review.quality],
     );
     synced.push(review.client_id);
   }

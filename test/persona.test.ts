@@ -15,5 +15,6 @@ test("persona scenes follow the learner interests", () => {
   assert.ok(everyday.every((item) => item.family === "travel"));
   assert.equal(personaScenes("pt", ["tech"]).length, 0);
   assert.equal(findPersonaScene("ru", ["Cultura"], "ru-moscow-station")?.place, "Moscou");
+  assert.match(findPersonaScene("en", [], "en-london-cafe")?.hitch ?? "", /ran out/);
   assert.equal(findPersonaScene("ru", ["Tecnologia"], "ru-moscow-cafe"), null);
 });

@@ -8,7 +8,7 @@ export class AppError extends Error {
   }
 }
 
-const SENSITIVE = /api[_-]?key|password_hash|secret=|stack|ECONN|postgres:\/\//i;
+const SENSITIVE = /api[_-]?key|password_hash|secret=|stack|ECONN|postgres:\/\/|gsk_|sk-or-v1|AIza[A-Za-z0-9]|AQ\.[A-Za-z0-9]|Bearer /i;
 
 export function publicErrorMessage(error: Error, statusCode: number): string {
   if (statusCode < 500) {

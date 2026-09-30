@@ -5,6 +5,7 @@ export const journalCorrectionSchema = z.object({
   original: z.string().trim().min(1),
   corrected: z.string().trim().min(1),
   reason: z.string().trim().min(1),
+  kind: z.string().trim().max(80).default(""),
 });
 
 export const journalEvaluationSchema = z.object({
@@ -25,6 +26,7 @@ export const evaluateJournalBodySchema = z.object({
   target_lang: z.string().trim().min(2).max(16),
   native_lang: z.string().trim().min(2).max(16),
   level: z.enum(CEFR_LEVELS),
+  attempt: z.number().int().min(1).max(4).default(1),
 });
 
 export type EvaluateJournalBody = z.infer<typeof evaluateJournalBodySchema>;

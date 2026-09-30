@@ -7,8 +7,9 @@ import { evaluateJournalBodySchema } from "../src/schemas/journal.ts";
 import { generateLessonBodySchema } from "../src/schemas/lesson.ts";
 import { onboardingQuizBodySchema, personalizedLessonBodySchema } from "../src/schemas/onboarding.ts";
 import { parseAdminEmails } from "../src/config.ts";
+import { proseTurnBodySchema } from "../src/schemas/prose.ts";
 import { adminFreezeBodySchema, adminGenerationBodySchema, adminPlanBodySchema } from "../src/schemas/admin.ts";
-import { speakBatchBodySchema, speakBodySchema } from "../src/schemas/speech.ts";
+import { speakBatchBodySchema, speakBodySchema, speakStreamBodySchema } from "../src/schemas/speech.ts";
 import { syncReviewsBodySchema } from "../src/schemas/srs.ts";
 
 describe("generateLessonBodySchema", () => {
@@ -71,6 +72,12 @@ describe("registerBodySchema", () => {
     assert.equal(body.native_lang, "pt");
     assert.equal(body.target_lang, "en");
     assert.equal(body.level, "A2");
+    const withLocale = registerBodySchema.parse({
+      email: "ana@prosa.local",
+      password: "senha-forte",
+      display_locale: "en",
+    });
+    assert.equal(withLocale.display_locale, "en");
   });
 
   it("rejects a short password", () => {
@@ -179,6 +186,13 @@ describe("speakBodySchema", () => {
   });
 });
 
+describe("speakStreamBodySchema", () => {
+  it("accepts a full prosa under eight thousand characters", () => {
+    const body = speakStreamBodySchema.parse({ text: "Hello there, this is the day's prose.", lang: "en" });
+    assert.equal(body.lang, "en");
+  });
+});
+
 describe("speakBatchBodySchema", () => {
   it("accepts up to sixteen sentences in one request", () => {
     const body = speakBatchBodySchema.parse({
@@ -255,6 +269,11 @@ describe("verifyBodySchema", () => {
     assert.equal(body.code, "188026");
   });
 
+  it("accepts a code copied with spaces and line breaks", () => {
+    const body = verifyBodySchema.parse({ email: "ana@prosa.local", code: "1 8 8 0 2 6\n" });
+    assert.equal(body.code, "188026");
+  });
+
   it("rejects a short code", () => {
     assert.equal(verifyBodySchema.safeParse({ email: "ana@prosa.local", code: "12" }).success, false);
   });
@@ -277,5 +296,39 @@ describe("parseAdminEmails", () => {
     const emails = parseAdminEmails("Ana@Prosa.local, outro,  ");
     assert.equal(emails.has("ana@prosa.local"), true);
     assert.equal(emails.size, 1);
+  });
+});
+
+describe("proseTurnBodySchema", () => {
+  it("opens a turn with only the topic", () => {
+    const body = proseTurnBodySchema.parse({ topic: "ordering coffee" });
+    assert.equal(body.user_line, "");
+    assert.equal(body.history.length, 0);
+    assert.equal(body.mind, undefined);
+  });
+
+  it("keeps a short history and a speech companion", () => {
+    const body = proseTurnBodySchema.parse({
+      topic: "cafeteria",
+      user_line: "I like this place.",
+      mind: "feynman",
+      history: [
+        { role: "mind", text: "What did you notice first?" },
+        { role: "learner", text: "The smell of coffee." },
+      ],
+    });
+    assert.equal(body.mind, "feynman");
+    assert.equal(body.history.length, 2);
+  });
+
+  it("rejects a ninth history turn", () => {
+    const parsed = proseTurnBodySchema.safeParse({
+      topic: "cafeteria",
+      history: Array.from({ length: 9 }, (_, index) => ({
+        role: index % 2 === 0 ? "mind" : "learner",
+        text: "hello",
+      })),
+    });
+    assert.equal(parsed.success, false);
   });
 });

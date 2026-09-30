@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { emailSchema, passwordSchema } from "./auth.js";
+import { normalizeOtp } from "../services/codes.js";
 import { JOURNAL_MINDS, MEMORY_MINDS, READING_MINDS, SPEECH_MINDS } from "../services/minds.js";
 
 const readingMindSchema = z.enum(READING_MINDS);
@@ -8,7 +9,10 @@ const speechMindSchema = z.enum(SPEECH_MINDS);
 const journalMindSchema = z.enum(JOURNAL_MINDS);
 
 export const displayLocaleSchema = z.enum(["pt", "en"]);
-export const otpCodeSchema = z.string().trim().regex(/^\d{6}$/);
+export const otpCodeSchema = z
+  .string()
+  .transform(normalizeOtp)
+  .pipe(z.string().regex(/^\d{6}$/));
 
 export const forgotBodySchema = z.object({
   email: emailSchema,

@@ -1,9 +1,11 @@
 import type { FastifyInstance } from "fastify";
+import type { Pool } from "pg";
+import { optionalUser } from "../auth/session.js";
 import { evaluateJournalBodySchema } from "../schemas/journal.js";
 import { reconstructionBodySchema } from "../schemas/reconstruction.js";
 import type { JournalService } from "../services/journal-service.js";
 
-export function registerJournalRoutes(app: FastifyInstance, journal: JournalService): void {
+export function registerJournalRoutes(app: FastifyInstance, pool: Pool, journal: JournalService): void {
   app.post(
     "/api/v1/journal/evaluate",
     {
@@ -16,7 +18,8 @@ export function registerJournalRoutes(app: FastifyInstance, journal: JournalServ
     },
     async (request) => {
       const body = evaluateJournalBodySchema.parse(request.body);
-      return journal.evaluate(body);
+      const user = await optionalUser(pool, request);
+      return journal.evaluate(body, user);
     },
   );
 
@@ -32,7 +35,8 @@ export function registerJournalRoutes(app: FastifyInstance, journal: JournalServ
     },
     async (request) => {
       const body = reconstructionBodySchema.parse(request.body);
-      return journal.reconstruct(body);
+      const user = await optionalUser(pool, request);
+      return journal.reconstruct(body, user);
     },
   );
 }

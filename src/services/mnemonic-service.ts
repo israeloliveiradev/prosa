@@ -24,11 +24,11 @@ export class MnemonicService {
               COUNT(l.id) FILTER (WHERE l.quality < 3)::int AS failures
        FROM srs_cards c
        LEFT JOIN srs_review_logs l ON l.card_id = c.id
-       WHERE c.user_id = $1 AND c.front_phrase = $2
+       WHERE c.user_id = $1 AND c.target_lang = $2 AND c.front_phrase = $3
        GROUP BY c.id
        ORDER BY c.next_review_at ASC
        LIMIT 1`,
-      [user.id, body.front_phrase],
+      [user.id, user.target_lang, body.front_phrase],
     );
     const card = found.rows[0];
     const reviews = Number(card?.reviews ?? 0);

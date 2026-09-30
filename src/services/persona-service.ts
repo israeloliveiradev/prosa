@@ -30,6 +30,7 @@ export class PersonaService {
       place: scene.place,
       register: scene.register,
       opener: scene.opener,
+      hitch: scene.hitch,
       history: body.history,
       userLine: body.user_line,
     });

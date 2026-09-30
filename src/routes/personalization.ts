@@ -39,7 +39,7 @@ export function registerPersonalizationRoutes(
     async (request) => {
       const user = await requireUser(pool, request);
       const body = activateTrackBodySchema.parse(request.body);
-      return personalization.activateTrack(user, body.target_lang, body.through_lang);
+      return personalization.activateTrack(user, body.target_lang, body.through_lang, body.level);
     },
   );
 

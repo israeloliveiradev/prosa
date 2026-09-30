@@ -32,6 +32,7 @@ export const reconstructionBodySchema = z.object({
   target_lang: z.string().trim().min(2).max(16),
   through_lang: z.string().trim().min(2).max(16),
   level: z.enum(CEFR_LEVELS),
+  try_index: z.number().int().min(1).max(4).default(1),
 });
 
 export type ReconstructionBody = z.infer<typeof reconstructionBodySchema>;

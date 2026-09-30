@@ -8,6 +8,7 @@ import { forgotBodySchema, resetBodySchema, secondFactorBodySchema, verifyBodySc
 import { loginBodySchema, registerBodySchema } from "../schemas/auth.js";
 import { acquireOnce } from "../security/idempotency.js";
 import { assertNotLocked, clearFailures, lockoutKey, recordFailure } from "../security/lockout.js";
+import { publicInboxUrl } from "../security/origins.js";
 import { digestCode } from "../services/codes.js";
 import type { EmailVerify } from "../services/email-verify.js";
 import type { Mailer } from "../services/mailer.js";
@@ -32,6 +33,10 @@ export function registerAuthRoutes(
   verify: EmailVerify,
   mailer: Mailer,
 ): void {
+  app.get("/api/v1/auth/mail", async () => ({
+    inbox_url: publicInboxUrl(mailer.inboxUrl()),
+  }));
+
   app.post(
     "/api/v1/auth/register",
     {
@@ -51,10 +56,10 @@ export function registerAuthRoutes(
       const passwordHash = await hashPassword(body.password);
       try {
         const inserted = await pool.query<AuthUser & { display_locale: "pt" | "en" }>(
-          `INSERT INTO users (email, password_hash, native_lang, target_lang, level, streak_freeze_count)
-           VALUES ($1, $2, $3, $4, $5, 1)
+          `INSERT INTO users (email, password_hash, native_lang, target_lang, level, streak_freeze_count, display_locale)
+           VALUES ($1, $2, $3, $4, $5, 1, $6)
            RETURNING id, email, native_lang, target_lang, level, plan, role, display_locale`,
-          [body.email, passwordHash, body.native_lang, body.target_lang, body.level],
+          [body.email, passwordHash, body.native_lang, body.target_lang, body.level, body.display_locale ?? "pt"],
         );
         const created = inserted.rows[0];
         if (!created) {

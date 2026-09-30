@@ -56,6 +56,20 @@ export function readBearer(request: FastifyRequest): string | null {
   return token;
 }
 
+export async function optionalUser(pool: Pool, request: FastifyRequest): Promise<AuthUser | null> {
+  if (!readBearer(request)) {
+    return null;
+  }
+  try {
+    return await requireUser(pool, request);
+  } catch (error) {
+    if (error instanceof AppError && error.statusCode === 401) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function requireUser(pool: Pool, request: FastifyRequest): Promise<AuthUser> {
   const token = readBearer(request);
   if (!token) {

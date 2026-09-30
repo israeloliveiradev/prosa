@@ -5,6 +5,7 @@ export const studyTrackSchema = z
   .object({
     target_lang: z.enum(TARGET_LANGS),
     through_lang: z.enum(THROUGH_LANGS),
+    level: z.enum(CEFR_LEVELS).optional(),
     active: z.boolean().optional(),
   })
   .superRefine((track, context) => {
@@ -27,11 +28,11 @@ export const onboardingQuizBodySchema = z
   })
   .superRefine((value, context) => {
     const tracks = value.tracks ?? [];
-    const keys = tracks.map((track) => `${track.target_lang}:${track.through_lang}`);
+    const keys = tracks.map((track) => track.target_lang);
     if (new Set(keys).size !== keys.length) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Each language pair must be unique",
+        message: "Each study language must be unique",
       });
     }
   })
@@ -58,6 +59,7 @@ export const onboardingQuizBodySchema = z
       tracks: tracks.map((track, index) => ({
         target_lang: track.target_lang,
         through_lang: track.through_lang,
+        level: track.level ?? value.level ?? "A2",
         active: index === activeIndex,
       })),
     };
@@ -77,6 +79,7 @@ export const activateTrackBodySchema = z
   .object({
     target_lang: z.enum(TARGET_LANGS),
     through_lang: z.enum(THROUGH_LANGS),
+    level: z.enum(CEFR_LEVELS).optional(),
   })
   .refine((track) => track.target_lang !== track.through_lang, {
     message: "Study a language through a different language",

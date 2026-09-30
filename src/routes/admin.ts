@@ -12,6 +12,7 @@ import {
   adminUserQuerySchema,
 } from "../schemas/admin.js";
 import type { OpsService } from "../services/ops.js";
+import type { UsageMeter } from "../services/usage-meter.js";
 import { escapeLike } from "../security/like.js";
 
 interface AdminUserRow {
@@ -56,6 +57,7 @@ export function registerAdminRoutes(
   emails: ReadonlySet<string>,
   env: Env,
   ops: OpsService,
+  usage: UsageMeter,
 ): void {
   app.get(
     "/api/v1/admin/dashboard",
@@ -98,17 +100,22 @@ export function registerAdminRoutes(
         ops.isGenerationPaused(),
       ]);
       const counts = users.rows[0];
+      const lessonsToday = Number(lessons.rows[0]?.total ?? 0);
+      const cost = await usage.today(lessonsToday);
       return {
         users: Number(counts?.total ?? 0),
         pro: Number(counts?.pro ?? 0),
         free: Number(counts?.free ?? 0),
-        lessons_today: Number(lessons.rows[0]?.total ?? 0),
+        lessons_today: lessonsToday,
         duels_today: Number(duels.rows[0]?.total ?? 0),
         audio_today: Number(audio.rows[0]?.total ?? 0),
         gemini_errors_today: Number(gemini.rows[0]?.total ?? 0),
+        cost,
         generation_paused: paused,
         stripe_configured: Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID),
         gemini_configured: Boolean(env.GEMINI_API_KEY),
+        groq_configured: Boolean(env.GROQ_API_KEY),
+        openrouter_configured: Boolean(env.OPENROUTER_API_KEY),
         series,
         events,
       };

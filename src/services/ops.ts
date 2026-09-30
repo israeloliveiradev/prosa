@@ -98,5 +98,7 @@ export class OpsService {
 
 export function modelBusy(error: unknown): boolean {
   const text = error instanceof Error ? `${error.message} ${error.cause instanceof Error ? error.cause.message : ""}` : String(error);
-  return /429|RESOURCE_EXHAUSTED|quota|rate.?limit/i.test(text);
+  return /429|503|RESOURCE_EXHAUSTED|UNAVAILABLE|quota|rate.?limit|rate_limit_exceeded|high demand|try again later|overloaded/i.test(
+    text,
+  );
 }

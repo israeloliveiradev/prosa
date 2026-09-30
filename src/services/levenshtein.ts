@@ -51,7 +51,12 @@ export function normalizedAccuracy(left: string, right: string): number {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-export function mispronouncedWords(reference: string, hypothesis: string): string[] {
+export interface AlignedWord {
+  reference: string;
+  spoken: string | null;
+}
+
+export function alignWords(reference: string, hypothesis: string): AlignedWord[] {
   const referenceWords = reference.length === 0 ? [] : reference.split(" ");
   const hypothesisWords = hypothesis.length === 0 ? [] : hypothesis.split(" ");
   const rows = referenceWords.length;
@@ -83,7 +88,7 @@ export function mispronouncedWords(reference: string, hypothesis: string): strin
     }
   }
 
-  const missed: string[] = [];
+  const aligned: AlignedWord[] = [];
   let row = rows;
   let column = columns;
   while (row > 0 || column > 0) {
@@ -99,16 +104,14 @@ export function mispronouncedWords(reference: string, hypothesis: string): strin
       diagonalBase !== undefined &&
       current === diagonalBase + (referenceWord === hypothesisWord ? 0 : 1)
     ) {
-      if (referenceWord !== hypothesisWord) {
-        missed.push(referenceWord);
-      }
+      aligned.push({ reference: referenceWord, spoken: hypothesisWord });
       row -= 1;
       column -= 1;
       continue;
     }
     const above = scores[row - 1]?.[column];
     if (row > 0 && referenceWord !== undefined && above !== undefined && current === above + 1) {
-      missed.push(referenceWord);
+      aligned.push({ reference: referenceWord, spoken: null });
       row -= 1;
       continue;
     }
@@ -119,8 +122,14 @@ export function mispronouncedWords(reference: string, hypothesis: string): strin
     break;
   }
 
-  missed.reverse();
-  return missed;
+  aligned.reverse();
+  return aligned;
+}
+
+export function mispronouncedWords(reference: string, hypothesis: string): string[] {
+  return alignWords(reference, hypothesis)
+    .filter((item) => item.spoken !== item.reference)
+    .map((item) => item.reference);
 }
 
 export function pronunciationReport(reference: string, hypothesis: string): {

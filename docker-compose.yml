@@ -111,7 +111,6 @@ services:
       EDGE_TTS_URL: http://edge-tts:8077
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
-      MAIL_FROM: Prosa <prosa@local.test>
       MAIL_INBOX_URL: http://localhost:8025
     ports:
       - "127.0.0.1:3000:3000"

@@ -22,6 +22,7 @@ export const registerBodySchema = z.object({
   native_lang: langSchema.default("pt"),
   target_lang: langSchema.default("en"),
   level: cefrLevelSchema.default("A2"),
+  display_locale: z.enum(["pt", "en"]).optional(),
 });
 
 export const loginBodySchema = z.object({

@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { AppError } from "../http/errors.js";
 import { isSupportedAudioMime, languageCodeSchema, referenceTextSchema } from "../schemas/shadowing.js";
-import { speakBatchBodySchema, speakBodySchema } from "../schemas/speech.js";
+import { speakBatchBodySchema, speakBodySchema, speakStreamBodySchema } from "../schemas/speech.js";
 import type { NeuralVoice } from "../services/neural-voice.js";
 import type { ShadowingService } from "../services/shadowing-service.js";
 import { voicesFor } from "../services/voice-catalog.js";
@@ -85,6 +85,57 @@ export function registerAudioRoutes(app: FastifyInstance, shadowing: ShadowingSe
 
   app.post("/api/v1/audio/speak", speakRoute, synthesize);
   app.post("/api/v1/tts/synthesize", speakRoute, synthesize);
+
+  app.post("/api/v1/audio/speak-stream", speakRoute, async (request, reply) => {
+    const body = speakStreamBodySchema.parse(request.body);
+    reply.header("Content-Type", "text/event-stream; charset=utf-8");
+    reply.header("Cache-Control", "no-store");
+    reply.header("Connection", "keep-alive");
+    reply.header("X-Accel-Buffering", "no");
+    reply.hijack();
+    const headers: Record<string, string | string[] | undefined> = {};
+    for (const [name, value] of Object.entries(reply.getHeaders())) {
+      if (name.toLowerCase() === "content-length" || value === undefined || typeof value === "number") {
+        continue;
+      }
+      headers[name] = value;
+    }
+    reply.raw.writeHead(200, headers);
+    const abort = new AbortController();
+    const stop = () => {
+      if (!reply.raw.writableEnded) {
+        abort.abort();
+      }
+    };
+    reply.raw.once("close", stop);
+    try {
+      for await (const event of neural.stream(body, abort.signal)) {
+        if (abort.signal.aborted) {
+          break;
+        }
+        if (event.type === "audio") {
+          reply.raw.write(`event: audio\ndata: ${event.bytes.toString("base64")}\n\n`);
+          continue;
+        }
+        if (event.type === "word") {
+          reply.raw.write(`event: word\ndata: ${JSON.stringify({ text: event.word.text, offset_ms: event.word.offset_ms })}\n\n`);
+          continue;
+        }
+        if (event.type === "done") {
+          reply.raw.write(`event: done\ndata: ${JSON.stringify({ id: event.id, audio_url: event.audioUrl })}\n\n`);
+          continue;
+        }
+        reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: event.message })}\n\n`);
+      }
+    } catch {
+      if (!abort.signal.aborted) {
+        reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: "Neural voice is unavailable" })}\n\n`);
+      }
+    } finally {
+      reply.raw.off("close", stop);
+      reply.raw.end();
+    }
+  });
 
   app.post("/api/v1/audio/speak-batch", speakRoute, async (request) => {
     const body = speakBatchBodySchema.parse(request.body);

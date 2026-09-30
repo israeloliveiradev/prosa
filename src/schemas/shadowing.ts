@@ -1,9 +1,24 @@
 import { z } from "zod";
 
+export const soundNoteSchema = z.object({
+  word: z.string().max(80),
+  sound: z.object({
+    pt: z.string().max(40),
+    en: z.string().max(40),
+  }),
+  held: z.boolean(),
+  heard: z.string().max(80),
+  hint: z.object({
+    pt: z.string().max(200),
+    en: z.string().max(200),
+  }),
+});
+
 export const shadowingResultSchema = z.object({
   transcription: z.string(),
   accuracy_score: z.number().int().min(0).max(100),
   mispronounced_words: z.array(z.string()),
+  sounds: z.array(soundNoteSchema).max(4),
 });
 
 export type ShadowingResult = z.infer<typeof shadowingResultSchema>;

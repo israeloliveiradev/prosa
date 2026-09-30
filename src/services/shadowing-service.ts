@@ -2,6 +2,7 @@ import type { GeminiGateway } from "./gemini-gateway.js";
 import type { NeuralVoice } from "./neural-voice.js";
 import { cadenceReport } from "./cadence.js";
 import { pronunciationReport } from "./levenshtein.js";
+import { soundNotes } from "./sound-feedback.js";
 import type { PhoneticShadowingResult, ShadowingResult } from "../schemas/shadowing.js";
 
 export class ShadowingService {
@@ -23,7 +24,7 @@ export class ShadowingService {
       mimeType: input.mimeType,
       ...(input.language ? { language: input.language.slice(0, 2) } : {}),
     });
-    return this.report(input.referenceText, transcription);
+    return this.report(input.referenceText, transcription, input.language);
   }
 
   async analyzePhonetic(input: {
@@ -40,7 +41,7 @@ export class ShadowingService {
       referenceText: input.referenceText,
       ...(input.language ? { language: input.language.slice(0, 2) } : {}),
     });
-    const base = this.report(input.referenceText, prosody.transcription);
+    const base = this.report(input.referenceText, prosody.transcription, input.language);
     let cadence = { score: prosody.rhythmScore, bars: [] as ReturnType<typeof cadenceReport>["bars"] };
     try {
       const reference = await this.neural.speak({
@@ -77,12 +78,13 @@ export class ShadowingService {
     return { transcription };
   }
 
-  private report(referenceText: string, transcription: string): ShadowingResult {
+  private report(referenceText: string, transcription: string, language?: string): ShadowingResult {
     const report = pronunciationReport(referenceText, transcription);
     return {
       transcription,
       accuracy_score: report.accuracyScore,
       mispronounced_words: report.mispronouncedWords,
+      sounds: soundNotes(referenceText, transcription, language ?? ""),
     };
   }
 }

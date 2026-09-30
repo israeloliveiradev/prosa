@@ -23,6 +23,12 @@ export const speakBodySchema = z.object({
 
 export type SpeakBody = z.infer<typeof speakBodySchema>;
 
+export const speakStreamBodySchema = speakBodySchema.extend({
+  text: z.string().trim().min(1).max(8_000),
+});
+
+export type SpeakStreamBody = z.infer<typeof speakStreamBodySchema>;
+
 export const speakBatchBodySchema = z.object({
   texts: z.array(z.string().trim().min(1).max(4_000)).min(1).max(16),
   lang: speakBodySchema.shape.lang,

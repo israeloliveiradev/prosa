@@ -4,6 +4,9 @@ import { AppError } from "../http/errors.js";
 import { duelRoundSchema, type DuelBoardEntry, type DuelScoreBody } from "../schemas/duel.js";
 import type { GeminiGateway } from "./gemini-gateway.js";
 import { shuffleDrill } from "./duel-score.js";
+import { duelFocus } from "./duel-focus.js";
+import { emptyProfile } from "./learner-profile.js";
+import { ProfileStore } from "./profile-store.js";
 
 export class DuelService {
   constructor(
@@ -13,11 +16,14 @@ export class DuelService {
 
   async round(user: AuthUser) {
     const interests = await this.interests(user.id);
+    const profile = await this.profile(user.id, user.target_lang);
+    const focus = duelFocus(profile);
     const generated = await this.gemini.duelDrills({
       targetLang: user.target_lang,
       throughLang: user.native_lang,
       level: user.level,
       interests,
+      focus,
     });
     const parsed = duelRoundSchema.safeParse({
       drills: generated.drills.map((drill) => ({
@@ -32,7 +38,7 @@ export class DuelService {
     if (drills.length < 8) {
       throw new AppError(502, "Duel response failed validation");
     }
-    return { drills: drills.map((drill) => shuffleDrill(drill)) };
+    return { drills: drills.map((drill) => shuffleDrill(drill)), focus };
   }
 
   async save(user: AuthUser, body: DuelScoreBody): Promise<{ saved: true }> {
@@ -63,6 +69,14 @@ export class DuelService {
       [user.target_lang, user.id],
     );
     return { entries: result.rows };
+  }
+
+  private async profile(userId: string, targetLang: string) {
+    try {
+      return await new ProfileStore(this.pool).load(userId, targetLang);
+    } catch {
+      return emptyProfile();
+    }
   }
 
   private async interests(userId: string): Promise<string[]> {
