@@ -1,4 +1,4 @@
-export const DATABASE_SCHEMA_VERSION = "015_verify" as const;
+export const DATABASE_SCHEMA_VERSION = "029_news_native" as const;
 
 export const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 export type CefrLevel = (typeof CEFR_LEVELS)[number];
@@ -108,6 +108,9 @@ export interface SrsCardRow {
   ease_factor: number;
   status: SrsCardStatus;
   next_review_at: IsoDateTime;
+  stability: number;
+  difficulty: number;
+  last_review_at: IsoDateTime | null;
 }
 
 export interface SrsCardInsert {
@@ -242,6 +245,7 @@ export interface StudyTrackRow {
   user_id: Uuid;
   target_lang: TargetLang;
   through_lang: ThroughLang;
+  level: CefrLevel;
   active: boolean;
   created_at: IsoDateTime;
 }
@@ -251,6 +255,7 @@ export interface StudyTrackInsert {
   user_id: Uuid;
   target_lang: TargetLang;
   through_lang: ThroughLang;
+  level?: CefrLevel;
   active?: boolean;
   created_at?: IsoDateTime;
 }
