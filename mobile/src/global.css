@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=Nunito:wght@400;500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -7,58 +7,100 @@
 :root,
 :root.light {
   color-scheme: light;
-  --paper: #fff8f1;
-  --ink: #1c1917;
-  --muted: #44403c;
-  --ember: #9a3412;
-  --ember-soft: #f8d9c8;
-  --on-ember: #ffffff;
-  --moss: #047857;
-  --moss-soft: #d1fae5;
+  --paper: #fbf6ef;
   --card: #ffffff;
-  --line: #e4d2c8;
-  --rose-soft: #fee2e2;
-  --rose-ink: #b91c1c;
-  --sand: #ffedd5;
-  --sand-ink: #7c2d12;
-}
+  --sunken: #f3eadf;
+  --line: #e8dccf;
+  --ink: #1f1a17;
+  --muted: #5c534c;
 
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    color-scheme: dark;
-    --paper: #0e0c0b;
-    --ink: #f6ede6;
-    --muted: #cdbfb4;
-    --ember: #e07a4a;
-    --ember-soft: #3a2218;
-    --on-ember: #1c0a06;
-    --moss: #5fcb9a;
-    --moss-soft: #12382c;
-    --card: #1a1614;
-    --line: #2e2824;
-    --rose-soft: #5c1a1a;
-    --rose-ink: #f0a8a8;
-    --sand: #2a1c14;
-    --sand-ink: #ffedd5;
-  }
+  --primary: #c2410c;
+  --primary-edge: #9a3412;
+  --on-primary: #ffffff;
+  --primary-soft: #fce3d3;
+
+  --success: #15803d;
+  --success-edge: #166534;
+  --on-success: #ffffff;
+  --success-soft: #dcfce7;
+
+  --danger: #dc2626;
+  --danger-edge: #991b1b;
+  --on-danger: #ffffff;
+  --danger-soft: #fee2e2;
+
+  --streak: #f59e0b;
+  --streak-edge: #b45309;
+  --on-streak: #1f1a17;
+
+  --xp: #2563eb;
+  --xp-edge: #1e40af;
+  --on-xp: #ffffff;
+  --xp-soft: #dbeafe;
+
+  --pro: #7c3aed;
+  --pro-edge: #5b21b6;
+  --on-pro: #ffffff;
+
+  /* Aliases legados */
+  --ember: var(--primary);
+  --ember-soft: var(--primary-soft);
+  --on-ember: var(--on-primary);
+  --moss: var(--success);
+  --moss-soft: var(--success-soft);
+  --rose-soft: var(--danger-soft);
+  --rose-ink: var(--danger);
+  --sand: var(--sunken);
+  --sand-ink: var(--ink);
 }
 
 :root.dark {
   color-scheme: dark;
-  --paper: #0e0c0b;
-  --ink: #f6ede6;
-  --muted: #cdbfb4;
-  --ember: #e07a4a;
-  --ember-soft: #3a2218;
-  --on-ember: #1c0a06;
-  --moss: #5fcb9a;
-  --moss-soft: #12382c;
-  --card: #1a1614;
-  --line: #2e2824;
-  --rose-soft: #5c1a1a;
-  --rose-ink: #f0a8a8;
-  --sand: #2a1c14;
-  --sand-ink: #ffedd5;
+  --paper: #14110f;
+  --card: #1e1916;
+  --sunken: #2a231f;
+  --line: #3a312b;
+  --ink: #f5ede6;
+  --muted: #c9bbaf;
+
+  --primary: #f07a45;
+  --primary-edge: #b4541f;
+  --on-primary: #1c0a06;
+  --primary-soft: #3a2218;
+
+  --success: #4ade80;
+  --success-edge: #15803d;
+  --on-success: #14110f;
+  --success-soft: #12321f;
+
+  --danger: #f87171;
+  --danger-edge: #b91c1c;
+  --on-danger: #14110f;
+  --danger-soft: #3b1414;
+
+  --streak: #fbbf24;
+  --streak-edge: #b45309;
+  --on-streak: #14110f;
+
+  --xp: #60a5fa;
+  --xp-edge: #1d4ed8;
+  --on-xp: #14110f;
+  --xp-soft: #172554;
+
+  --pro: #a78bfa;
+  --pro-edge: #6d28d9;
+  --on-pro: #14110f;
+
+  /* Aliases legados */
+  --ember: var(--primary);
+  --ember-soft: var(--primary-soft);
+  --on-ember: var(--on-primary);
+  --moss: var(--success);
+  --moss-soft: var(--success-soft);
+  --rose-soft: var(--danger-soft);
+  --rose-ink: var(--danger);
+  --sand: var(--sunken);
+  --sand-ink: var(--ink);
 }
 
 html,
@@ -68,9 +110,9 @@ body,
   overflow-x: hidden;
   background: var(--paper);
   color: var(--ink);
-  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  font-family: "Nunito", "Source Sans 3", "Segoe UI", sans-serif;
   font-size: 16px;
-  line-height: 1.6;
+  line-height: 1.5;
   word-spacing: normal;
   letter-spacing: normal;
   transition: background-color 320ms ease, color 320ms ease;
@@ -78,15 +120,16 @@ body,
 
 #root .font-displayItalic.text-display,
 #root .font-display.text-display {
-  font-size: clamp(34px, 4.6vw, 52px);
+  font-size: clamp(36px, 4.6vw, 48px);
   line-height: 1.18;
   letter-spacing: -0.018em;
 }
 
 #root .font-displayItalic.text-headline,
-#root .font-display.text-headline {
-  font-size: clamp(24px, 3vw, 34px);
-  line-height: 1.28;
+#root .font-display.text-headline,
+#root .font-display.text-h1 {
+  font-size: clamp(28px, 3.2vw, 36px);
+  line-height: 1.25;
   letter-spacing: -0.012em;
 }
 
@@ -114,10 +157,16 @@ body,
   font-weight: 600;
 }
 
+#root .font-reading {
+  font-family: "Newsreader", Georgia, serif;
+  font-style: normal;
+  font-weight: 400;
+}
+
 #root .font-label {
-  font-family: "Source Sans 3", "Segoe UI", sans-serif;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-family: "Nunito", "Source Sans 3", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 #root .text-\[11px\] {
@@ -129,7 +178,7 @@ body,
 #root .tracking-\[0\.24em\],
 #root .tracking-\[0\.28em\],
 #root .tracking-widest {
-  letter-spacing: 0.08em !important;
+  letter-spacing: 0.06em !important;
 }
 
 [role="button"]:focus-visible,
@@ -137,7 +186,7 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--ember);
+  outline: 2px solid var(--primary);
   outline-offset: 3px;
 }
 

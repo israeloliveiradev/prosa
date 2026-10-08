@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { syncReviews } from "@/lib/api";
 import { kv } from "@/lib/kv";
+import { resetXp } from "@/lib/xp";
 import {
   finishReconstruction,
   scheduleReconstruction,
@@ -616,6 +617,7 @@ export function setPro(pro: boolean): void {
 
 export function clearLocalProgress(): void {
   bag = emptyBag();
+  resetXp();
   emit();
 }
 

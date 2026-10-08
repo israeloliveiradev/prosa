@@ -30,20 +30,52 @@ function readPreference(): ThemePreference {
 
 export function themeVars(palette: Palette) {
   return vars({
-    "--paper": palette.surface,
-    "--ink": palette.onSurface,
-    "--muted": palette.onSurfaceVariant,
+    // Novos tokens da spec
+    "--paper": palette.paper,
+    "--card": palette.card,
+    "--sunken": palette.sunken,
+    "--line": palette.line,
+    "--ink": palette.ink,
+    "--muted": palette.muted,
+
+    "--primary": palette.primary,
+    "--primary-edge": palette.primaryEdge,
+    "--on-primary": palette.onPrimary,
+    "--primary-soft": palette.primarySoft,
+
+    "--success": palette.success,
+    "--success-edge": palette.successEdge,
+    "--on-success": palette.onSuccess,
+    "--success-soft": palette.successSoft,
+
+    "--danger": palette.danger,
+    "--danger-edge": palette.dangerEdge,
+    "--on-danger": palette.onDanger,
+    "--danger-soft": palette.dangerSoft,
+
+    "--streak": palette.streak,
+    "--streak-edge": palette.streakEdge,
+    "--on-streak": palette.onStreak,
+
+    "--xp": palette.xp,
+    "--xp-edge": palette.xpEdge,
+    "--on-xp": palette.onXp,
+    "--xp-soft": palette.xpSoft,
+
+    "--pro": palette.pro,
+    "--pro-edge": palette.proEdge,
+    "--on-pro": palette.onPro,
+
+    // Aliases legados para não quebrar componentes existentes
     "--ember": palette.primary,
-    "--ember-soft": palette.primaryContainer,
+    "--ember-soft": palette.primarySoft,
     "--on-ember": palette.onPrimary,
-    "--moss": palette.secondary,
-    "--moss-soft": palette.secondaryContainer,
-    "--card": palette.surfaceBright,
-    "--line": palette.outline,
-    "--rose-soft": palette.errorContainer,
-    "--rose-ink": palette.error,
-    "--sand": palette.tertiaryContainer,
-    "--sand-ink": palette.onTertiaryContainer,
+    "--moss": palette.success,
+    "--moss-soft": palette.successSoft,
+    "--rose-soft": palette.dangerSoft,
+    "--rose-ink": palette.danger,
+    "--sand": palette.sunken,
+    "--sand-ink": palette.ink,
   });
 }
 

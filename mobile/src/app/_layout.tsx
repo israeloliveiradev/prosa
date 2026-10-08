@@ -1,4 +1,5 @@
-import { Newsreader_600SemiBold } from "@expo-google-fonts/newsreader";
+import { Newsreader_400Regular, Newsreader_600SemiBold } from "@expo-google-fonts/newsreader";
+import { Nunito_500Medium, Nunito_700Bold, Nunito_800ExtraBold } from "@expo-google-fonts/nunito";
 import { SourceSans3_400Regular, SourceSans3_600SemiBold } from "@expo-google-fonts/source-sans-3";
 import { useFonts } from "expo-font";
 import { Stack, usePathname, useRouter } from "expo-router";
@@ -18,6 +19,10 @@ import { peekSurfaceColor, ThemeProvider, useTheme } from "@/theme/ThemeContext"
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     Newsreader: Newsreader_600SemiBold,
+    "Newsreader Text": Newsreader_400Regular,
+    Nunito: Nunito_500Medium,
+    "Nunito Bold": Nunito_700Bold,
+    "Nunito ExtraBold": Nunito_800ExtraBold,
     "Source Sans 3": SourceSans3_400Regular,
     "Source Sans 3 Semibold": SourceSans3_600SemiBold,
   });
