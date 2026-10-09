@@ -101,6 +101,7 @@ function ThemedStack() {
         <Stack.Screen name="reset" />
         <Stack.Screen name="cert/[token]" />
         <Stack.Screen name="dossier/[token]" />
+        <Stack.Screen name="dev/ui" />
         <Stack.Protected guard={open}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="memory" />
