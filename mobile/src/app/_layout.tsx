@@ -107,6 +107,7 @@ function ThemedStack() {
           <Stack.Screen name="memory" />
           <Stack.Screen name="news" />
           <Stack.Screen name="practice" />
+          <Stack.Screen name="profile" />
           <Stack.Screen name="(session)" />
           <Stack.Screen name="(onboarding)" />
           <Stack.Screen name="start" />

@@ -11,6 +11,8 @@ import { givenName, useCopy } from "@/lib/i18n";
 import { keepWords } from "@/lib/text";
 import { clearLocalProgress } from "@/lib/progress";
 import { signOut, useSession } from "@/lib/session";
+import { AppShell } from "@/components/layout/app-shell";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useTheme } from "@/theme/ThemeContext";
 
 const ITEMS = [
@@ -91,8 +93,14 @@ export function AppFrame({ children, scroll = true, compact = false }: { childre
     };
   }, [headerMenu]);
 
+  const { atLeast } = useBreakpoint();
+
   if (locked && !isPublicPath(pathname)) {
     return <Redirect href="/account" />;
+  }
+
+  if (atLeast("tablet") && !locked) {
+    return <AppShell>{children}</AppShell>;
   }
 
   return (
