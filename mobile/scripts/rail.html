@@ -1,0 +1,284 @@
+class="lg:col-span-4 flex flex-col gap-6 w-full">
+<!-- Active Polymath Mentor Status Card -->
+<div class="bg-surface-white rounded-3xl p-5 shadow-[0_4px_0_#CBD5E1] relative overflow-hidden">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary-container">psychology</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Mentor Ativo</span>
+</div>
+<span class="px-2.5 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed font-stats-value text-xs">
+              Nível 7 • Físico Brincalhão
+            </span>
+</div>
+<div class="flex items-center gap-4 bg-surface-raised p-3.5 rounded-2xl mb-4">
+<div class="relative w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 bg-primary-fixed shadow-[0_2px_0_#CBD5E1]">
+<img class="w-full h-full object-cover" data-alt="Charming oil-painting inspired portrait of Albert Einstein smiling warmly with glasses, laboratory chalk formulas in background, glowing warm light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAi1ehCIoTLL35-UciEfH7UWlrCjB1tTh_GiZgjRbQtLGpOlyJ_ll2cngD7hymOonmZk-pWwOPh80dYl4PxIWhBiBrsKdkxPRNJ2aV08Z6XBfvRzjAcLx_V3tP1TNv3Fi0aweGh1Zp6TDNsL-CQ4xLTtt0E0EVdNQotUhgdRyFPLNWlflnenuX50CiFxrt8wz15ugbiDZ9OtL4hm_T1xqIQyVKi4FqtEbHAwXgHKzw"/>
+<div class="absolute bottom-0 inset-x-0 bg-on-surface/60 backdrop-blur-xs text-[9px] text-center text-on-primary py-0.5 font-stats-value">
+                98% AFINIDADE
+              </div>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-body-default text-on-surface font-bold">Albert Einstein</span>
+<span class="font-body-sm text-body-sm text-text-muted">Especialista em Causalidade Alemã</span>
+<div class="mt-1 flex items-center gap-1.5 text-xs text-primary font-bold">
+<span class="material-symbols-outlined text-[16px]">bolt</span>
+<span>Bônus: +15% Retenção FSRS</span>
+</div>
+</div>
+</div>
+<button class="w-full py-2.5 px-4 rounded-xl bg-surface-white text-on-surface-variant font-button-text text-body-sm shadow-[0_3px_0_#CBD5E1] active:translate-y-0.5 active:shadow-none hover:bg-surface-raised transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px]">chat_bubble</span>
+<span>Conversar em Alemão com Albert</span>
+</button>
+</div>
+<!-- Daily Quests (Missões Diárias) Card -->
+<div class="bg-surface-white rounded-3xl p-5 shadow-[0_4px_0_#CBD5E1]">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-streak-fire">target</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Missões de Hoje</h3>
+</div>
+<span class="font-label-badge text-label-badge text-text-muted">Expira em 9h</span>
+</div>
+<div class="flex flex-col gap-3.5">
+<!-- Quest 1: Completed & Claimable -->
+<div class="p-3.5 rounded-2xl bg-surface-raised flex flex-col gap-2 transition-all">
+<div class="flex items-start justify-between gap-2">
+<div class="flex items-start gap-2.5">
+<span class="material-symbols-outlined text-success-emerald text-[22px] mt-0.5">check_circle</span>
+<div>
+<div class="font-headline-sm text-body-sm text-on-surface font-bold">Treino de Cadência Sonora</div>
+<div class="font-body-sm text-[12px] text-text-muted">Pronuncie 5 orações complexas</div>
+</div>
+</div>
+<button class="px-3 py-1.5 rounded-xl bg-gem-focus text-on-primary font-button-text text-xs shadow-[0_3px_0_#0891B2] active:translate-y-0.5 active:shadow-[0_1px_0_#0891B2] hover:opacity-95 transition-all flex items-center gap-1 cursor-pointer" id="claim-gems-btn">
+<span>Coletar 25</span>
+<span>💎</span>
+</button>
+</div>
+<div class="w-full h-2 rounded-full bg-border-default overflow-hidden">
+<div class="h-full bg-success-emerald w-full"></div>
+</div>
+</div>
+<!-- Quest 2: In Progress -->
+<div class="p-3.5 rounded-2xl bg-surface-raised flex flex-col gap-2">
+<div class="flex items-start justify-between gap-2">
+<div class="flex items-start gap-2.5">
+<span class="material-symbols-outlined text-primary text-[22px] mt-0.5">neurology</span>
+<div>
+<div class="font-headline-sm text-body-sm text-on-surface font-bold">15 Flashcards de Repetição Espaçada</div>
+<div class="font-body-sm text-[12px] text-text-muted">12 de 15 revisões corretas</div>
+</div>
+</div>
+<span class="font-stats-value text-xs text-on-surface-variant font-bold">12/15</span>
+</div>
+<div class="w-full h-2 rounded-full bg-border-default overflow-hidden">
+<div class="h-full bg-primary rounded-full" style="width: 80%"></div>
+</div>
+</div>
+<!-- Quest 3: Not Started -->
+<div class="p-3.5 rounded-2xl bg-surface-raised flex flex-col gap-2">
+<div class="flex items-start justify-between gap-2">
+<div class="flex items-start gap-2.5">
+<span class="material-symbols-outlined text-streak-fire text-[22px] mt-0.5">swords</span>
+<div>
+<div class="font-headline-sm text-body-sm text-on-surface font-bold">Vencer 1 Duelo Relâmpago 120s</div>
+<div class="font-body-sm text-[12px] text-text-muted">Desafie outro estudante ao vivo</div>
+</div>
+</div>
+<button class="px-3 py-1.5 rounded-xl bg-streak-fire text-on-primary font-button-text text-xs shadow-[0_3px_0_#DC2626] active:translate-y-0.5 active:shadow-[0_1px_0_#DC2626] hover:opacity-95 transition-all cursor-pointer">
+                  Desafiar
+                </button>
+</div>
+<div class="w-full h-2 rounded-full bg-border-default overflow-hidden">
+<div class="h-full bg-streak-fire w-0"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Leaderboard: Diamond Polymath League -->
+<div class="bg-surface-white rounded-3xl p-5 shadow-[0_4px_0_#CBD5E1]">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-gem-focus">trophy</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Liga Diamante</h3>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-gem-focus/10 text-gem-focus font-label-badge text-xs">
+              2d 14h restante
+            </span>
+</div>
+<div class="bg-surface-raised p-2.5 rounded-2xl mb-3 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="text-sm">⚡</span>
+<span class="font-body-sm text-xs text-on-surface">Zona de Promoção: <strong>Top 3 sobem para Lendária</strong></span>
+</div>
+</div>
+<div class="flex flex-col divide-y divide-border-default/40">
+<!-- Rank 1 -->
+<div class="py-2.5 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="font-stats-value text-xs font-bold text-amber-shade w-4 text-center">1</span>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-primary-fixed">
+<img class="w-full h-full object-cover" data-alt="Profile avatar illustration of a woman researcher with glasses and braided hair, vibrant colors" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCgeBbzzDjKukHG8QRd9qSzsxbM9zE7GXBimgvyhxu9uIJETjnF9kaiUsteyJFo4pMbxBHtk4R5h4ikWKVV9atGKh-Ap17-EbyDxYfV52xBnXdrx_KgvYyaY-gWSUBDobd2AQhfaMLynNrrWklpQPB-5J__HGI69BEwbJlHV9MCCmZSDa7x0JBnDFxe1oNwA_Rs2Uv9NSzAumFsV71DE9QY1XTGhOgfA91zf29VbnQ"/>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-body-sm text-on-surface flex items-center gap-1.5">
+                    Helena Meyer <span class="text-xs">🇩🇪</span>
+</span>
+<span class="font-body-sm text-[11px] text-text-muted">3,890 XP</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-amber-shade text-[20px]">military_tech</span>
+</div>
+<!-- Rank 2 -->
+<div class="py-2.5 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="font-stats-value text-xs font-bold text-border-strong w-4 text-center">2</span>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-variant">
+<img class="w-full h-full object-cover" data-alt="Profile avatar illustration of a bearded young man in cozy knitted sweater, cheerful smile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBmRRhcO1WFKdpzPumcqBiKWtpEI16DCQ2z-M7tJvwZrRhP1ErJSHfDeoTvbcTayzKPBXWSdeZFuq-GqBZTp8RlM0uET3EO5_P9c5jomlvASVNLMi9vavIEgqW09OBjBsQy0A7kJ9Q0FHXIVtWcipicK5FZOsijbPAmlUYpo3v44OStXPaPftp0Yqa0s2V0qeQ40JK8KlT3E02Xm-K9pghoLasj4h918xfnMfWiMLQ"/>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-body-sm text-on-surface flex items-center gap-1.5">
+                    Lucas Santos <span class="text-xs">🇧🇷</span>
+</span>
+<span class="font-body-sm text-[11px] text-text-muted">3,420 XP</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[20px]">military_tech</span>
+</div>
+<!-- Rank 3 -->
+<div class="py-2.5 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="font-stats-value text-xs font-bold text-amber-shade w-4 text-center">3</span>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-secondary-fixed">
+<img class="w-full h-full object-cover" data-alt="Profile avatar of a woman with red hair and headphones smiling cheerfully, high quality digital art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3nDo_MKO23QUjGTx96fj22E9XcstvIU1UbZAYk2t8yOENH8FnGbfhF1bSfSBx7ss2nq8DxAhaXFel2HjlAFlNLa_20a4Qb8ZllTBTu6nGedFX2HxcCK72Hb27nwuhdUPT1VbsUmZXGh_DG4GMxhPn4x-63RodwPkK3LWqM7qbrPKHREkEecuFZ9LhmFkWgNyo9Qm6SWJtDVwys_oCTC5TjNJ_RcKWEH9_fjwK_wo"/>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-body-sm text-on-surface flex items-center gap-1.5">
+                    Anouk Dubois <span class="text-xs">🇫🇷</span>
+</span>
+<span class="font-body-sm text-[11px] text-text-muted">3,110 XP</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-secondary text-[20px]">military_tech</span>
+</div>
+<!-- Current User (Rank 4) Highlighted -->
+<div class="py-2.5 px-2 bg-primary/10 rounded-xl flex items-center justify-between my-1">
+<div class="flex items-center gap-3">
+<span class="font-stats-value text-xs font-bold text-primary w-4 text-center">4</span>
+<div class="w-8 h-8 rounded-full overflow-hidden ring-2 ring-primary">
+<img class="w-full h-full object-cover" data-alt="Illustrated gamer avatar for user profile with stylish glasses and slight smirk, vibrant teal background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8qnkQpBJ9VcN_m_JfCFcbSU1483k4uvBYf-WsW9-2PKdL7KWLc57ULmGMzyPOZb9g4TFXKvxunqpjFUwvidnuRdmxuq8hOejdMEBbdfd0OQlmavM6CGy7a0ShzuyPfnODR1rID1H8xPhCyzJV_h_IqWpvLiF1tupjNAzIcMdkAWTgPOfBg7Yn7pxh_kGEeU5nFJ45b9SENTo2Mocuc0oKenn8f0bu_7Mw1NQjrEQ"/>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-body-sm text-primary font-bold flex items-center gap-1.5">
+                    Você (Gabriel) <span class="text-xs">🇧🇷</span>
+</span>
+<span class="font-body-sm text-[11px] text-primary">2,450 XP • Faltam 660 XP p/ Top 3</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-primary text-[20px]">arrow_upward</span>
+</div>
+</div>
+<button class="w-full mt-3 py-2 text-center text-primary font-button-text text-body-sm hover:underline">
+            Ver Tabela Completa (30 Alunos)
+          </button>
+</div>
+</aside>
+</div>
+</div>
+<!-- Interactive Mini Modal Preview Triggered by clicking nodes -->
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300" id="lesson-preview-modal">
+<div class="bg-surface-white w-full max-w-md mx-4 rounded-3xl p-6 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.2)] transform scale-95 transition-transform duration-300" id="lesson-modal-card">
+<div class="flex items-center justify-between mb-4">
+<span class="px-3 py-1 rounded-full bg-primary/10 text-primary font-stats-value text-xs">
+          Lição 7 de 10 • Módulo 3
+        </span>
+<button class="p-1 rounded-full hover:bg-surface-raised text-text-muted" id="close-modal-btn">
+<span class="material-symbols-outlined text-[24px]">close</span>
+</button>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">Partículas de Causa: “Weil” vs “Denn”</h3>
+<p class="font-body-default text-body-default text-text-muted mb-6">
+        Domine a inversão da ordem das palavras no predicado e impressione Einstein na formulação de teses científicas.
+      </p>
+<div class="bg-surface-raised p-4 rounded-2xl mb-6 flex flex-col gap-2">
+<div class="flex items-center justify-between text-body-sm">
+<span class="text-text-muted">Recompensas da Lição:</span>
+<span class="font-stats-value text-on-surface font-bold">+35 XP • 5 💎</span>
+</div>
+<div class="flex items-center justify-between text-body-sm">
+<span class="text-text-muted">Tempo Estimado:</span>
+<span class="font-stats-value text-on-surface font-bold">~3 minutos</span>
+</div>
+</div>
+<div class="flex flex-col gap-2.5">
+<button class="w-full py-4 rounded-2xl bg-primary text-on-primary font-button-text text-button-text shadow-[0_4px_0_#0F766E] active:translate-y-1 active:shadow-[0_1px_0_#0F766E] hover:bg-primary-container transition-all text-center">
+          Começar Lição Agora ⚡
+        </button>
+<button class="w-full py-2.5 text-center text-text-muted font-button-text text-body-sm hover:text-on-surface" id="close-modal-link">
+          Voltar ao Mapa
+        </button>
+</div>
+</div>
+</div>
+</div>
+<script>
+  // Tactile micro-interactions for buttons and nodes
+  const activeNodeBtn = document.getElementById('active-node-btn');
+  const modal = document.getElementById('lesson-preview-modal');
+  const modalCard = document.getElementById('lesson-modal-card');
+  const closeModalBtn = document.getElementById('close-modal-btn');
+  const closeModalLink = document.getElementById('close-modal-link');
+  const claimGemsBtn = document.getElementById('claim-gems-btn');
+  const btnContinueSession = document.getElementById('btn-continue-session');
+
+  function openModal() {
+    modal.classList.remove('opacity-0', 'pointer-events-none');
+    modalCard.classList.remove('scale-95');
+    modalCard.classList.add('scale-100');
+  }
+
+  function closeModal() {
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    modalCard.classList.remove('scale-100');
+    modalCard.classList.add('scale-95');
+  }
+
+  if (activeNodeBtn) {
+    activeNodeBtn.addEventListener('click', openModal);
+  }
+
+  if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
+  if (closeModalLink) closeModalLink.addEventListener('click', closeModal);
+  
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+  }
+
+  // Gem Claim Interaction
+  if (claimGemsBtn) {
+    claimGemsBtn.addEventListener('click', function() {
+      this.innerHTML = '<span>Coletado!</span> <span>✨</span>';
+      this.classList.remove('bg-gem-focus', 'shadow-[0_3px_0_#0891B2]');
+      this.classList.add('bg-success-emerald', 'shadow-[0_3px_0_#059669]', 'pointer-events-none');
+    });
+  }
+
+  // Keyboard shortcut listener: Space to Continue Session
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+      e.preventDefault();
+      if (modal.classList.contains('pointer-events-none')) {
+        openModal();
+      } else {
+        closeModal();
+      }
+    }
+  });
+
+  if (btnContinueSession) {
+    btnContinueSession.addEventListener('click', openModal);
+  }
+</script></main>
