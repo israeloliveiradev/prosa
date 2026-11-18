@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-27T20:41:00.000Z",
+  "title": "Design System: Prosa",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Primary Ink", "canonical": "#1D1F20", "tonalRamp": ["#F3F4F5", "#868B90", "#1D1F20", "#131416"] },
+      "accent": { "role": "accent", "displayName": "Study Teal", "canonical": "#1B6C80", "tonalRamp": ["#E3F0F3", "#5BB3C8", "#1B6C80", "#15343C"] },
+      "frame": { "role": "neutral", "displayName": "App Frame", "canonical": "#F2F5F7", "tonalRamp": ["#F2F5F7", "#E9EDF0", "#27292C", "#101112"] },
+      "sheet": { "role": "neutral", "displayName": "Work Sheet", "canonical": "#FFFFFF", "tonalRamp": ["#FFFFFF", "#F4F6F8", "#1F2123", "#17181A"] },
+      "ink": { "role": "neutral", "displayName": "Body Ink", "canonical": "#131416", "tonalRamp": ["#F3F4F5", "#B4B7BA", "#5D5F60", "#131416"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Saudação e fecho de sessão." },
+      "title": { "displayName": "Title", "purpose": "O h1 único de cada tela." },
+      "section": { "displayName": "Section", "purpose": "Títulos de cards e grupos." },
+      "body": { "displayName": "Body", "purpose": "Texto corrido e formulários." },
+      "label": { "displayName": "Label", "purpose": "Botões, controles e abas." },
+      "reading": { "displayName": "Reading", "purpose": "Texto de estudo em Literata." },
+      "small": { "displayName": "Small", "purpose": "Metadados e legendas (12px)." }
+    },
+    "shadows": [
+      { "name": "overlay", "value": "0 8px 24px rgba(0, 0, 0, 0.08)", "purpose": "Elevação de diálogos, menus e toasts sobre a folha." }
+    ],
+    "motion": [
+      { "name": "press", "value": "cubic-bezier(0.2, 0.8, 0.2, 1)", "purpose": "Resposta física a toques e cliques (120ms)." },
+      { "name": "spring", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Entrada de folhas modais e transições de estado." }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "375px" },
+      { "name": "tablet", "value": "768px" },
+      { "name": "desktop", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button Primary",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Botão de ação principal com fundo quase-preto e resposta ao toque.",
+      "html": "<button class=\"ds-btn-primary\">Salvar alterações</button>",
+      "css": ".ds-btn-primary { background: #1D1F20; color: #FFFFFF; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; font-weight: 500; height: 40px; padding: 0 16px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: opacity 0.12s ease, transform 0.12s ease; } .ds-btn-primary:hover { opacity: 0.92; } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:focus-visible { outline: 2px solid #1B6C80; outline-offset: 2px; }"
+    },
+    {
+      "name": "Button Secondary",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Botão secundário plano com borda sutil de 1px.",
+      "html": "<button class=\"ds-btn-secondary\">Cancelar</button>",
+      "css": ".ds-btn-secondary { background: #FFFFFF; color: #131416; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; font-weight: 500; height: 40px; padding: 0 16px; border-radius: 6px; border: 1px solid #E8EAEC; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: background 0.12s ease, transform 0.12s ease; } .ds-btn-secondary:hover { background: #F4F6F8; } .ds-btn-secondary:active { transform: scale(0.97); } .ds-btn-secondary:focus-visible { outline: 2px solid #1B6C80; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Campo de texto com altura de 44px e anel de foco em petróleo.",
+      "html": "<div class=\"ds-field-wrap\"><label class=\"ds-field-label\">E-mail de acesso</label><input type=\"email\" class=\"ds-field-input\" placeholder=\"voce@exemplo.com\" /></div>",
+      "css": ".ds-field-wrap { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 320px; font-family: 'IBM Plex Sans', sans-serif; } .ds-field-label { font-size: 14px; font-weight: 500; color: #131416; } .ds-field-input { height: 44px; padding: 0 12px; font-size: 16px; font-family: inherit; color: #131416; background: #FFFFFF; border: 1px solid #868B90; border-radius: 6px; box-sizing: border-box; outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease; } .ds-field-input:focus { border-color: #1B6C80; box-shadow: 0 0 0 2px rgba(27, 108, 128, 0.2); }"
+    },
+    {
+      "name": "Surface Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Card de conteúdo em repouso com borda de 1px e zero sombra.",
+      "html": "<div class=\"ds-card\"><h3 class=\"ds-card-title\">Meta do dia</h3><p class=\"ds-card-body\">Complete 20 minutos de prosa guiada para manter a rotina.</p></div>",
+      "css": ".ds-card { background: #FFFFFF; border: 1px solid #E8EAEC; border-radius: 8px; padding: 16px; font-family: 'IBM Plex Sans', sans-serif; box-shadow: none; } .ds-card-title { font-size: 16px; font-weight: 600; color: #131416; margin: 0 0 6px 0; } .ds-card-body { font-size: 14px; color: #5D5F60; margin: 0; line-height: 20px; }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "pill",
+      "description": "Pílula de estado compacta de 22px de altura.",
+      "html": "<span class=\"ds-pill-accent\">Em andamento</span>",
+      "css": ".ds-pill-accent { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 9999px; background: #E3F0F3; color: #1B6C80; font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; font-weight: 500; }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "nav",
+      "refersTo": "segmented",
+      "description": "Seletor de opções exclusivo em poço cinza com polegar branco.",
+      "html": "<div class=\"ds-segmented\"><button class=\"ds-segmented-opt ds-segmented-opt-active\">Entrar</button><button class=\"ds-segmented-opt\">Cadastrar</button></div>",
+      "css": ".ds-segmented { display: inline-flex; background: #F4F6F8; padding: 2px; border-radius: 6px; border: 1px solid #E8EAEC; } .ds-segmented-opt { border: none; background: transparent; padding: 6px 14px; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; font-weight: 500; color: #5D5F60; border-radius: 4px; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; } .ds-segmented-opt-active { background: #FFFFFF; color: #131416; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "A mesa de estudo arrumada",
+    "overview": "O Prosa é uma plataforma de estudo focado de idiomas. A interface prioriza calma, precisão tipográfica e resposta háptica sutil. O design se afasta completamente da gamificação espalhafatosa para criar um ambiente de concentração semelhante a ferramentas de trabalho de alta densidade.",
+    "keyCharacteristics": [
+      "Uma moldura neutra (frame) segura a navegação global.",
+      "O conteúdo vive em uma folha branca (sheet) com cantos de 16px e recuo de 8px.",
+      "Um único acento petróleo (accent) reservado para progresso e estado ativo.",
+      "Superfícies em repouso são estritamente planas sem sombras artificiais.",
+      "Efeito de vidro (Glass) restrito a superfícies que sobrepõem conteúdo com rolagem."
+    ],
+    "rules": [
+      { "name": "The Single-Accent Rule", "body": "O petróleo accent é reservado exclusivamente para o progresso do aluno e seleção.", "section": "colors" },
+      { "name": "The No-Kicker Rule", "body": "Rótulos em caixa alta acima de títulos h1 são terminantemente proibidos.", "section": "typography" },
+      { "name": "The Rest-Is-Flat Rule", "body": "Surperfícies em repouso têm borda de 1px e zero sombra projetada.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do usar IBM Plex Sans para interface e Literata para textos de estudo.",
+      "Do manter contraste mínimo de 4.5:1 para texto e 3:1 para controles.",
+      "Do garantir área de toque mínima de 44x44 pt."
+    ],
+    "donts": [
+      "Don't usar cores hexadecimais literais fora de design/tokens.",
+      "Don't usar botões 3D com border-b-4.",
+      "Don't usar vidro em cards em repouso."
+    ]
+  }
+}
