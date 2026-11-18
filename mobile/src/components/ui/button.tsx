@@ -6,6 +6,7 @@ export type ButtonVariant = "primary" | "success" | "danger" | "secondary" | "gh
 export type ButtonSize = "md" | "lg";
 
 export interface ButtonProps {
+  label?: string;
   children?: ReactNode;
   onPress?: () => void;
   variant?: ButtonVariant;
@@ -20,6 +21,7 @@ export interface ButtonProps {
 }
 
 export function Button({
+  label,
   children,
   onPress,
   variant = "primary",
@@ -96,11 +98,29 @@ export function Button({
             ) : (
               <View className="flex-row items-center justify-center gap-2">
                 {icon ? <View>{icon}</View> : null}
-                {typeof children === "string" ? (
-                  <Text className={`${textClass} ${textStyle} tracking-wide text-center`}>{children}</Text>
-                ) : (
-                  children
-                )}
+                {(() => {
+                  const content = label !== undefined ? label : children;
+                  if (content == null) return null;
+                  if (typeof content === "string" || typeof content === "number") {
+                    return (
+                      <Text className={`${textClass} ${textStyle} tracking-wide text-center`}>
+                        {content}
+                      </Text>
+                    );
+                  }
+                  if (Array.isArray(content)) {
+                    return content.map((item, idx) =>
+                      typeof item === "string" || typeof item === "number" ? (
+                        <Text key={idx} className={`${textClass} ${textStyle} tracking-wide text-center`}>
+                          {item}
+                        </Text>
+                      ) : (
+                        item
+                      )
+                    );
+                  }
+                  return content;
+                })()}
                 {iconRight ? <View>{iconRight}</View> : null}
               </View>
             )}

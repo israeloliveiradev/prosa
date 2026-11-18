@@ -1,19 +1,6 @@
-import { Pressable, Text } from "react-native";
+import React from "react";
+import { Button, type ButtonProps } from "@/ui";
 import { keepWords } from "@/lib/text";
-
-const FACE = {
-  primary: "bg-ember",
-  moss: "bg-moss",
-  ink: "bg-ink",
-  ghost: "border border-line bg-card",
-} as const;
-
-const LABEL = {
-  primary: "text-onEmber",
-  moss: "text-onEmber",
-  ink: "text-card",
-  ghost: "text-ink",
-} as const;
 
 export function ChunkButton({
   label,
@@ -21,22 +8,28 @@ export function ChunkButton({
   disabled,
   tone = "primary",
   className = "",
+  testID,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  tone?: keyof typeof FACE;
+  tone?: "primary" | "moss" | "ink" | "ghost";
   className?: string;
+  testID?: string;
 }) {
+  const variant: ButtonProps["variant"] = tone === "ghost" ? "secondary" : "primary";
+  const buttonTone: ButtonProps["tone"] = tone === "primary" ? "brand" : "neutral";
+
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled: Boolean(disabled) }}
-      disabled={disabled}
+    <Button
+      label={keepWords(label)}
+      variant={variant}
+      tone={buttonTone}
       onPress={onPress}
-      className={`min-h-16 cursor-pointer items-center justify-center rounded-full px-10 active:opacity-90 ${disabled ? "bg-line" : FACE[tone]} ${className}`}
-    >
-      <Text className={`text-center font-label text-base ${disabled ? "text-ink" : LABEL[tone]}`}>{keepWords(label)}</Text>
-    </Pressable>
+      disabled={disabled}
+      testID={testID}
+      className={className}
+      fullWidth
+    />
   );
 }

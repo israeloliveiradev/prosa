@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-10-27T16:56:32.038Z",
+  "filesInSrc": 188,
+  "totalLinesInSrc": 26198,
+  "filesOver400Lines": [
+    {
+      "file": "src/lib/api.ts",
+      "lines": 2167
+    },
+    {
+      "file": "src/lib/messages.ts",
+      "lines": 1225
+    },
+    {
+      "file": "src/lib/progress.ts",
+      "lines": 685
+    },
+    {
+      "file": "src/app/(session)/daily.tsx",
+      "lines": 671
+    },
+    {
+      "file": "src/services/audio/AudioService.ts",
+      "lines": 642
+    },
+    {
+      "file": "src/components/home/daily-news.tsx",
+      "lines": 630
+    },
+    {
+      "file": "src/app/(onboarding)/quiz.tsx",
+      "lines": 561
+    },
+    {
+      "file": "src/components/placement/placement-screen.tsx",
+      "lines": 535
+    },
+    {
+      "file": "src/app/admin.tsx",
+      "lines": 534
+    },
+    {
+      "file": "src/app/settings.tsx",
+      "lines": 526
+    },
+    {
+      "file": "src/design/tokens.ts",
+      "lines": 499
+    },
+    {
+      "file": "src/app/account.tsx",
+      "lines": 475
+    }
+  ],
+  "linesInApiTs": 2167,
+  "hardcodedHexCount": 52,
+  "rawTextInputCount": 35,
+  "styleSheetCreateCount": 8,
+  "kickerCount": 21,
+  "useQueryCount": 1,
+  "useMutationCount": 0,
+  "testIdCount": 7
+}

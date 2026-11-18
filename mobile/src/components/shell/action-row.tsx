@@ -1,6 +1,6 @@
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { Icon } from "@/components/shell/icon";
-import { useTheme } from "@/theme/ThemeContext";
+import { ActivityIndicator } from "react-native";
+import { ListRow } from "@/ui";
+import { useThemeTokens } from "@/theme/ThemeContext";
 
 export function ActionRow({
   title,
@@ -8,7 +8,7 @@ export function ActionRow({
   onPress,
   disabled,
   busy,
-  label,
+  label: _label,
 }: {
   title: string;
   detail?: string;
@@ -17,22 +17,23 @@ export function ActionRow({
   busy?: boolean;
   label?: string;
 }) {
-  const { palette } = useTheme();
+  const { colors } = useThemeTokens();
+
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label ?? title}
-      accessibilityHint={detail}
-      accessibilityState={{ disabled: Boolean(disabled), busy: Boolean(busy) }}
-      disabled={disabled || busy}
-      onPress={onPress}
-      className="min-h-16 w-full cursor-pointer flex-row items-center rounded-3xl border border-line bg-card px-5 py-4"
-    >
-      <View className="min-w-0 flex-1 pr-4">
-        <Text className="font-label text-base leading-6 text-ink">{title}</Text>
-        {detail ? <Text className="mt-1 text-sm leading-5 text-muted">{detail}</Text> : null}
-      </View>
-      {busy ? <ActivityIndicator color={palette.primary} /> : <Icon name="chevron" color={palette.primary} />}
-    </Pressable>
+    <ListRow
+      title={title}
+      subtitle={detail}
+      onPress={disabled || busy ? undefined : onPress}
+      chevron={!busy}
+      trailing={
+        busy ? (
+          <ActivityIndicator
+            color={colors.accent.brand}
+            accessibilityLabel="Carregando..."
+            aria-label="Carregando..."
+          />
+        ) : undefined
+      }
+    />
   );
 }

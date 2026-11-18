@@ -1,127 +1,131 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { Platform, View } from "react-native";
-import { colorScheme, vars } from "nativewind";
-import { darkPalette, lightPalette, type Palette } from "@/design/tokens";
+import type { ReactNode } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { Appearance, Platform, View } from "react-native";
+import { colorScheme } from "nativewind";
+import type { Palette } from "@/design/tokens";
+import { darkPalette, lightPalette } from "@/design/tokens";
+import { themeVars } from "@/design/generated/theme-vars";
 import { kv } from "@/lib/kv";
 
-export type ThemePreference = "light" | "dark";
+import {
+  type ThemePreference,
+  type ResolvedScheme,
+  THEME_KEY_V2,
+  THEME_KEY_V1,
+  resolveThemeMigration,
+} from "./migration";
 
-const THEME_KEY = "prosa.theme.v1";
+export {
+  type ThemePreference,
+  type ResolvedScheme,
+  THEME_KEY_V2,
+  THEME_KEY_V1,
+  resolveThemeMigration,
+};
 
 type ThemeValue = {
   preference: ThemePreference;
-  scheme: ThemePreference;
+  scheme: ResolvedScheme;
   palette: Palette;
   setPreference: (next: ThemePreference) => void;
 };
 
 const ThemeContext = createContext<ThemeValue | null>(null);
 
-function readPreference(): ThemePreference {
-  const stored = kv.getString(THEME_KEY);
-  if (stored === "dark") {
-    return "dark";
+export function readPreference(): ThemePreference {
+  const storedV2 = kv.getString(THEME_KEY_V2);
+  const storedV1 = kv.getString(THEME_KEY_V1);
+  const { preference, nextV2 } = resolveThemeMigration(storedV2, storedV1);
+  if (nextV2) {
+    kv.set(THEME_KEY_V2, nextV2);
   }
-  if (stored !== "light") {
-    kv.set(THEME_KEY, "light");
-  }
-  return "light";
+  return preference;
 }
 
-export function themeVars(palette: Palette) {
-  return vars({
-    // Novos tokens da spec
-    "--paper": palette.paper,
-    "--card": palette.card,
-    "--sunken": palette.sunken,
-    "--line": palette.line,
-    "--ink": palette.ink,
-    "--muted": palette.muted,
-
-    "--primary": palette.primary,
-    "--primary-edge": palette.primaryEdge,
-    "--on-primary": palette.onPrimary,
-    "--primary-soft": palette.primarySoft,
-
-    "--success": palette.success,
-    "--success-edge": palette.successEdge,
-    "--on-success": palette.onSuccess,
-    "--success-soft": palette.successSoft,
-
-    "--danger": palette.danger,
-    "--danger-edge": palette.dangerEdge,
-    "--on-danger": palette.onDanger,
-    "--danger-soft": palette.dangerSoft,
-
-    "--streak": palette.streak,
-    "--streak-edge": palette.streakEdge,
-    "--on-streak": palette.onStreak,
-
-    "--xp": palette.xp,
-    "--xp-edge": palette.xpEdge,
-    "--on-xp": palette.onXp,
-    "--xp-soft": palette.xpSoft,
-
-    "--pro": palette.pro,
-    "--pro-edge": palette.proEdge,
-    "--on-pro": palette.onPro,
-
-    // Aliases legados para não quebrar componentes existentes
-    "--ember": palette.primary,
-    "--ember-soft": palette.primarySoft,
-    "--on-ember": palette.onPrimary,
-    "--moss": palette.success,
-    "--moss-soft": palette.successSoft,
-    "--rose-soft": palette.dangerSoft,
-    "--rose-ink": palette.danger,
-    "--sand": palette.sunken,
-    "--sand-ink": palette.ink,
-  });
+function getSystemScheme(): ResolvedScheme {
+  if (Platform.OS === "web" && typeof window !== "undefined" && window.matchMedia) {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  const color = Appearance.getColorScheme();
+  return color === "dark" ? "dark" : "light";
 }
 
-function applyDocumentTheme(scheme: ThemePreference, surface: string) {
+function resolveScheme(preference: ThemePreference, system: ResolvedScheme): ResolvedScheme {
+  if (preference === "system") {
+    return system;
+  }
+  return preference;
+}
+
+function applyDocumentTheme(preference: ThemePreference, resolved: ResolvedScheme) {
   if (Platform.OS !== "web" || typeof document === "undefined") {
     return;
   }
   const root = document.documentElement;
   root.classList.remove("light", "dark");
-  root.classList.add(scheme);
-  root.style.colorScheme = scheme;
-  let meta = document.querySelector('meta[name="theme-color"]');
-  if (!meta) {
-    meta = document.createElement("meta");
-    meta.setAttribute("name", "theme-color");
-    document.head.appendChild(meta);
-  }
-  meta.setAttribute("content", surface);
-}
+  root.classList.add(resolved);
+  root.style.colorScheme = resolved;
 
-function bootTheme(): ThemePreference {
-  const scheme = readPreference();
-  applyDocumentTheme(scheme, scheme === "dark" ? darkPalette.surface : lightPalette.surface);
-  colorScheme.set(scheme);
-  return scheme;
+  const lightMeta =
+    document.querySelector('meta[name="theme-color"][media*="light"]') ||
+    document.querySelector('meta[name="theme-color"]:not([media])');
+  const darkMeta = document.querySelector('meta[name="theme-color"][media*="dark"]');
+
+  if (preference === "system") {
+    if (lightMeta) lightMeta.setAttribute("content", lightPalette.frame);
+    if (darkMeta) darkMeta.setAttribute("content", darkPalette.frame);
+  } else {
+    const forcedColor = preference === "dark" ? darkPalette.frame : lightPalette.frame;
+    if (lightMeta) lightMeta.setAttribute("content", forcedColor);
+    if (darkMeta) darkMeta.setAttribute("content", forcedColor);
+  }
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [preference, setPreferenceState] = useState(bootTheme);
-  const palette = preference === "dark" ? darkPalette : lightPalette;
+  const [preference, setPreferenceState] = useState<ThemePreference>(readPreference);
+  const [systemScheme, setSystemScheme] = useState<ResolvedScheme>(getSystemScheme);
+
+  const scheme = resolveScheme(preference, systemScheme);
+  const palette = scheme === "dark" ? darkPalette : lightPalette;
+
+  // Ouvinte de mudanças no esquema do sistema
+  useEffect(() => {
+    if (Platform.OS === "web" && typeof window !== "undefined" && window.matchMedia) {
+      const mql = window.matchMedia("(prefers-color-scheme: dark)");
+      const handler = (e: MediaQueryListEvent) => {
+        setSystemScheme(e.matches ? "dark" : "light");
+      };
+      mql.addEventListener("change", handler);
+      return () => mql.removeEventListener("change", handler);
+    } else if (Platform.OS !== "web") {
+      const sub = Appearance.addChangeListener(({ colorScheme: nextScheme }) => {
+        if (nextScheme === "dark" || nextScheme === "light") {
+          setSystemScheme(nextScheme);
+        }
+      });
+      return () => sub.remove();
+    }
+  }, []);
 
   useEffect(() => {
     colorScheme.set(preference);
-    applyDocumentTheme(preference, palette.surface);
-  }, [preference, palette.surface]);
+    applyDocumentTheme(preference, scheme);
+  }, [preference, scheme]);
 
   function setPreference(next: ThemePreference) {
     setPreferenceState(next);
-    kv.set(THEME_KEY, next);
+    kv.set(THEME_KEY_V2, next);
     colorScheme.set(next);
-    applyDocumentTheme(next, next === "dark" ? darkPalette.surface : lightPalette.surface);
+    const nextScheme = resolveScheme(next, systemScheme);
+    applyDocumentTheme(next, nextScheme);
   }
 
   return (
-    <ThemeContext.Provider value={{ preference, scheme: preference, palette, setPreference }}>
-      <View className="flex-1 bg-paper" style={[{ flex: 1, backgroundColor: palette.surface }, themeVars(palette)]}>
+    <ThemeContext.Provider value={{ preference, scheme, palette, setPreference }}>
+      <View
+        className="flex-1 bg-sheet"
+        style={[{ flex: 1, backgroundColor: palette.sheet }, themeVars(palette)]}
+      >
         {children}
       </View>
     </ThemeContext.Provider>
@@ -129,14 +133,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 }
 
 export function peekSurfaceColor(): string {
-  return readPreference() === "dark" ? darkPalette.surface : lightPalette.surface;
+  const pref = readPreference();
+  const sys = getSystemScheme();
+  const scheme = resolveScheme(pref, sys);
+  return scheme === "dark" ? darkPalette.frame : lightPalette.frame;
 }
 
 export function useTheme(): ThemeValue {
   const value = useContext(ThemeContext);
   if (!value) {
     return {
-      preference: "light",
+      preference: "system",
       scheme: "light",
       palette: lightPalette,
       setPreference: () => undefined,
@@ -144,3 +151,60 @@ export function useTheme(): ThemeValue {
   }
   return value;
 }
+
+export function useThemeTokens() {
+  const { scheme, preference, palette, setPreference } = useTheme();
+  return {
+    scheme,
+    preference,
+    setPreference,
+    colors: {
+      surface: {
+        page: palette.sheet,
+        card: palette.sheet,
+        raised: palette.raised,
+      },
+      text: {
+        primary: palette.ink,
+        secondary: palette.muted,
+        disabled: palette.faint,
+      },
+      border: {
+        subtle: palette.borderSoft,
+        strong: palette.border,
+      },
+      accent: {
+        brand: palette.primary,
+        brandSoft: palette.accentSoft,
+      },
+      status: {
+        positive: palette.positive,
+        negative: palette.negative,
+        warning: palette.warning,
+      },
+      overlay: {
+        scrim: palette.scrim,
+      },
+    },
+    spacing: {
+      xxs: 4,
+      xs: 8,
+      sm: 12,
+      md: 16,
+      lg: 20,
+      xl: 24,
+      "2xl": 32,
+    },
+    radius: {
+      xs: 4,
+      sm: 8,
+      md: 12,
+      lg: 16,
+      xl: 20,
+      full: 9999,
+    },
+    palette,
+  };
+}
+
+export { themeVars };

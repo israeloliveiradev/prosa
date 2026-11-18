@@ -20,10 +20,13 @@ function Frame({
       style={{
         width: size,
         height,
-        borderRadius: Math.max(4, Math.round(size * 0.18)),
+        minWidth: size,
+        minHeight: height,
+        flexShrink: 0,
+        borderRadius: Math.max(3, Math.round(size * 0.16)),
         overflow: "hidden",
         borderWidth: 1,
-        borderColor: "rgba(28,25,23,0.14)",
+        borderColor: "rgba(28,25,23,0.18)",
         backgroundColor: "#FFFFFF",
       }}
     >
@@ -126,55 +129,111 @@ function Japan() {
   );
 }
 
+function Austria() {
+  return (
+    <>
+      <Rect width="60" height="13.4" fill="#C8102E" />
+      <Rect y="13.3" width="60" height="13.4" fill="#FFFFFF" />
+      <Rect y="26.6" width="60" height="13.4" fill="#C8102E" />
+    </>
+  );
+}
+
+function UnitedStates({ clipId }: { clipId: string }) {
+  return (
+    <>
+      <Defs>
+        <ClipPath id={clipId}>
+          <Rect width="60" height="40" />
+        </ClipPath>
+      </Defs>
+      <G clipPath={`url(#${clipId})`}>
+        <Rect width="60" height="40" fill="#B22234" />
+        <Rect y="3.08" width="60" height="3.08" fill="#FFFFFF" />
+        <Rect y="9.24" width="60" height="3.08" fill="#FFFFFF" />
+        <Rect y="15.4" width="60" height="3.08" fill="#FFFFFF" />
+        <Rect y="21.56" width="60" height="3.08" fill="#FFFFFF" />
+        <Rect y="27.72" width="60" height="3.08" fill="#FFFFFF" />
+        <Rect y="33.88" width="60" height="3.08" fill="#FFFFFF" />
+        <Rect width="24" height="21.56" fill="#3C3B6E" />
+        <Circle cx="6" cy="5.5" r="1.2" fill="#FFFFFF" />
+        <Circle cx="12" cy="5.5" r="1.2" fill="#FFFFFF" />
+        <Circle cx="18" cy="5.5" r="1.2" fill="#FFFFFF" />
+        <Circle cx="9" cy="11" r="1.2" fill="#FFFFFF" />
+        <Circle cx="15" cy="11" r="1.2" fill="#FFFFFF" />
+        <Circle cx="6" cy="16.5" r="1.2" fill="#FFFFFF" />
+        <Circle cx="12" cy="16.5" r="1.2" fill="#FFFFFF" />
+        <Circle cx="18" cy="16.5" r="1.2" fill="#FFFFFF" />
+      </G>
+    </>
+  );
+}
+
 export function Flag({ code, size = 28 }: { code: string; size?: number }) {
   const clipId = useId().replace(/:/g, "");
-  const label = languageName(code);
-  if (code === "pt") {
+  const normalized = (code || "en").toLowerCase();
+  const label = languageName(normalized);
+
+  if (normalized === "pt" || normalized === "br") {
     return (
       <Frame size={size} label={label}>
         <Brazil />
       </Frame>
     );
   }
-  if (code === "es") {
+  if (normalized === "es") {
     return (
       <Frame size={size} label={label}>
         <Spain />
       </Frame>
     );
   }
-  if (code === "de") {
+  if (normalized === "de") {
     return (
       <Frame size={size} label={label}>
         <Germany />
       </Frame>
     );
   }
-  if (code === "ru") {
+  if (normalized === "at") {
+    return (
+      <Frame size={size} label="Áustria">
+        <Austria />
+      </Frame>
+    );
+  }
+  if (normalized === "ru") {
     return (
       <Frame size={size} label={label}>
         <Russia />
       </Frame>
     );
   }
-  if (code === "fr") {
+  if (normalized === "fr") {
     return (
       <Frame size={size} label={label}>
         <France />
       </Frame>
     );
   }
-  if (code === "it") {
+  if (normalized === "it") {
     return (
       <Frame size={size} label={label}>
         <Italy />
       </Frame>
     );
   }
-  if (code === "ja") {
+  if (normalized === "ja") {
     return (
       <Frame size={size} label={label}>
         <Japan />
+      </Frame>
+    );
+  }
+  if (normalized === "us") {
+    return (
+      <Frame size={size} label="United States">
+        <UnitedStates clipId={`us${clipId}`} />
       </Frame>
     );
   }

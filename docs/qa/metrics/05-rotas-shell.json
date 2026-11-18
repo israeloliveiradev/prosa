@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-10-27T21:13:49.827Z",
+  "filesInSrc": 239,
+  "totalLinesInSrc": 31540,
+  "filesOver400Lines": [
+    {
+      "file": "src/lib/api.ts",
+      "lines": 2167
+    },
+    {
+      "file": "src/lib/messages.ts",
+      "lines": 1225
+    },
+    {
+      "file": "src/lib/progress.ts",
+      "lines": 685
+    },
+    {
+      "file": "src/app/(focus)/daily.tsx",
+      "lines": 671
+    },
+    {
+      "file": "src/services/audio/AudioService.ts",
+      "lines": 642
+    },
+    {
+      "file": "src/components/home/daily-news.tsx",
+      "lines": 630
+    },
+    {
+      "file": "src/app/(focus)/quiz.tsx",
+      "lines": 561
+    },
+    {
+      "file": "src/app/(public)/dev/ui.tsx",
+      "lines": 545
+    },
+    {
+      "file": "src/components/placement/placement-screen.tsx",
+      "lines": 535
+    },
+    {
+      "file": "src/app/(app)/admin.tsx",
+      "lines": 534
+    },
+    {
+      "file": "src/app/(app)/settings.tsx",
+      "lines": 526
+    },
+    {
+      "file": "src/design/tokens.ts",
+      "lines": 515
+    },
+    {
+      "file": "src/app/(public)/account.tsx",
+      "lines": 475
+    }
+  ],
+  "linesInApiTs": 2167,
+  "hardcodedHexCount": 52,
+  "rawTextInputCount": 34,
+  "styleSheetCreateCount": 9,
+  "kickerCount": 20,
+  "useQueryCount": 1,
+  "useMutationCount": 0,
+  "testIdCount": 142
+}

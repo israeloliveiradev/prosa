@@ -1,0 +1,55 @@
+{
+  "timestamp": "2026-10-27T22:56:16.554Z",
+  "filesInSrc": 288,
+  "totalLinesInSrc": 35289,
+  "filesOver400Lines": [
+    {
+      "file": "src/lib/api.ts",
+      "lines": 1851
+    },
+    {
+      "file": "src/lib/messages.ts",
+      "lines": 1259
+    },
+    {
+      "file": "src/lib/progress.ts",
+      "lines": 707
+    },
+    {
+      "file": "src/app/(focus)/daily.tsx",
+      "lines": 671
+    },
+    {
+      "file": "src/services/audio/AudioService.ts",
+      "lines": 642
+    },
+    {
+      "file": "src/components/home/daily-news.tsx",
+      "lines": 630
+    },
+    {
+      "file": "src/app/(public)/dev/ui.tsx",
+      "lines": 545
+    },
+    {
+      "file": "src/app/(app)/admin.tsx",
+      "lines": 534
+    },
+    {
+      "file": "src/app/(app)/settings.tsx",
+      "lines": 526
+    },
+    {
+      "file": "src/design/tokens.ts",
+      "lines": 515
+    }
+  ],
+  "linesInApiTs": 1851,
+  "hardcodedHexCount": 50,
+  "rawTextInputCount": 28,
+  "styleSheetCreateCount": 30,
+  "kickerCount": 15,
+  "useQueryCount": 1,
+  "useMutationCount": 0,
+  "testIdCount": 252
+}

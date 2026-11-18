@@ -1,139 +1,111 @@
-@import url("https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=Nunito:wght@400;500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap");
+@import "./design/generated/tokens.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root,
-:root.light {
-  color-scheme: light;
-  --paper: #fbf6ef;
-  --card: #ffffff;
-  --sunken: #f3eadf;
-  --line: #e8dccf;
-  --ink: #1f1a17;
-  --muted: #5c534c;
-
-  --primary: #c2410c;
-  --primary-edge: #9a3412;
-  --on-primary: #ffffff;
-  --primary-soft: #fce3d3;
-
-  --success: #15803d;
-  --success-edge: #166534;
-  --on-success: #ffffff;
-  --success-soft: #dcfce7;
-
-  --danger: #dc2626;
-  --danger-edge: #991b1b;
-  --on-danger: #ffffff;
-  --danger-soft: #fee2e2;
-
-  --streak: #f59e0b;
-  --streak-edge: #b45309;
-  --on-streak: #1f1a17;
-
-  --xp: #2563eb;
-  --xp-edge: #1e40af;
-  --on-xp: #ffffff;
-  --xp-soft: #dbeafe;
-
-  --pro: #7c3aed;
-  --pro-edge: #5b21b6;
-  --on-pro: #ffffff;
-
-  /* Aliases legados */
-  --ember: var(--primary);
-  --ember-soft: var(--primary-soft);
-  --on-ember: var(--on-primary);
-  --moss: var(--success);
-  --moss-soft: var(--success-soft);
-  --rose-soft: var(--danger-soft);
-  --rose-ink: var(--danger);
-  --sand: var(--sunken);
-  --sand-ink: var(--ink);
+:root {
+  --color-background: #FDFBF7;
+  --color-surface: #FFFFFF;
+  --color-surface-raised: #F5F0E8;
+  --color-primary: #0D9488;
+  --color-primary-dark: #0F766E;
+  --color-streak: #FF5722;
+  --color-gems: #06B6D4;
+  --color-combo: #EC4899;
 }
 
-:root.dark {
-  color-scheme: dark;
-  --paper: #14110f;
-  --card: #1e1916;
-  --sunken: #2a231f;
-  --line: #3a312b;
-  --ink: #f5ede6;
-  --muted: #c9bbaf;
-
-  --primary: #f07a45;
-  --primary-edge: #b4541f;
-  --on-primary: #1c0a06;
-  --primary-soft: #3a2218;
-
-  --success: #4ade80;
-  --success-edge: #15803d;
-  --on-success: #14110f;
-  --success-soft: #12321f;
-
-  --danger: #f87171;
-  --danger-edge: #b91c1c;
-  --on-danger: #14110f;
-  --danger-soft: #3b1414;
-
-  --streak: #fbbf24;
-  --streak-edge: #b45309;
-  --on-streak: #14110f;
-
-  --xp: #60a5fa;
-  --xp-edge: #1d4ed8;
-  --on-xp: #14110f;
-  --xp-soft: #172554;
-
-  --pro: #a78bfa;
-  --pro-edge: #6d28d9;
-  --on-pro: #14110f;
-
-  /* Aliases legados */
-  --ember: var(--primary);
-  --ember-soft: var(--primary-soft);
-  --on-ember: var(--on-primary);
-  --moss: var(--success);
-  --moss-soft: var(--success-soft);
-  --rose-soft: var(--danger-soft);
-  --rose-ink: var(--danger);
-  --sand: var(--sunken);
-  --sand-ink: var(--ink);
+/* PRD Section 6: Tactile 3D Button Utility */
+.btn-3d {
+  box-shadow: 0 4px 0 #0F766E;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.btn-3d:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #0F766E;
 }
 
-html,
+/* 7.12 Base de celular no web */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
 body,
 #root {
+  min-height: 100dvh;
   width: 100%;
   overflow-x: hidden;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: "Nunito", "Source Sans 3", "Segoe UI", sans-serif;
+  background: #FDFBF7 !important;
+  color: #111C2D;
+  font-family: "Plus Jakarta Sans", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   word-spacing: normal;
   letter-spacing: normal;
-  transition: background-color 320ms ease, color 320ms ease;
 }
 
-#root .font-displayItalic.text-display,
-#root .font-display.text-display {
-  font-size: clamp(36px, 4.6vw, 48px);
-  line-height: 1.18;
-  letter-spacing: -0.018em;
+input,
+textarea,
+select {
+  font-size: 16px;
 }
 
-#root .font-displayItalic.text-headline,
-#root .font-display.text-headline,
-#root .font-display.text-h1 {
-  font-size: clamp(28px, 3.2vw, 36px);
-  line-height: 1.25;
-  letter-spacing: -0.012em;
+[role="button"],
+button,
+a {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-/* RN Web Text vira flex no NativeWind e some com o espaço entre as palavras. */
+/* 7.10 Superfícies do navegador (só web) */
+::selection {
+  background-color: var(--accent-soft);
+  color: var(--ink);
+}
+
+* {
+  caret-color: var(--accent);
+}
+
+html.light {
+  scrollbar-color: #C5C9CD transparent;
+}
+
+html.dark {
+  scrollbar-color: #3A3D41 transparent;
+}
+
+:root {
+  scrollbar-width: thin;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+a {
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+/* 7.4 Equilíbrio de texto */
+h1,
+h2,
+h3,
+[role="heading"] {
+  text-wrap: balance;
+}
+
+p,
+article {
+  text-wrap: pretty;
+}
+
+/* RN Web Text vira flex no NativeWind e some com o espaço entre as palavras. Mantido até Task 15 */
 #root [dir],
 #root [class*="css-text"],
 #root [class*="css-textHasAncestor"] {
@@ -145,31 +117,25 @@ body,
   word-spacing: normal !important;
 }
 
-#root .font-display {
-  font-family: "Newsreader", Georgia, serif;
-  font-style: normal;
-  font-weight: 600;
-}
-
+/* Compatibilidade com classes de fontes legadas até Task 15 */
+#root .font-display,
 #root .font-displayItalic {
-  font-family: "Newsreader", Georgia, serif;
-  font-style: normal;
+  font-family: "IBM Plex Sans SemiBold", "IBM Plex Sans", sans-serif;
   font-weight: 600;
 }
 
 #root .font-reading {
-  font-family: "Newsreader", Georgia, serif;
-  font-style: normal;
+  font-family: "Literata", Georgia, serif;
   font-weight: 400;
 }
 
 #root .font-label {
-  font-family: "Nunito", "Source Sans 3", sans-serif;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-family: "IBM Plex Sans Medium", "IBM Plex Sans", sans-serif;
+  font-weight: 500;
 }
 
-#root .text-\[11px\] {
+#root .text-\[11px\],
+#root .text-\[9px\] {
   font-size: 12px !important;
   line-height: 1.35;
 }
@@ -178,27 +144,23 @@ body,
 #root .tracking-\[0\.24em\],
 #root .tracking-\[0\.28em\],
 #root .tracking-widest {
-  letter-spacing: 0.06em !important;
-}
-
-[role="button"]:focus-visible,
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 3px;
+  letter-spacing: normal !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   html,
   body,
-  #root {
-    transition: none !important;
-  }
+  #root,
   #root * {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    backdrop-filter: none !important;
+    background: var(--sheet) !important;
   }
 }
 

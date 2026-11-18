@@ -5,7 +5,6 @@ export * from "./stat-pill";
 export * from "./stat-card";
 export * from "./badge";
 export * from "./medal";
-export * from "./trail-node";
 export * from "./tooltip";
 export * from "./sheet";
 export * from "./text-field";
