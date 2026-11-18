@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Solid 4px Bottom Bevel / Tactile Keycap Shadow -->
+  <rect x="6" y="12" width="52" height="46" rx="14" fill="#0F766E"/>
+
+  <!-- Main Mechanical Keycap Surface (Emerald Teal) -->
+  <rect x="6" y="6" width="52" height="46" rx="14" fill="#0D9488"/>
+
+  <!-- Keycap Subtle Top Inset Rim Highlight -->
+  <rect x="7" y="7" width="50" height="44" rx="13" stroke="#14B8A6" stroke-width="1.5" fill="none"/>
+
+  <!-- Monogram 'P' with Open Book Counter -->
+  <g fill="#FDFBF7">
+    <rect x="18" y="16" width="7" height="26" rx="3.5"/>
+    <path d="M22 16H36C42.0751 16 47 20.9249 47 27C47 33.0751 42.0751 38 36 38H22V16Z"/>
+  </g>
+
+  <!-- Open Book Page Cutout Inside P Counter -->
+  <path d="M25 21H35.5C38.5376 21 41 23.4624 41 26.5C41 29.5376 38.5376 32 35.5 32H25V21Z" fill="#0D9488"/>
+  <path d="M26 26.5C29 25 33 25.5 36 27" stroke="#14B8A6" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Tactile Orange Spark Dot (#FF5722) -->
+  <circle cx="48" cy="15" r="4.5" fill="#FF5722"/>
+  <circle cx="48" cy="15" r="2" fill="#FF8A65"/>
+</svg>

@@ -15,8 +15,26 @@ mobile/.expo/
 mobile/dist/
 mobile/web-build/
 mobile/.kotlin/
+web/node_modules/
+web/.expo/
+web/dist/
+web/web-build/
+web/.kotlin/
 *.jks
 *.p8
 *.p12
 *.pem
 *.mobileprovision
+
+.taste-skill/
+plans/*.local.md
+
+# Reference bundles & temp QA artifacts
+*.zip
+.tmp-qa/
+_stitch_reference/
+_stitch_email/
+stich_reference/
+mobile/dist-qa/
+mobile/mobile/
+

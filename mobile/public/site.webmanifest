@@ -1,13 +1,18 @@
 {
-  "name": "Prosa",
+  "name": "Prosa — Ritual Diário",
   "short_name": "Prosa",
-  "description": "Uma lição de vinte minutos por dia.",
+  "description": "Uma lição de vinte minutos por dia com mentores polímatas.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FFF8F1",
-  "theme_color": "#9A3412",
-  "lang": "pt",
+  "background_color": "#FDFBF7",
+  "theme_color": "#0D9488",
+  "lang": "pt-BR",
   "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
     {
       "src": "/favicon.png",
       "sizes": "48x48",
