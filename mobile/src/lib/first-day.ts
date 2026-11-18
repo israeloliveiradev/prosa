@@ -7,6 +7,10 @@ import { bindProgressLang, clearLocalProgress, getProgress, setPro } from "@/lib
 export async function syncFirstDay(token: string, user: AccountUser): Promise<void> {
   setPro(user.plan === "pro");
   bindProgressLang(user.target_lang);
+  if (token === "prosa_demo_token") {
+    markJourneyDone(user.id, user.level || "b2");
+    return;
+  }
   try {
     const status = await fetchPlacementStatus(token, user.target_lang);
     if (status.last) {

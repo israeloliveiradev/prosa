@@ -362,9 +362,25 @@ function view(): ProgressState {
   return snapshot;
 }
 
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function flushProgressDebounce(): void {
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+    kv.set(STORAGE_KEY, JSON.stringify(bag));
+  }
+}
+
 function emit(): void {
   snapshot = composeView(bag);
-  kv.set(STORAGE_KEY, JSON.stringify(bag));
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+  }
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    kv.set(STORAGE_KEY, JSON.stringify(bag));
+  }, 250);
   listeners.forEach((listener) => listener());
 }
 
@@ -616,9 +632,15 @@ export function setPro(pro: boolean): void {
 }
 
 export function clearLocalProgress(): void {
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
   bag = emptyBag();
   resetXp();
-  emit();
+  snapshot = composeView(bag);
+  kv.set(STORAGE_KEY, JSON.stringify(bag));
+  listeners.forEach((listener) => listener());
 }
 
 export function applyRemoteFreeze(count: number): void {

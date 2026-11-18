@@ -6,6 +6,7 @@ import { tap } from "@/lib/haptics";
 import { useCopy } from "@/lib/i18n";
 import type { ReconstructionAnchor } from "@/lib/reconstruction";
 import { useSession } from "@/lib/session";
+import { stopIfRecording } from "@/lib/stop-recorder";
 import type { ReconstructionReport, RepairCard } from "@/lib/types";
 import { useTheme } from "@/theme/ThemeContext";
 
@@ -32,13 +33,15 @@ export function ReconstructionStage({
   const [error, setError] = useState<string | null>(null);
   const finished = result != null && (result.step === "correction" || result.step == null);
 
+  const recorderRef = useRef(recorder);
+  recorderRef.current = recorder;
+
   useEffect(() => {
     return () => {
-      if (recordingRef.current) {
-        void recorder.stop();
-      }
+      recordingRef.current = false;
+      void stopIfRecording(recorderRef.current);
     };
-  }, [recorder]);
+  }, []);
 
   async function dictate() {
     if (pending) {
@@ -50,7 +53,7 @@ export function ReconstructionStage({
       setPending(true);
       setError(null);
       try {
-        await recorder.stop();
+        await stopIfRecording(recorder);
         const uri = recorder.uri;
         if (!uri) {
           throw new Error("A gravação não foi salva.");

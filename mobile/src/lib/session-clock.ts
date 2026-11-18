@@ -1,5 +1,11 @@
 export const SESSION_SECONDS = 20 * 60;
 
+export const SESSION_DURATION_SECONDS: Record<string, number> = {
+  lite_20: 20 * 60,
+  pro_40: 40 * 60,
+  sprint_60: 60 * 60,
+};
+
 export const SESSION_PHASES = ["review", "listen", "reading", "shadow", "journal", "note"] as const;
 
 export type SessionPhaseId = (typeof SESSION_PHASES)[number];
@@ -7,6 +13,17 @@ export type SessionPhaseId = (typeof SESSION_PHASES)[number];
 export interface SessionPhase {
   id: SessionPhaseId;
   start: number;
+}
+
+export interface SessionSaveState {
+  version: "7.5";
+  pausedAtTimestamp: number;
+  sessionDurationMode: "lite_20" | "pro_40" | "sprint_60";
+  elapsedSeconds: number;
+  completedBlockIds: string[];
+  currentBlockIndex: number;
+  targetLang: string;
+  accumulatedActiveSeconds: number;
 }
 
 const BASE: Record<SessionPhaseId, number> = {
@@ -27,10 +44,26 @@ const FLOOR: Record<SessionPhaseId, number> = {
   note: 60,
 };
 
-export function sessionPhases(input: { dueCount: number; listeningGap?: number; slowStart?: boolean }): SessionPhase[] {
-  const span = { ...BASE };
+export function sessionPhases(input: {
+  dueCount: number;
+  listeningGap?: number;
+  slowStart?: boolean;
+  totalDurationSeconds?: number;
+}): SessionPhase[] {
+  const sessionTotal = input.totalDurationSeconds ?? SESSION_SECONDS;
+  const scaleRatio = sessionTotal / SESSION_SECONDS;
+
+  const span: Record<SessionPhaseId, number> = {
+    review: Math.round(BASE.review * scaleRatio),
+    listen: Math.round(BASE.listen * scaleRatio),
+    reading: Math.round(BASE.reading * scaleRatio),
+    shadow: Math.round(BASE.shadow * scaleRatio),
+    journal: Math.round(BASE.journal * scaleRatio),
+    note: Math.round(BASE.note * scaleRatio),
+  };
+
   const due = Math.max(0, Math.floor(input.dueCount));
-  const wanted = due === 0 ? 90 : Math.min(SESSION_SECONDS / 2, 180 + Math.max(0, due - 3) * 30);
+  const wanted = due === 0 ? Math.round(90 * scaleRatio) : Math.min(sessionTotal / 2, Math.round((180 + Math.max(0, due - 3) * 30) * scaleRatio));
   if (wanted < span.review) {
     const freed = span.review - wanted;
     span.review = wanted;
@@ -41,20 +74,21 @@ export function sessionPhases(input: { dueCount: number; listeningGap?: number; 
       if (need <= 0) {
         break;
       }
-      const spare = span[donor] - FLOOR[donor];
+      const floorVal = Math.round(FLOOR[donor] * scaleRatio);
+      const spare = span[donor] - floorVal;
       const take = Math.min(Math.max(0, spare), need);
       span[donor] -= take;
       need -= take;
     }
-    span.review += wanted - BASE.review - need;
+    span.review += wanted - Math.round(BASE.review * scaleRatio) - need;
   }
   if ((input.listeningGap ?? 0) >= 20) {
-    const gift = Math.min(120, Math.max(0, span.reading - FLOOR.reading));
+    const gift = Math.min(Math.round(120 * scaleRatio), Math.max(0, span.reading - Math.round(FLOOR.reading * scaleRatio)));
     span.reading -= gift;
     span.listen += gift;
   }
   if (input.slowStart) {
-    const gift = Math.min(60, Math.max(0, span.reading - FLOOR.reading));
+    const gift = Math.min(Math.round(60 * scaleRatio), Math.max(0, span.reading - Math.round(FLOOR.reading * scaleRatio)));
     span.reading -= gift;
     span.listen += gift;
   }
@@ -64,6 +98,39 @@ export function sessionPhases(input: { dueCount: number; listeningGap?: number; 
     cursor += span[id];
     return { id, start };
   });
+}
+
+export function serializeSessionState(state: SessionSaveState): string {
+  return JSON.stringify(state);
+}
+
+export function deserializeSessionState(raw: unknown): SessionSaveState | null {
+  if (!raw) return null;
+  try {
+    const obj = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (
+      obj &&
+      typeof obj === "object" &&
+      obj.version === "7.5" &&
+      typeof obj.elapsedSeconds === "number" &&
+      typeof obj.targetLang === "string"
+    ) {
+      return obj as SessionSaveState;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function isSameCalendarDay(timestampA: number, timestampB: number): boolean {
+  const dateA = new Date(timestampA);
+  const dateB = new Date(timestampB);
+  return (
+    dateA.getFullYear() === dateB.getFullYear() &&
+    dateA.getMonth() === dateB.getMonth() &&
+    dateA.getDate() === dateB.getDate()
+  );
 }
 
 export function phaseAt(elapsed: number, phases: SessionPhase[]): SessionPhaseId {

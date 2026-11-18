@@ -1,9 +1,12 @@
-import { Platform } from "react-native";
+const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
+const Platform = { OS: isWeb ? ("web" as const) : ("ios" as const) };
 import { audioCacheKey, base64ToBytes, bytesToBase64, readAudioCache, writeAudioCache } from "@/lib/audio-cache";
 import { getCast } from "@/lib/cast";
 import { copy } from "@/lib/i18n";
 import { readSse } from "@/lib/sse";
 import type { CognateAnchor, CourseProfile, JournalEvaluation, LessonPayload, LessonRequest, ReconstructionReport, RepairCard, SessionCard, ShadowingResult, SoundNote, VocabularyEntry } from "@/lib/types";
+import type { AccountUser, AccountSettings, LoginChallenge, VerifyChallenge } from "@/api/schemas/auth";
+import type { PlacementHistoryEntry, PlacementStatus } from "@/api/schemas/placement";
 
 function apiUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
@@ -78,14 +81,7 @@ export async function generateLesson(input: LessonRequest & { cognate?: boolean 
   return { ...body, anchors: readAnchors(body.anchors) };
 }
 
-export async function fetchCognates(through: string, target: string): Promise<CognateAnchor[]> {
-  const response = await fetch(`${apiUrl()}/api/v1/cognates?through=${encodeURIComponent(through)}&target=${encodeURIComponent(target)}`);
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  const body = (await response.json()) as { anchors?: unknown };
-  return readAnchors(body.anchors);
-}
+export { fetchCognates } from "@/api/lessons";
 
 export async function analyzeShadowing(uri: string, referenceText: string, language: string): Promise<ShadowingResult> {
   const body = new FormData();
@@ -1094,207 +1090,25 @@ export async function fetchMnemonic(
   return { eligible: body.eligible, association_text: body.association_text };
 }
 
-export interface AccountUser {
-  id: string;
-  email: string;
-  native_lang: string;
-  target_lang: string;
-  level: "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
-  plan: "free" | "pro";
-  role?: "learner" | "admin";
-  interests?: string[];
-  streak_count?: number;
-  streak_freeze_count?: number;
-  last_lesson_at?: string | null;
-  display_name?: string | null;
-  display_locale?: "pt" | "en";
-  reminder_enabled?: boolean;
-  reminder_hour?: number;
-  totp_enabled?: boolean;
-  email_2fa?: boolean;
-  mind_reading?: string;
-  mind_memory?: string;
-  mind_speech?: string;
-  mind_journal?: string;
-}
-
-export interface AccountSettings {
-  display_name: string | null;
-  display_locale: "pt" | "en";
-  reminder_enabled: boolean;
-  reminder_hour: number;
-  totp_enabled: boolean;
-  email_2fa: boolean;
-  mind_reading: string;
-  mind_memory: string;
-  mind_speech: string;
-  mind_journal: string;
-  mail_configured: boolean;
-  mail_inbox_url: string | null;
-}
-
-export type LoginChallenge = {
-  requires_2fa: true;
-  ticket: string;
-  methods: Array<"totp" | "email">;
+export { pingApi } from "@/api/health";
+export {
+  registerAccount,
+  loginAccount,
+  confirmAccountEmail,
+  resendAccountEmail,
+  verifySecondFactor,
+  logoutAccount,
+  currentAccount,
+  fetchMailInbox,
+  requestPasswordReset,
+  confirmPasswordReset,
+} from "@/api/auth";
+export type {
+  AccountUser,
+  AccountSettings,
+  LoginChallenge,
+  VerifyChallenge,
 };
-
-export type VerifyChallenge = {
-  requires_verify: true;
-  email: string;
-};
-
-function isVerifyChallenge(value: unknown): value is VerifyChallenge {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const body = value as Partial<VerifyChallenge>;
-  return body.requires_verify === true && typeof body.email === "string";
-}
-
-function isLoginChallenge(value: unknown): value is LoginChallenge {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const body = value as Partial<LoginChallenge>;
-  return body.requires_2fa === true && typeof body.ticket === "string";
-}
-
-export async function pingApi(): Promise<boolean> {
-  try {
-    const response = await fetch(`${apiUrl()}/health`);
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function registerAccount(input: {
-  email: string;
-  password: string;
-  native_lang: string;
-  target_lang: string;
-  level: AccountUser["level"];
-  display_locale?: "pt" | "en";
-}): Promise<{ token: string; user: AccountUser } | VerifyChallenge> {
-  const response = await apiFetch("/api/v1/auth/register", {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  const body: unknown = await response.json();
-  if (isVerifyChallenge(body)) {
-    return body;
-  }
-  return body as { token: string; user: AccountUser };
-}
-
-export async function loginAccount(email: string, password: string): Promise<{ token: string; user: AccountUser } | LoginChallenge | VerifyChallenge> {
-  const response = await apiFetch("/api/v1/auth/login", {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ email, password }),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  const body: unknown = await response.json();
-  if (isVerifyChallenge(body) || isLoginChallenge(body)) {
-    return body;
-  }
-  return body as { token: string; user: AccountUser };
-}
-
-export async function confirmAccountEmail(email: string, code: string): Promise<{ token: string; user: AccountUser }> {
-  const response = await apiFetch("/api/v1/auth/verify", {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ email, code }),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as { token: string; user: AccountUser };
-}
-
-export async function resendAccountEmail(email: string): Promise<void> {
-  const response = await apiFetch("/api/v1/auth/verify/resend", {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ email }),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-}
-
-export async function verifySecondFactor(ticket: string, code: string): Promise<{ token: string; user: AccountUser }> {
-  const response = await apiFetch("/api/v1/auth/2fa", {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ ticket, code }),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as { token: string; user: AccountUser };
-}
-
-export async function logoutAccount(token: string): Promise<void> {
-  await fetch(`${apiUrl()}/api/v1/auth/logout`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({}),
-  });
-}
-
-export async function currentAccount(token: string): Promise<AccountUser> {
-  const response = await apiFetch("/api/v1/auth/me", {
-    headers: authHeaders(token),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  const body = (await response.json()) as { user?: AccountUser };
-  if (!body.user) {
-    throw new Error("A conta não voltou da API.");
-  }
-  return body.user;
-}
-
-export async function fetchMailInbox(): Promise<string | null> {
-  const response = await apiFetch("/api/v1/auth/mail");
-  if (!response.ok) {
-    return null;
-  }
-  const payload = (await response.json()) as { inbox_url?: string | null };
-  return typeof payload.inbox_url === "string" && payload.inbox_url.length > 0 ? payload.inbox_url : null;
-}
-
-export async function requestPasswordReset(email: string): Promise<void> {
-  const response = await apiFetch("/api/v1/auth/forgot", {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ email }),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-}
-
-export async function confirmPasswordReset(email: string, code: string, password: string): Promise<void> {
-  const response = await apiFetch("/api/v1/auth/reset", {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify({ email, code, password }),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-}
 
 export async function fetchAccountSettings(token: string): Promise<AccountSettings> {
   const response = await apiFetch("/api/v1/account/settings", {
@@ -1639,31 +1453,7 @@ export interface SpokenStory {
   words: Array<{ text: string; offsetMs: number }>;
 }
 
-export async function submitOnboarding(
-  token: string,
-  input: {
-    interests: string[];
-    goal?: string;
-    tracks: Array<{ target_lang: string; through_lang: string; level?: string; active: boolean }>;
-    level?: "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
-  },
-): Promise<{ interests: string[]; topics: string[]; target_lang: string; native_lang: string; level?: string }> {
-  const response = await fetch(`${apiUrl()}/api/v1/onboarding/quiz`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as {
-    interests: string[];
-    topics: string[];
-    target_lang: string;
-    native_lang: string;
-    level?: string;
-  };
-}
+export { submitOnboarding } from "@/api/onboarding";
 
 export async function generatePersonalized(token: string, selectedTopic: string): Promise<LessonPayload> {
   const response = await fetch(`${apiUrl()}/api/v1/lessons/generate-personalized`, {
@@ -1692,16 +1482,7 @@ export interface StudyTrackChoice {
   active: boolean;
 }
 
-export async function listStudyTracks(token: string): Promise<StudyTrackChoice[]> {
-  const response = await fetch(`${apiUrl()}/api/v1/study/tracks`, {
-    headers: authHeaders(token),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  const body = (await response.json()) as { tracks?: StudyTrackChoice[] };
-  return body.tracks ?? [];
-}
+export { listStudyTracks } from "@/api/study";
 
 export interface PlacementItem {
   id: string;
@@ -1714,34 +1495,7 @@ export interface PlacementItem {
   audio_text?: string;
 }
 
-export interface PlacementHistoryEntry {
-  id: string;
-  kind: "placement" | "progress";
-  finished_at: string;
-  score: number;
-  result_level: string;
-  previous_level: string | null;
-  correct_count: number;
-  item_count: number;
-}
-
-export interface PlacementStatus {
-  target_lang: string;
-  through_lang: string;
-  current_level: string;
-  last: {
-    finished_at: string;
-    result_level: string | null;
-    previous_level: string | null;
-    score: number | null;
-    kind: "placement" | "progress";
-  } | null;
-  due: boolean;
-  due_reason: "never" | "scheduled" | "lessons" | "wait";
-  days_until: number | null;
-  open_attempt_id: string | null;
-  history: PlacementHistoryEntry[];
-}
+export type { PlacementHistoryEntry, PlacementStatus };
 
 export interface PlacementAttempt {
   attempt_id: string;
@@ -1778,78 +1532,8 @@ export interface PlacementFinish {
   history: PlacementHistoryEntry[];
 }
 
-export async function fetchPlacementStatus(token: string, targetLang?: string): Promise<PlacementStatus> {
-  const suffix = targetLang ? `?target_lang=${encodeURIComponent(targetLang)}` : "";
-  const response = await fetch(`${apiUrl()}/api/v1/placement/status${suffix}`, { headers: authHeaders(token) });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as PlacementStatus;
-}
-
-export async function startPlacement(
-  token: string,
-  track?: { target_lang?: string; through_lang?: string },
-): Promise<PlacementAttempt> {
-  const response = await fetch(`${apiUrl()}/api/v1/placement/start`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(track ?? {}),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as PlacementAttempt;
-}
-
-export async function answerPlacement(
-  token: string,
-  attemptId: string,
-  itemId: string,
-  choice: number,
-): Promise<PlacementStep> {
-  const response = await fetch(`${apiUrl()}/api/v1/placement/answer`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ attempt_id: attemptId, item_id: itemId, choice }),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as PlacementStep;
-}
-
-export async function finishPlacement(token: string, attemptId: string): Promise<PlacementFinish> {
-  const response = await fetch(`${apiUrl()}/api/v1/placement/finish`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ attempt_id: attemptId }),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  return (await response.json()) as PlacementFinish;
-}
-
-export async function activateStudyTrack(
-  token: string,
-  track: { target_lang: string; through_lang: string; level?: string },
-): Promise<{ target_lang: string; through_lang: string; level: string }> {
-  const response = await fetch(`${apiUrl()}/api/v1/study/activate`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(track),
-  });
-  if (!response.ok) {
-    throw new Error(await readError(response));
-  }
-  const body = (await response.json()) as { target_lang?: string; through_lang?: string; level?: string };
-  return {
-    target_lang: body.target_lang ?? track.target_lang,
-    through_lang: body.through_lang ?? track.through_lang,
-    level: body.level ?? track.level ?? "A2",
-  };
-}
+export { fetchPlacementStatus, startPlacement, answerPlacement, finishPlacement } from "@/api/placement";
+export { activateStudyTrack } from "@/api/study";
 
 export interface AdaptedNews {
   title: string;
@@ -2135,4 +1819,32 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
     offset += chunk.length;
   }
   return out;
+}
+
+export interface Fluency360Response {
+  status: any;
+  milestones: any[];
+  session_duration_mode: "lite_20" | "pro_40" | "sprint_60";
+  paused_session_state: Record<string, unknown> | null;
+}
+
+export async function fetchFluency360(token: string, targetLang: string): Promise<Fluency360Response> {
+  const response = await fetch(`${apiUrl()}/api/v1/fluency/360-meter?target_lang=${encodeURIComponent(targetLang)}`, {
+    headers: authHeaders(token),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as Fluency360Response;
+}
+
+export async function postSessionDurationMode(token: string, targetLang: string, mode: "lite_20" | "pro_40" | "sprint_60"): Promise<void> {
+  const response = await fetch(`${apiUrl()}/api/v1/profile/signals`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ target_lang: targetLang, session_duration_mode: mode }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
 }

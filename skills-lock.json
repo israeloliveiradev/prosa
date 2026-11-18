@@ -1,17 +1,153 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "ai-image-generation": {
       "source": "prime-skills/runcomfy-agent-skills",
       "sourceType": "github",
       "skillPath": "ai-image-generation/SKILL.md",
-      "computedHash": "06f41b40b32a080bc38536156b80a7d4a3175e1b1eeece55fc125e54bee467f3"
+      "computedHash": "7b880ee9ea0ef160a90999972fe95705ba7a7788b59029bbaec7bb4f959730ae"
+    },
+    "animate": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/animate/SKILL.md",
+      "computedHash": "588a8f7b37c3f37762ad10a552a74b6d6b608c720ea00d9dd798e0d50416100a"
+    },
+    "animate-expo": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/animate-expo/SKILL.md",
+      "computedHash": "3cbc0a9466a1404de98bec73eb6789257556e632f82c58319308a64ff42a5771"
+    },
+    "animation-performance": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/animation-performance/SKILL.md",
+      "computedHash": "7d30550a55e485e50e29342f2f32186f7c487a48c1f2b57fa4a7238bc2629869"
+    },
+    "animation-vocabulary": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/animation-vocabulary/SKILL.md",
+      "computedHash": "1c50a737b755ff021f5216c7b89af3734ba0f9a908d0b540d3e9979f52fef3e2"
+    },
+    "apple-design": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/apple-design/SKILL.md",
+      "computedHash": "118d450c2d6ca54fee5f56cf8883fa3231bc2d917bb8f5a3f87488162c55fac9"
+    },
+    "ask-sonner": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/ask-sonner/SKILL.md",
+      "computedHash": "3d53f948bd8b19993b70d66929f70fa5ddb44bca6018e2c29f9cec6c8bf2b9cf"
+    },
+    "brainstorming": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/brainstorming/SKILL.md",
+      "computedHash": "eb826dcba7f9c29208035a758e7d0054e42a599eb659ca9d766b8c92138d7fbb"
+    },
+    "break-ui": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/break-ui/SKILL.md",
+      "computedHash": "accfc40025b4cc57475bebdcef52153a1598beec2794d6f11dec5cbbd79481c9"
+    },
+    "design-taste-frontend": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill/SKILL.md",
+      "computedHash": "0094b3a70572d65b2c534ff811a780ae044621aac7a791ec6f70874c0a02f3d8"
+    },
+    "diagnosing-bugs": {
+      "source": "mattpocock/skills",
+      "commit": "5863806dd4e15c63174bee4e7515a4256792ecfa",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "computedHash": "87c78ae966e591f9ceb177789cc5cc9de69277cd26679ffd36ca5300f430d513"
+    },
+    "documentation-writer": {
+      "source": "github/awesome-copilot",
+      "commit": "a06ba06d11f41b996f8c246e2a452e1bf3a17950",
+      "sourceType": "github",
+      "skillPath": "skills/documentation-writer/SKILL.md",
+      "computedHash": "b2de0a266264b7a994d9bf1b771d3b35ab3780d16ccd658ffceb2936d3df1db6"
+    },
+    "emil-design-eng": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/emil-design-eng/SKILL.md",
+      "computedHash": "8c563f971b37710a80a95b88d5f2ea6758b3ec4b66ec15f5bb41850830e8f5ed"
+    },
+    "excalidraw-diagram-generator": {
+      "source": "github/awesome-copilot",
+      "commit": "a06ba06d11f41b996f8c246e2a452e1bf3a17950",
+      "sourceType": "github",
+      "skillPath": "skills/excalidraw-diagram-generator/SKILL.md",
+      "computedHash": "92f0577c08dede6615ec5c9260aae9a41ded67803f1591425601488654f8a890"
+    },
+    "extract-design-system": {
+      "source": "arvindrk/extract-design-system",
+      "sourceType": "github",
+      "skillPath": "skills/extract-design-system/SKILL.md",
+      "computedHash": "fcc959a17cec8bd719b97bad240a6a5eaf8660700d4876a4392e4199497d3012"
+    },
+    "find-animation-opportunities": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-animation-opportunities/SKILL.md",
+      "computedHash": "6912a27a684feba9dd220349940d8a44e0d7b720cab71042f268a7ed93bf4bab"
+    },
+    "improve-animations": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/improve-animations/SKILL.md",
+      "computedHash": "59a9e59e5c4dee0ee2adc9f3fe5663f5f22e0f96fdae5f727812f84c0ae89c54"
+    },
+    "mobile-native": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mobile-native/SKILL.md",
+      "computedHash": "2141766c0a370128cbee3dc004d3f254a411e54f8352e154e73b040e52070e38"
+    },
+    "pick-ui-library": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/pick-ui-library/SKILL.md",
+      "computedHash": "c5d418c22e298c1c85856dc838190ec366782c0b476752dfae71d32ae8342cd5"
+    },
+    "prototype": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/prototype/SKILL.md",
+      "computedHash": "c9b2890f9c5f4cff4e05d097549dd633c3f17db3c7378b5b7baa823c9f220bf2"
+    },
+    "review-animations": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/review-animations/SKILL.md",
+      "computedHash": "f3c25b26369923340e82b181569cdcca7e803a2f19600cfdca85d559f92e6e8f"
+    },
+    "speech-recognition": {
+      "source": "dpearson2699/swift-ios-skills",
+      "commit": "8d90fd121a263355a4fb44fd082af1416a5c1c2a",
+      "sourceType": "github",
+      "skillPath": "skills/speech-recognition/SKILL.md",
+      "computedHash": "c4390f59d2e53ba0c0828413c030ca325e147cb3ec3571db495d56961c4b42e5"
     },
     "ui-ux-pro-max": {
       "source": "nextlevelbuilder/ui-ux-pro-max-skill",
       "sourceType": "github",
       "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
-      "computedHash": "eb75bf6085080d7d31fa2c0f9fd98d49abd229356147999b09177b733276f806"
+      "computedHash": ""
+    },
+    "write-swift": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/write-swift/SKILL.md",
+      "computedHash": "aba96f69500a765c53e6230e036aacaf1e98f81d5eefd1a15d10d6706dd27b97"
     }
   }
 }

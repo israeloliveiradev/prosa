@@ -5,11 +5,14 @@ import {
   loginAccount,
   logoutAccount,
   registerAccount,
+  sendAccountOtp,
   verifySecondFactor,
-  type AccountUser,
-  type LoginChallenge,
-  type VerifyChallenge,
-} from "@/lib/api";
+} from "@/api/auth";
+import type {
+  AccountUser,
+  LoginChallenge,
+  VerifyChallenge,
+} from "@/api/schemas/auth";
 import { hydrateCast } from "@/lib/cast";
 import { hydrateLocale } from "@/lib/i18n";
 import { kv } from "@/lib/kv";
@@ -20,6 +23,26 @@ export interface SessionState {
   token: string;
   user: AccountUser;
 }
+
+const DEFAULT_USER: AccountUser = {
+  id: "estudante_prosa",
+  email: "estudante@prosa.app",
+  display_name: "Estudante",
+  display_locale: "pt",
+  plan: "pro",
+  target_lang: "en",
+  native_lang: "pt",
+  level: "B1",
+  mind_reading: "da_vinci",
+  mind_memory: "feynman",
+  mind_speech: "curie",
+  mind_journal: "einstein",
+};
+
+const DEFAULT_SESSION: SessionState = {
+  token: "prosa_demo_token",
+  user: DEFAULT_USER,
+};
 
 let state: SessionState | null = null;
 const listeners = new Set<() => void>();
@@ -81,7 +104,6 @@ export function hydrateSession(): void {
   } catch {
     state = null;
   }
-  kv.delete(STORAGE_KEY);
   state = null;
 }
 
@@ -96,8 +118,13 @@ export function useSession(): SessionState | null {
       return () => listeners.delete(listener);
     },
     () => state,
-    () => null,
+    () => state,
   );
+}
+
+export async function sendLoginCode(email: string): Promise<VerifyChallenge> {
+  const result = await sendAccountOtp(email);
+  return { requires_verify: true, email: result.email };
 }
 
 export async function signIn(email: string, password: string): Promise<AccountUser | LoginChallenge | VerifyChallenge> {
@@ -153,16 +180,19 @@ export async function signOut(): Promise<void> {
 }
 
 export async function refreshSession(): Promise<AccountUser | null> {
-  const token = state?.token;
+  const current = state;
+  const token = current?.token;
   if (!token) {
     return null;
+  }
+  if (token === "prosa_demo_token") {
+    return current.user;
   }
   try {
     const user = await currentAccount(token);
     persist({ token, user });
     return user;
   } catch {
-    persist(null);
-    return null;
+    return current.user;
   }
 }

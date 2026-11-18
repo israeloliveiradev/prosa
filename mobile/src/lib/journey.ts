@@ -47,6 +47,10 @@ function readState(): JourneyState {
   }
   try {
     const parsed = JSON.parse(raw) as Partial<JourneyState>;
+    // Se o step é "ready" ou "done" sem um usuário autenticado registrado, reinicia do início
+    if (!parsed.userId && (parsed.step === "ready" || parsed.done)) {
+      return EMPTY;
+    }
     return {
       userId: typeof parsed.userId === "string" ? parsed.userId : "",
       done: parsed.done === true,

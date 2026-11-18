@@ -127,10 +127,10 @@ export function DailyNews() {
   const [earKey, setEarKey] = useState<string | null>(null);
   const lastTap = useRef({ at: 0, sentence: "" });
   const opened = useRef("");
-  const userId = session?.user.id;
-  const targetLang = session?.user.target_lang;
-  const nativeLang = session?.user.native_lang ?? "pt";
-  const interests = session?.user.interests?.filter((item) => item.trim().length > 0) ?? [];
+  const userId = session?.user?.id;
+  const targetLang = session?.user?.target_lang;
+  const nativeLang = session?.user?.native_lang ?? "pt";
+  const interests = session?.user?.interests?.filter((item) => item.trim().length > 0) ?? [];
   const choices = newsThemeChoices(interests);
   const chips = choices.includes(interest) ? choices : [interest, ...choices];
   const choiceKey = choices.join("|");
@@ -154,7 +154,7 @@ export function DailyNews() {
     };
   }, [userId, targetLang, nativeLang, choiceKey]);
 
-  const accountLevel = session?.user.level ?? "A2";
+  const accountLevel = session?.user?.level ?? "A2";
   useEffect(() => {
     setBand(bandFor(accountLevel));
   }, [accountLevel]);
@@ -319,9 +319,9 @@ export function DailyNews() {
       vocabulary: story.vocabulary ?? [],
       journal_prompt: story.journal_prompt || ui.journalNewsPrompt,
     };
-    rememberLesson(today, topic, lesson, cardsForThrough(cardsFromLesson(lesson), session?.user.native_lang ?? "pt"), {
+    rememberLesson(today, topic, lesson, cardsForThrough(cardsFromLesson(lesson), session?.user?.native_lang ?? "pt"), {
       targetLang: targetLang ?? "en",
-      throughLang: session?.user.native_lang ?? "pt",
+      throughLang: session?.user?.native_lang ?? "pt",
       level: accountLevel,
     });
     void tap("medium");

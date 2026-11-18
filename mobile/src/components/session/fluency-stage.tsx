@@ -6,6 +6,7 @@ import { fluencyLaps, fluencyScore, recurringSlips, type FluencyScore } from "@/
 import { tap } from "@/lib/haptics";
 import { useCopy } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
+import { stopIfRecording } from "@/lib/stop-recorder";
 import type { LessonRequest, RepairCard } from "@/lib/types";
 
 const laps = fluencyLaps();
@@ -38,15 +39,15 @@ export function FluencyStage({
   const [slips, setSlips] = useState<string[] | null>(null);
   const started = useRef(0);
   const spokenLaps = useRef<string[]>([]);
+  const recorderRef = useRef(recorder);
+  recorderRef.current = recorder;
   const lap = laps[index] ?? laps[0];
 
   useEffect(() => {
     return () => {
-      if (recording) {
-        void recorder.stop();
-      }
+      void stopIfRecording(recorderRef.current);
     };
-  }, [recording, recorder]);
+  }, []);
 
   if (!lap) {
     return null;
@@ -61,7 +62,7 @@ export function FluencyStage({
       setPending(true);
       setError(null);
       try {
-        await recorder.stop();
+        await stopIfRecording(recorder);
         const uri = recorder.uri;
         if (!uri) {
           throw new Error(ui.hvptVoiceFailed);

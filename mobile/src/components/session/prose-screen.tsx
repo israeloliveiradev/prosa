@@ -6,6 +6,7 @@ import { Figure } from "@/components/cast/figure";
 import { AppFrame } from "@/components/shell/app-frame";
 import { PageMasthead } from "@/components/shell/page-masthead";
 import { ChunkButton } from "@/components/shell/chunk-button";
+import { Button } from "@/ui";
 import { mindById } from "@/design/minds";
 import { fetchProseMemory, sendProseTurn, speakStory, transcribeSpeech, type ProseTurnResult } from "@/lib/api";
 import { useCast } from "@/lib/cast";
@@ -14,6 +15,7 @@ import { tap } from "@/lib/haptics";
 import { narratorVoice } from "@/lib/narrator";
 import { useProgress } from "@/lib/progress";
 import { useSession } from "@/lib/session";
+import { stopIfRecording } from "@/lib/stop-recorder";
 import { AudioService } from "@/services/audio/AudioService";
 import { useTheme } from "@/theme/ThemeContext";
 
@@ -58,11 +60,13 @@ export function ProseScreen() {
   const progress = useProgress();
   const { picks } = useCast();
   const token = session?.token;
-  const targetLang = session?.user.target_lang ?? "en";
+  const targetLang = session?.user?.target_lang ?? "en";
   const companion = mindById(picks.speech);
   const topic = (progress.topic ?? "everyday life").trim().slice(0, 80) || "everyday life";
   const story = progress.cachedLesson ? storyExcerpt(progress.cachedLesson.story_text) : undefined;
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderRef = useRef(recorder);
+  recorderRef.current = recorder;
   const recordingRef = useRef(false);
   const [round, setRound] = useState(0);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -78,11 +82,10 @@ export function ProseScreen() {
   useEffect(() => {
     return () => {
       AudioService.stopAndUnload();
-      if (recordingRef.current) {
-        void recorder.stop();
-      }
+      recordingRef.current = false;
+      void stopIfRecording(recorderRef.current);
     };
-  }, [recorder]);
+  }, []);
 
   useEffect(() => {
     if (!token) {
