@@ -10,6 +10,7 @@ import { tap } from "@/lib/haptics";
 import { useCopy } from "@/lib/i18n";
 import { narratorVoice } from "@/lib/narrator";
 import { useSession } from "@/lib/session";
+import { stopIfRecording } from "@/lib/stop-recorder";
 import { AudioService } from "@/services/audio/AudioService";
 import { useTheme } from "@/theme/ThemeContext";
 
@@ -34,8 +35,10 @@ export function PersonaScreen() {
   const copy = useCopy();
   const session = useSession();
   const token = session?.token;
-  const targetLang = session?.user.target_lang ?? "en";
+  const targetLang = session?.user?.target_lang ?? "en";
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderRef = useRef(recorder);
+  recorderRef.current = recorder;
   const recordingRef = useRef(false);
   const [scenes, setScenes] = useState<PersonaScene[]>([]);
   const [scene, setScene] = useState<PersonaScene | null>(null);
@@ -49,11 +52,10 @@ export function PersonaScreen() {
   useEffect(() => {
     return () => {
       AudioService.stopAndUnload();
-      if (recordingRef.current) {
-        void recorder.stop();
-      }
+      recordingRef.current = false;
+      void stopIfRecording(recorderRef.current);
     };
-  }, [recorder]);
+  }, []);
 
   useEffect(() => {
     if (!token) {

@@ -41,8 +41,8 @@ export function ScoreScreen() {
   const copy = useCopy();
   const { palette } = useTheme();
   const token = session?.token;
-  const targetLang = session?.user.target_lang ?? "en";
-  const throughLang = session?.user.native_lang ?? "pt";
+  const targetLang = session?.user?.target_lang ?? "en";
+  const throughLang = session?.user?.native_lang ?? "pt";
   const [phase, setPhase] = useState<Phase>("intro");
   const [status, setStatus] = useState<ScoreStatus | null>(null);
   const [attempt, setAttempt] = useState<ScoreAttempt | null>(null);

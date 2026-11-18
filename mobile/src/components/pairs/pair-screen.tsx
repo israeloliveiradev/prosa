@@ -14,7 +14,7 @@ export function PairScreen() {
   const copy = useCopy();
   const { palette } = useTheme();
   const token = session?.token;
-  const targetLang = session?.user.target_lang ?? "en";
+  const targetLang = session?.user?.target_lang ?? "en";
   const [box, setBox] = useState<PairInbox | null>(null);
   const [draft, setDraft] = useState("");
   const [note, setNote] = useState<string | null>(null);

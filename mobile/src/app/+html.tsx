@@ -1,37 +1,73 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import type { PropsWithChildren } from "react";
 
-const DESCRIPTION = "Uma lição de vinte minutos por dia.";
+const DESCRIPTION = "Ritual diário de idiomas de 20 minutos com mentores históricos.";
+
+const ANTI_FLASH_SCRIPT = `
+  try {
+    var root = document.documentElement;
+    root.style.backgroundColor = '#FDFBF7';
+  } catch (e) {}
+`;
 
 export default function Root({ children }: PropsWithChildren) {
   return (
-    <html lang="pt">
+    <html lang="pt-BR">
       <head>
-        <title>Prosa</title>
+        <title>Prosa — Maestria Polímata em 20 Minutos</title>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, viewport-fit=cover"
+        />
         <meta name="description" content={DESCRIPTION} />
-        <meta name="application-name" content="Prosa" />
-        <meta name="apple-mobile-web-app-title" content="Prosa" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#FFF8F1" />
-        <meta property="og:type" content="website" />
-        <meta property="og:title" content="Prosa" />
-        <meta property="og:description" content={DESCRIPTION} />
-        <meta property="og:image" content="/og.png" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Prosa" />
-        <meta name="twitter:description" content={DESCRIPTION} />
-        <meta name="twitter:image" content="/og.png" />
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="theme-color" content="#FDFBF7" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="manifest" href="/site.webmanifest" />
+
+        {/* Fontes Oficiais do Google Stitch: Plus Jakarta Sans, Newsreader */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=Plus+Jakarta+Sans:ital,wght@0,500;0,600;0,700;0,800;1,500;1,600;1,700;1,800&display=swap"
+          rel="stylesheet"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+          rel="stylesheet"
+        />
+
+        <style dangerouslySetInnerHTML={{
+          __html: `
+            :root {
+              --color-background: #FDFBF7;
+              --color-surface: #FFFFFF;
+              --color-surface-raised: #F5F0E8;
+              --color-primary: #0D9488;
+              --color-primary-dark: #0F766E;
+              --color-streak: #FF5722;
+              --color-gems: #06B6D4;
+              --color-combo: #EC4899;
+            }
+            html, body, #root {
+              background-color: #FDFBF7 !important;
+              font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+              margin: 0;
+              padding: 0;
+            }
+            * {
+              box-sizing: border-box;
+            }
+          `
+        }} />
+
+        <script dangerouslySetInnerHTML={{ __html: ANTI_FLASH_SCRIPT }} />
         <ScrollViewStyleReset />
       </head>
-      <body>{children}</body>
+      <body style={{ backgroundColor: "#FDFBF7", margin: 0, padding: 0 }}>
+        {children}
+      </body>
     </html>
   );
 }

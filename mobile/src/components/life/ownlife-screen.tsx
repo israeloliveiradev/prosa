@@ -16,7 +16,7 @@ export function OwnlifeScreen() {
   const { palette } = useTheme();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const token = session?.token;
-  const targetLang = session?.user.target_lang ?? "en";
+  const targetLang = session?.user?.target_lang ?? "en";
   const [source, setSource] = useState("");
   const [note, setNote] = useState<OwnlifeNote | null>(null);
   const [status, setStatus] = useState<string | null>(null);

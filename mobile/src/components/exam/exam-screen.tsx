@@ -29,7 +29,7 @@ export function ExamScreen() {
   const copy = useCopy();
   const { palette } = useTheme();
   const token = session?.token;
-  const targetLang = session?.user.target_lang ?? "en";
+  const targetLang = session?.user?.target_lang ?? "en";
   const [phase, setPhase] = useState<Phase>("pick");
   const [status, setStatus] = useState<ExamStatus | null>(null);
   const [mock, setMock] = useState<ExamMock | null>(null);

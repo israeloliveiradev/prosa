@@ -1,6 +1,6 @@
 import { router, usePathname, type Href } from "expo-router";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import { Icon, type IconName } from "@/components/shell/icon";
 import { Logo } from "@/components/shell/logo";
 import { Button } from "@/components/ui/button";
@@ -15,14 +15,18 @@ interface NavItemDef {
   href: string;
   label: string;
   icon: IconName;
+  badge?: string;
+  isSpecial?: boolean;
 }
 
 const NAV_ITEMS: NavItemDef[] = [
-  { href: "/", label: "Aprender", icon: "trail" },
-  { href: "/practice", label: "Praticar", icon: "bolt" },
-  { href: "/memory", label: "Memória", icon: "brain" },
-  { href: "/news", label: "Notícias", icon: "news" },
-  { href: "/profile", label: "Perfil", icon: "user" },
+  { href: "/", label: "Trilha de Aventura", icon: "trail" },
+  { href: "/daily", label: "Sessão Diária 20m", icon: "timer" },
+  { href: "/duel", label: "Duelo 120s", icon: "swords" },
+  { href: "/memory", label: "Palácio de Memória", icon: "brain" },
+  { href: "/news", label: "Áudio Commute", icon: "headphones" },
+  { href: "/profile", label: "Perfil & Conquistas", icon: "user" },
+  { href: "/paywall", label: "Prosa Pro", icon: "crown", isSpecial: true },
 ];
 
 export function Sidebar() {
@@ -35,28 +39,39 @@ export function Sidebar() {
   const isCompact = bp === "laptop"; // 1024 a 1279px mostra apenas ícones
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
-  const userName = session ? givenName(session.user.email, session.user.display_name) : "Usuário";
+  const userName = session ? givenName(session.user.email, session.user.display_name) : "Você";
   const userInitial = userName.slice(0, 1).toUpperCase();
 
   return (
     <View
-      className={`border-r border-line bg-card flex-col justify-between py-6 ${
-        isCompact ? "w-20 items-center px-2" : "w-[248px] px-4"
-      }`}
+      style={{
+        backgroundColor: "#FFFFFF",
+        borderRightWidth: 2,
+        borderRightColor: "#E2E8F0",
+        boxShadow: "4px 0 0 #F5F0E8",
+        width: isCompact ? 80 : 264,
+        paddingHorizontal: isCompact ? 8 : 16,
+        paddingVertical: 24,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        height: "100%",
+        zIndex: 50,
+      }}
     >
-      {/* Top: Logo & Nav items */}
+      {/* Top: Official Logo & Nav items */}
       <View className="gap-6 w-full">
-        {/* Logo */}
+        {/* Official Prosa Logo (Dark Squircle with Stylized P + Cyan Accent) */}
         <Pressable
           accessibilityRole="link"
           onPress={() => router.push("/")}
           className={`cursor-pointer ${isCompact ? "items-center" : "px-2"}`}
         >
-          <Logo compact={isCompact} decorative />
+          <Logo compact={isCompact} decorative showSubtitle />
         </Pressable>
 
-        {/* Links de navegação */}
-        <View className="gap-1.5 w-full">
+        {/* Links de navegação Táteis 3D */}
+        <View className="gap-2 w-full">
           {NAV_ITEMS.map((item) => {
             const active =
               item.href === "/"
@@ -72,22 +87,55 @@ export function Sidebar() {
                   setMoreMenuOpen(false);
                   router.push(item.href as Href);
                 }}
-                className={`flex-row items-center rounded-2xl cursor-pointer select-none transition-colors ${
-                  isCompact ? "justify-center h-12 w-12" : "px-3.5 py-3 gap-3.5"
-                } ${active ? "bg-primarySoft border-l-4 border-primary" : "hover:bg-sunken/60"}`}
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingHorizontal: isCompact ? 0 : 14,
+                  paddingVertical: 12,
+                  borderRadius: 16,
+                  backgroundColor: active
+                    ? "#00685F"
+                    : item.isSpecial
+                    ? "#FEF3C7"
+                    : "#FFFFFF",
+                  borderWidth: 1,
+                  borderColor: active
+                    ? "#0F766E"
+                    : item.isSpecial
+                    ? "#FCD34D"
+                    : "#E2E8F0",
+                  boxShadow: active
+                    ? "0 4px 0 #0F766E"
+                    : item.isSpecial
+                    ? "0 3px 0 #D97706"
+                    : "0 3px 0 #E2E8F0",
+                  cursor: "pointer",
+                  width: isCompact ? 48 : "100%",
+                  height: isCompact ? 48 : undefined,
+                  justifyContent: isCompact ? "center" : "flex-start",
+                }}
               >
                 <Icon
                   name={item.icon}
-                  color={active ? palette.primary : palette.onSurfaceVariant}
-                  size={22}
-                  strokeWidth={active ? 2 : 1.75}
+                  color={active ? "#FFFFFF" : item.isSpecial ? "#B45309" : "#64748B"}
+                  size={20}
+                  strokeWidth={active ? 2.2 : 1.75}
                 />
                 {!isCompact ? (
-                  <Text
-                    className={`font-label text-base ${active ? "text-primary font-bold" : "text-muted"}`}
-                  >
-                    {item.label}
-                  </Text>
+                  <View style={{ flex: 1, display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: active ? "800" : "700",
+                        color: active ? "#FFFFFF" : item.isSpecial ? "#B45309" : "#111C2D",
+                      }}
+                    >
+                      {item.label}
+                    </Text>
+                    {item.isSpecial ? <Text style={{ fontSize: 13 }}>👑</Text> : null}
+                  </View>
                 ) : null}
               </Pressable>
             );
@@ -105,29 +153,37 @@ export function Sidebar() {
         </View>
       </View>
 
-      {/* Bottom: Pro Card, More Menu & User Profile */}
-      <View className="gap-3 w-full relative">
-        {/* Banner Prosa Pro (se for plano grátis) */}
-        {!progress.pro && !isCompact ? (
-          <View className="rounded-2xl border-2 border-pro/20 bg-pro/5 p-4 gap-2.5">
-            <View className="flex-row items-center gap-2">
-              <Icon name="crown" color={palette.pro} size={20} />
-              <Text className="font-label text-xs font-bold text-pro uppercase tracking-wider">
-                Prosa Pro
-              </Text>
-            </View>
-            <Text className="text-xs text-muted leading-4">
-              Histórico ilimitado e tópicos por inteligência artificial.
+      {/* Bottom: Active Mentor Widget (Albert Einstein) & User Bar */}
+      <View className="gap-4 w-full relative">
+        {/* Mentor Widget estilo Stitch */}
+        {!isCompact ? (
+          <View className="relative bg-raised rounded-2xl p-3.5 border border-line shadow-[0_4px_0_#E2E8F0]">
+            <View className="absolute -top-1.5 left-6 w-3 h-3 bg-raised border-t border-l border-line rotate-45" />
+            <Text className="font-reading text-xs text-ink mb-2.5 italic">
+              “Pronto para o ritual de hoje, {userName}?”
             </Text>
-            <Button
-              variant="secondary"
-              size="md"
-              fullWidth
-              onPress={() => router.push("/paywall")}
-              className="mt-1"
-            >
-              <Text className="font-label text-xs text-pro font-bold">Assinar Pro</Text>
-            </Button>
+            <View className="flex-row items-center gap-2.5">
+              <View className="relative w-9 h-9">
+                <View className="w-full h-full rounded-full overflow-hidden border border-line shadow-sm">
+                  <Image
+                    source={{
+                      uri: "/cast/einstein.png",
+                    }}
+                    style={{ width: "100%", height: "100%" }}
+                    resizeMode="cover"
+                  />
+                </View>
+                <View className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-success items-center justify-center border-2 border-white shadow-sm">
+                  <Text className="text-[9px] text-white font-bold">✓</Text>
+                </View>
+              </View>
+              <View className="flex-1">
+                <Text className="font-label text-xs font-bold text-ink">Albert Einstein</Text>
+                <Text className="text-[9px] uppercase tracking-wider text-muted font-bold">
+                  Mentor Polímata
+                </Text>
+              </View>
+            </View>
           </View>
         ) : null}
 
@@ -139,101 +195,66 @@ export function Sidebar() {
             }`}
           >
             <Pressable
+              accessibilityRole="button"
               onPress={() => {
                 setMoreMenuOpen(false);
                 router.push("/settings");
               }}
-              className="flex-row items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-sunken cursor-pointer"
+              className="flex-row items-center gap-2.5 rounded-xl px-3 py-2.5 active:bg-sunken/80"
             >
               <Icon name="gear" color={palette.onSurfaceVariant} size={18} />
               <Text className="font-label text-sm text-ink">{copy.settings}</Text>
             </Pressable>
 
             <Pressable
+              accessibilityRole="button"
               onPress={() => {
                 setMoreMenuOpen(false);
                 router.push("/guide");
               }}
-              className="flex-row items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-sunken cursor-pointer"
+              className="flex-row items-center gap-2.5 rounded-xl px-3 py-2.5 active:bg-sunken/80"
             >
               <Icon name="book" color={palette.onSurfaceVariant} size={18} />
               <Text className="font-label text-sm text-ink">{copy.guide}</Text>
             </Pressable>
 
-            <Pressable
-              onPress={() => {
-                setMoreMenuOpen(false);
-                router.push("/paywall");
-              }}
-              className="flex-row items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-sunken cursor-pointer"
-            >
-              <Icon name="crown" color={palette.pro} size={18} />
-              <Text className="font-label text-sm text-pro font-bold">{copy.navPro}</Text>
-            </Pressable>
-
-            {session?.user.role === "admin" ? (
-              <Pressable
-                onPress={() => {
-                  setMoreMenuOpen(false);
-                  router.push("/admin");
-                }}
-                className="flex-row items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-sunken cursor-pointer"
-              >
-                <Icon name="shield" color={palette.onSurfaceVariant} size={18} />
-                <Text className="font-label text-sm text-ink">{copy.admin}</Text>
-              </Pressable>
-            ) : null}
-
-            <View className="h-px bg-line my-1" />
+            <View className="my-1 border-t border-line" />
 
             <Pressable
+              accessibilityRole="button"
               onPress={() => {
                 setMoreMenuOpen(false);
-                void signOut().finally(() => {
-                  clearLocalProgress();
-                  router.replace("/account");
-                });
+                clearLocalProgress();
+                void signOut();
+                router.replace("/account");
               }}
-              className="flex-row items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-dangerSoft cursor-pointer"
+              className="flex-row items-center gap-2.5 rounded-xl px-3 py-2.5 active:bg-dangerSoft"
             >
-              <Icon name="close" color={palette.danger} size={18} />
+              <Icon name="x" color={palette.negative} size={18} />
               <Text className="font-label text-sm text-danger">{copy.signOut}</Text>
             </Pressable>
           </View>
         ) : null}
 
-        {/* Botão "Mais" */}
+        {/* Barra do Usuário */}
         <Pressable
           accessibilityRole="button"
-          onPress={() => setMoreMenuOpen((open) => !open)}
-          className={`flex-row items-center rounded-2xl cursor-pointer hover:bg-sunken/60 ${
-            isCompact ? "justify-center h-12 w-12" : "px-3.5 py-2.5 gap-3"
+          onPress={() => setMoreMenuOpen(!moreMenuOpen)}
+          className={`flex-row items-center rounded-2xl border border-line bg-card p-2 active:bg-raised transition-colors ${
+            isCompact ? "justify-center" : "gap-3"
           }`}
         >
-          <Icon name="more" color={palette.onSurfaceVariant} size={22} />
-          {!isCompact ? <Text className="font-label text-sm text-muted">Mais opções</Text> : null}
-        </Pressable>
-
-        {/* Card do Usuário */}
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push("/profile" as Href)}
-          className={`flex-row items-center rounded-2xl border border-line bg-sunken/40 cursor-pointer ${
-            isCompact ? "justify-center h-12 w-12" : "p-2 gap-3"
-          }`}
-        >
-          <View className="w-9 h-9 rounded-full bg-primary items-center justify-center">
-            <Text className="font-label text-sm font-bold text-onPrimary">{userInitial}</Text>
+          <View className="h-9 w-9 items-center justify-center rounded-full bg-primarySoft">
+            <Text className="font-label text-sm font-bold text-primary">{userInitial}</Text>
           </View>
           {!isCompact ? (
-            <View className="min-w-0 flex-1">
-              <Text className="font-label text-sm text-ink truncate" numberOfLines={1}>
-                {userName}
-              </Text>
-              <Text className="text-xs text-muted truncate" numberOfLines={1}>
-                {session?.user.email ?? ""}
-              </Text>
+            <View className="flex-1 min-w-0">
+              <Text className="font-label text-sm font-bold text-ink truncate">{userName}</Text>
+              <Text className="text-xs text-muted truncate">{session?.user?.email ?? "Offline"}</Text>
             </View>
+          ) : null}
+          {!isCompact ? (
+            <Icon name="more" color={palette.onSurfaceVariant} size={18} />
           ) : null}
         </Pressable>
       </View>

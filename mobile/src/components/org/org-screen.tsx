@@ -18,7 +18,7 @@ export function OrgScreen() {
   const copy = useCopy();
   const { palette } = useTheme();
   const token = session?.token;
-  const targetLang = session?.user.target_lang ?? "en";
+  const targetLang = session?.user?.target_lang ?? "en";
   const [pack, setPack] = useState<OrgPack | null>(null);
   const [name, setName] = useState("");
   const [sector, setSector] = useState<(typeof SECTORS)[number]>("technology");
