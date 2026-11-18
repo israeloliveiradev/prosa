@@ -1,0 +1,25 @@
+{
+  "fill" : {
+    "solid" : "extended-srgb:0.60392,0.20392,0.07059,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name" : "prosa-mark.svg",
+          "name" : "prosa-mark",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [0, 0]
+          }
+        }
+      ]
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

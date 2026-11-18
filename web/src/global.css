@@ -1,0 +1,171 @@
+@import "./design/generated/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-background: #FDFBF7;
+  --color-surface: #FFFFFF;
+  --color-surface-raised: #F5F0E8;
+  --color-primary: #0D9488;
+  --color-primary-dark: #0F766E;
+  --color-streak: #FF5722;
+  --color-gems: #06B6D4;
+  --color-combo: #EC4899;
+}
+
+/* PRD Section 6: Tactile 3D Button Utility */
+.btn-3d {
+  box-shadow: 0 4px 0 #0F766E;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.btn-3d:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #0F766E;
+}
+
+/* 7.12 Base de celular no web */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+body,
+#root {
+  min-height: 100dvh;
+  width: 100%;
+  overflow-x: hidden;
+  background: #FDFBF7 !important;
+  color: #111C2D;
+  font-family: "Plus Jakarta Sans", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  word-spacing: normal;
+  letter-spacing: normal;
+}
+
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+[role="button"],
+button,
+a {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 7.10 Superfícies do navegador (só web) */
+::selection {
+  background-color: var(--accent-soft);
+  color: var(--ink);
+}
+
+* {
+  caret-color: var(--accent);
+}
+
+html.light {
+  scrollbar-color: #C5C9CD transparent;
+}
+
+html.dark {
+  scrollbar-color: #3A3D41 transparent;
+}
+
+:root {
+  scrollbar-width: thin;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+a {
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+/* 7.4 Equilíbrio de texto */
+h1,
+h2,
+h3,
+[role="heading"] {
+  text-wrap: balance;
+}
+
+p,
+article {
+  text-wrap: pretty;
+}
+
+/* RN Web Text vira flex no NativeWind e some com o espaço entre as palavras. Mantido até Task 15 */
+#root [dir],
+#root [class*="css-text"],
+#root [class*="css-textHasAncestor"] {
+  display: inline-block !important;
+  box-sizing: border-box;
+  max-width: 100%;
+  white-space: pre-wrap !important;
+  overflow-wrap: break-word;
+  word-spacing: normal !important;
+}
+
+/* Compatibilidade com classes de fontes legadas até Task 15 */
+#root .font-display,
+#root .font-displayItalic {
+  font-family: "IBM Plex Sans SemiBold", "IBM Plex Sans", sans-serif;
+  font-weight: 600;
+}
+
+#root .font-reading {
+  font-family: "Literata", Georgia, serif;
+  font-weight: 400;
+}
+
+#root .font-label {
+  font-family: "IBM Plex Sans Medium", "IBM Plex Sans", sans-serif;
+  font-weight: 500;
+}
+
+#root .text-\[11px\],
+#root .text-\[9px\] {
+  font-size: 12px !important;
+  line-height: 1.35;
+}
+
+#root .tracking-\[0\.22em\],
+#root .tracking-\[0\.24em\],
+#root .tracking-\[0\.28em\],
+#root .tracking-widest {
+  letter-spacing: normal !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body,
+  #root,
+  #root * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    backdrop-filter: none !important;
+    background: var(--sheet) !important;
+  }
+}
+
+html.type-large,
+html.type-large body,
+html.type-large #root {
+  font-size: 18px;
+}

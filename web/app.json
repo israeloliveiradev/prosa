@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Prosa",
+    "slug": "prosa",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "prosa",
+    "userInterfaceStyle": "automatic",
+    "primaryColor": "#1B6C80",
+    "ios": {
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "CADisableMinimumFrameDurationOnPhone": true
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F2F5F7",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./public/favicon.svg",
+      "name": "Prosa — Maestria Polímata em 20 Minutos",
+      "shortName": "Prosa",
+      "lang": "pt-BR",
+      "themeColor": "#0D9488",
+      "backgroundColor": "#FDFBF7",
+      "description": "Uma lição de vinte minutos por dia com mentores polímatas."
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F2F5F7",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 128
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "O Prosa usa o microfone para comparar sua pronúncia com a frase original."
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
