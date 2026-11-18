@@ -20,7 +20,12 @@ export const studyTrackSchema = z
 export const onboardingQuizBodySchema = z
   .object({
     interests: z.array(z.string().trim().min(1).max(48)).min(1).max(12),
-    goal: z.string().trim().min(1).max(200).optional(),
+    goal: z
+      .string()
+      .trim()
+      .max(200)
+      .optional()
+      .transform((val) => (val && val.length > 0 ? val : undefined)),
     level: z.enum(CEFR_LEVELS).optional(),
     target_lang: z.enum(TARGET_LANGS).optional(),
     through_lang: z.enum(THROUGH_LANGS).optional(),

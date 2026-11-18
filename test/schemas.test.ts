@@ -5,8 +5,9 @@ import { loginBodySchema, registerBodySchema } from "../src/schemas/auth.ts";
 import { checkoutBodySchema, checkoutSessionParamsSchema } from "../src/schemas/billing.ts";
 import { evaluateJournalBodySchema } from "../src/schemas/journal.ts";
 import { generateLessonBodySchema } from "../src/schemas/lesson.ts";
-import { onboardingQuizBodySchema, personalizedLessonBodySchema } from "../src/schemas/onboarding.ts";
+import { onboardingQuizBodySchema, personalizedLessonBodySchema, studyTrackSchema } from "../src/schemas/onboarding.ts";
 import { parseAdminEmails } from "../src/config.ts";
+import { profileQuerySchema, profileSignalsSchema } from "../src/schemas/profile.ts";
 import { proseTurnBodySchema } from "../src/schemas/prose.ts";
 import { adminFreezeBodySchema, adminGenerationBodySchema, adminPlanBodySchema } from "../src/schemas/admin.ts";
 import { speakBatchBodySchema, speakBodySchema, speakStreamBodySchema } from "../src/schemas/speech.ts";
@@ -150,6 +151,13 @@ describe("onboardingQuizBodySchema", () => {
       goal: "falar no trabalho",
     });
     assert.equal(body.interests.length, 2);
+    assert.equal(body.goal, "falar no trabalho");
+
+    const withEmptyGoal = onboardingQuizBodySchema.parse({
+      interests: ["filosofia"],
+      goal: "",
+    });
+    assert.equal(withEmptyGoal.goal, undefined);
   });
 
   it("rejects more than twelve interests", () => {
@@ -340,3 +348,77 @@ describe("proseTurnBodySchema", () => {
     assert.equal(parsed.success, false);
   });
 });
+
+describe("studyTrackSchema (RF02 - Par de idiomas)", () => {
+  it("accepts valid distinct target and through languages", () => {
+    const parsed = studyTrackSchema.safeParse({
+      target_lang: "en",
+      through_lang: "pt",
+      level: "B1",
+      active: true,
+    });
+    assert.equal(parsed.success, true);
+  });
+
+  it("rejects identical target and through languages (RF02)", () => {
+    const parsed = studyTrackSchema.safeParse({
+      target_lang: "en",
+      through_lang: "en",
+    });
+    assert.equal(parsed.success, false);
+    if (!parsed.success) {
+      assert.match(parsed.error.issues[0].message, /Study a language through a different language/);
+    }
+  });
+
+  it("rejects Portuguese as target language", () => {
+    const parsed = studyTrackSchema.safeParse({
+      target_lang: "pt",
+      through_lang: "en",
+    });
+    assert.equal(parsed.success, false);
+  });
+});
+
+describe("profileSignalsSchema (RF01 - Perfil de estudo)", () => {
+  it("accepts valid profile signals with flexible session duration modes", () => {
+    const parsed = profileSignalsSchema.safeParse({
+      target_lang: "es",
+      reading: 85,
+      listening: 70,
+      session_duration_mode: "pro_40",
+      add_active_seconds: 1200,
+      milestone_unlocked: 30,
+    });
+    assert.equal(parsed.success, true);
+  });
+
+  it("rejects invalid session duration mode", () => {
+    const parsed = profileSignalsSchema.safeParse({
+      target_lang: "en",
+      session_duration_mode: "ultra_120",
+    });
+    assert.equal(parsed.success, false);
+  });
+
+  it("rejects scores outside 0-100 bounds", () => {
+    const parsed = profileSignalsSchema.safeParse({
+      target_lang: "en",
+      reading: 105,
+    });
+    assert.equal(parsed.success, false);
+  });
+});
+
+describe("profileQuerySchema", () => {
+  it("accepts supported target language and trims whitespace", () => {
+    const parsed = profileQuerySchema.parse({ target_lang: "  fr  " });
+    assert.equal(parsed.target_lang, "fr");
+  });
+
+  it("rejects unsupported target language", () => {
+    const parsed = profileQuerySchema.safeParse({ target_lang: "klingon" });
+    assert.equal(parsed.success, false);
+  });
+});
+

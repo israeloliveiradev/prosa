@@ -9,7 +9,7 @@ import { loginBodySchema, registerBodySchema } from "../schemas/auth.js";
 import { acquireOnce } from "../security/idempotency.js";
 import { assertNotLocked, clearFailures, lockoutKey, recordFailure } from "../security/lockout.js";
 import { publicInboxUrl } from "../security/origins.js";
-import { digestCode } from "../services/codes.js";
+import { digestCode, sixDigitCode } from "../services/codes.js";
 import type { EmailVerify } from "../services/email-verify.js";
 import type { Mailer } from "../services/mailer.js";
 import { hashPassword, verifyPassword } from "../services/passwords.js";
@@ -36,6 +36,46 @@ export function registerAuthRoutes(
   app.get("/api/v1/auth/mail", async () => ({
     inbox_url: publicInboxUrl(mailer.inboxUrl()),
   }));
+
+  app.post(
+    "/api/v1/auth/otp/send",
+    {
+      config: {
+        rateLimit: {
+          max: 15,
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = forgotBodySchema.parse(request.body);
+      const lock = lockoutKey("otp-send", body.email);
+      await assertNotLocked(redis, lock);
+
+      const found = await pool.query<{ id: string; email: string; display_locale: "pt" | "en" }>(
+        `SELECT id, email, display_locale FROM users WHERE email = $1`,
+        [body.email],
+      );
+      let user = found.rows[0];
+
+      if (!user) {
+        const dummyPassword = await hashPassword(sixDigitCode() + sixDigitCode() + "prosa-pwless");
+        const created = await pool.query<{ id: string; email: string; display_locale: "pt" | "en" }>(
+          `INSERT INTO users (email, password_hash, native_lang, target_lang, level, streak_freeze_count, display_locale)
+           VALUES ($1, $2, 'pt', 'en', 'A2', 1, 'pt')
+           ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+           RETURNING id, email, display_locale`,
+          [body.email, dummyPassword],
+        );
+        user = created.rows[0];
+      }
+
+      if (user) {
+        await verify.send(user.id, user.email, user.display_locale ?? "pt", "login");
+      }
+      return reply.code(200).send({ requires_verify: true, email: body.email });
+    },
+  );
 
   app.post(
     "/api/v1/auth/register",
@@ -189,8 +229,8 @@ export function registerAuthRoutes(
         [body.email],
       );
       const row = found.rows[0];
-      if (row && !row.email_verified_at) {
-        await verify.send(row.id, row.email, row.display_locale);
+      if (row) {
+        await verify.send(row.id, row.email, row.display_locale ?? "pt");
       }
       return { ok: true };
     },

@@ -2,7 +2,7 @@ import type { Redis } from "ioredis";
 import type { Pool } from "pg";
 import { AppError } from "../http/errors.js";
 import { digestCode, sameDigest, sixDigitCode } from "./codes.js";
-import { brandedMail, type MailLocale } from "./mail-templates.js";
+import { brandedMail, type MailLocale, type MailKind } from "./mail-templates.js";
 import type { Mailer } from "./mailer.js";
 
 const TTL = 900;
@@ -18,13 +18,14 @@ export class EmailVerify {
     return `prosa:verify:${digestCode(email)}`;
   }
 
-  async send(userId: string, email: string, locale: MailLocale): Promise<void> {
+  async send(userId: string, email: string, locale: MailLocale, kind: MailKind = "login"): Promise<void> {
     if (!this.mailer.configured()) {
       throw new AppError(503, "Mail is not configured");
     }
     const code = sixDigitCode();
+    console.log(`\n========================================\n[PROSA VERIFY CODE] ${email} -> ${code}\n========================================\n`);
     await this.redis.set(this.key(email), `${userId}:${digestCode(code)}`, "EX", TTL);
-    const letter = brandedMail({ locale, kind: "verify", code });
+    const letter = brandedMail({ locale, kind, code, email });
     const ok = await this.mailer.send({ to: email, ...letter });
     if (!ok) {
       await this.redis.del(this.key(email));

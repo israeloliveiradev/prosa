@@ -54,12 +54,22 @@ export class PersonalizationService {
       client.release();
     }
 
-    const topics = await this.gemini.suggestTopics({
-      interests: body.interests,
-      targetLang: active.target_lang,
-      level,
-      ...(body.goal ? { goal: body.goal } : {}),
-    });
+    let topics: string[] = [];
+    try {
+      topics = await Promise.race([
+        this.gemini.suggestTopics({
+          interests: body.interests,
+          targetLang: active.target_lang,
+          level,
+          ...(body.goal ? { goal: body.goal } : {}),
+        }),
+        new Promise<string[]>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout suggesting topics")), 3500),
+        ),
+      ]);
+    } catch {
+      topics = body.interests.slice(0, 6);
+    }
     return {
       interests: body.interests,
       topics,

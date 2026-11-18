@@ -29,6 +29,7 @@ import { registerLessonRoutes } from "./routes/lessons.js";
 import { registerPersonalizationRoutes } from "./routes/personalization.js";
 import { registerPlacementRoutes } from "./routes/placement.js";
 import { registerProfileRoutes } from "./routes/profile.js";
+import { registerFluencyRoutes } from "./routes/fluency.js";
 import { registerSrsRoutes } from "./routes/srs.js";
 import { registerSecurityHeaders } from "./security/headers.js";
 import { isAllowedOrigin } from "./security/origins.js";
@@ -199,6 +200,7 @@ export async function buildApp(env: Env) {
   registerAudioRoutes(app, shadowing, neural);
   registerJournalRoutes(app, pool, journal);
   registerProfileRoutes(app, pool, profiles);
+  registerFluencyRoutes(app, pool, profiles);
   registerSrsRoutes(app, pool, mnemonics);
   registerGrammarRoutes(app, pool, grammar);
   registerDuelRoutes(app, pool, duel);

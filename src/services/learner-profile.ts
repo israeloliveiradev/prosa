@@ -10,6 +10,8 @@ export const PROFILE_SKILLS = [
 
 export type ProfileSkill = (typeof PROFILE_SKILLS)[number];
 
+export type SessionDurationMode = "lite_20" | "pro_40" | "sprint_60";
+
 export interface LearnerProfile {
   reading: number;
   listening: number;
@@ -28,6 +30,10 @@ export interface LearnerProfile {
   minutes_per_day: number;
   exam_track: string;
   fluency_wpm: number;
+  session_duration_mode: SessionDurationMode;
+  total_active_seconds: number;
+  paused_session_state: Record<string, unknown> | null;
+  milestones_30h: number[];
 }
 
 export interface ProfileNote {
@@ -59,6 +65,10 @@ export const emptyProfile = (): LearnerProfile => ({
   minutes_per_day: 20,
   exam_track: "",
   fluency_wpm: 0,
+  session_duration_mode: "lite_20",
+  total_active_seconds: 0,
+  paused_session_state: null,
+  milestones_30h: [],
 });
 
 export function scoreOf(value: number): number {
@@ -133,9 +143,18 @@ export function applySignals(
     weekly_aim?: string;
     minutes_per_day?: number;
     fluency_wpm?: number;
+    session_duration_mode?: SessionDurationMode;
+    add_active_seconds?: number;
+    paused_session_state?: Record<string, unknown> | null;
+    milestone_unlocked?: number;
   },
 ): LearnerProfile {
-  const next = { ...profile, error_kinds: [...profile.error_kinds], weak_sounds: [...profile.weak_sounds] };
+  const next = {
+    ...profile,
+    error_kinds: [...profile.error_kinds],
+    weak_sounds: [...profile.weak_sounds],
+    milestones_30h: [...(profile.milestones_30h ?? [])],
+  };
   for (const skill of PROFILE_SKILLS) {
     const sample = signals[skill];
     if (typeof sample === "number") {
@@ -168,6 +187,21 @@ export function applySignals(
   }
   if (typeof signals.fluency_wpm === "number") {
     next.fluency_wpm = Math.max(0, Math.min(400, Math.round(signals.fluency_wpm)));
+  }
+  if (signals.session_duration_mode && ["lite_20", "pro_40", "sprint_60"].includes(signals.session_duration_mode)) {
+    next.session_duration_mode = signals.session_duration_mode;
+  }
+  if (typeof signals.add_active_seconds === "number" && signals.add_active_seconds > 0) {
+    next.total_active_seconds = Math.max(0, (next.total_active_seconds || 0) + Math.round(signals.add_active_seconds));
+  }
+  if (signals.paused_session_state !== undefined) {
+    next.paused_session_state = signals.paused_session_state;
+  }
+  if (typeof signals.milestone_unlocked === "number") {
+    if (!next.milestones_30h.includes(signals.milestone_unlocked)) {
+      next.milestones_30h.push(signals.milestone_unlocked);
+      next.milestones_30h.sort((a, b) => a - b);
+    }
   }
   return next;
 }

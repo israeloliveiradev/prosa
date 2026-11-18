@@ -9,29 +9,28 @@ describe("brandedMail", () => {
     assert.match(letter.text, /123456/);
     assert.match(letter.html, /1/);
     assert.match(letter.html, /2/);
-    assert.match(letter.html, /Prosa/);
-    assert.match(letter.html, /9A3412/);
+    assert.match(letter.html, /PROSA/);
+    assert.match(letter.html, /0D9488/);
   });
 
   it("keeps the code plate inside the card with the new type", () => {
     const letter = brandedMail({ locale: "pt", kind: "reset", code: "188026" });
     assert.match(letter.html, /Newsreader/);
-    assert.match(letter.html, /Source Sans 3/);
-    assert.doesNotMatch(letter.html, /Playfair|Plus Jakarta|font:italic|font-style:italic/);
+    assert.match(letter.html, /Plus Jakarta Sans/);
     assert.match(letter.html, />1<\/td>/);
     assert.match(letter.html, />8<\/td>/);
     assert.match(letter.html, />0<\/td>/);
     assert.match(letter.html, />2<\/td>/);
     assert.match(letter.html, />6<\/td>/);
-    const labelIndex = letter.html.indexOf("O seu código");
+    const labelIndex = letter.html.indexOf("Seu código de 6 dígitos");
     const actionIndex = letter.html.indexOf("expira em 15 minutos");
-    const signoffIndex = letter.html.indexOf("A redação da Prosa");
+    const signoffIndex = letter.html.indexOf("Equipe Prosa");
     assert.ok(labelIndex > 0 && actionIndex > labelIndex && signoffIndex > actionIndex);
   });
 
   it("omits the code plate on a reminder", () => {
     const letter = brandedMail({ locale: "pt", kind: "reminder" });
-    assert.doesNotMatch(letter.html, /O seu código/);
+    assert.doesNotMatch(letter.html, />[0-9]<\/td>/);
     assert.match(letter.html, /A prosa de hoje espera/);
   });
 

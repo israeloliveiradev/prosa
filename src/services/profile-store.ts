@@ -24,6 +24,10 @@ interface ProfileRow {
   minutes_per_day: number;
   exam_track: string;
   fluency_wpm: number;
+  session_duration_mode?: string;
+  total_active_seconds?: number | string;
+  paused_session_state?: unknown;
+  milestones_30h?: unknown;
 }
 
 export class ProfileStore {
@@ -32,7 +36,8 @@ export class ProfileStore {
   async load(userId: string, targetLang: string): Promise<LearnerProfile> {
     const result = await this.pool.query<ProfileRow>(
       `SELECT reading, listening, vocabulary, grammar, pronunciation, fluency, writing, hearing,
-              lexicon_size, coverage, error_kinds, weak_sounds, goal, weekly_aim, minutes_per_day, exam_track, fluency_wpm
+              lexicon_size, coverage, error_kinds, weak_sounds, goal, weekly_aim, minutes_per_day, exam_track, fluency_wpm,
+              session_duration_mode, total_active_seconds, paused_session_state, milestones_30h
        FROM learner_profile
        WHERE user_id = $1 AND target_lang = $2`,
       [userId, code(targetLang)],
@@ -41,6 +46,20 @@ export class ProfileStore {
     if (!row) {
       return emptyProfile();
     }
+    const mode = row.session_duration_mode;
+    const validMode = mode === "pro_40" || mode === "sprint_60" ? mode : "lite_20";
+    const activeSecs = typeof row.total_active_seconds === "number"
+      ? row.total_active_seconds
+      : typeof row.total_active_seconds === "string"
+      ? parseInt(row.total_active_seconds, 10) || 0
+      : 0;
+    const pausedState = row.paused_session_state && typeof row.paused_session_state === "object"
+      ? (row.paused_session_state as Record<string, unknown>)
+      : null;
+    const milestones = Array.isArray(row.milestones_30h)
+      ? row.milestones_30h.filter((x): x is number => typeof x === "number")
+      : [];
+
     return {
       reading: scoreOf(row.reading),
       listening: scoreOf(row.listening),
@@ -59,6 +78,10 @@ export class ProfileStore {
       minutes_per_day: Math.max(5, Math.min(120, row.minutes_per_day || 20)),
       exam_track: row.exam_track ?? "",
       fluency_wpm: Math.max(0, Math.min(400, row.fluency_wpm || 0)),
+      session_duration_mode: validMode,
+      total_active_seconds: Math.max(0, activeSecs),
+      paused_session_state: pausedState,
+      milestones_30h: milestones,
     };
   }
 
@@ -66,8 +89,9 @@ export class ProfileStore {
     await this.pool.query(
       `INSERT INTO learner_profile (
          user_id, target_lang, reading, listening, vocabulary, grammar, pronunciation, fluency, writing, hearing,
-         lexicon_size, coverage, error_kinds, weak_sounds, goal, weekly_aim, minutes_per_day, exam_track, fluency_wpm, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, now())
+         lexicon_size, coverage, error_kinds, weak_sounds, goal, weekly_aim, minutes_per_day, exam_track, fluency_wpm,
+         session_duration_mode, total_active_seconds, paused_session_state, milestones_30h, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23::jsonb, now())
        ON CONFLICT (user_id, target_lang) DO UPDATE SET
          reading = EXCLUDED.reading,
          listening = EXCLUDED.listening,
@@ -86,6 +110,10 @@ export class ProfileStore {
          minutes_per_day = EXCLUDED.minutes_per_day,
          exam_track = EXCLUDED.exam_track,
          fluency_wpm = EXCLUDED.fluency_wpm,
+         session_duration_mode = EXCLUDED.session_duration_mode,
+         total_active_seconds = EXCLUDED.total_active_seconds,
+         paused_session_state = EXCLUDED.paused_session_state,
+         milestones_30h = EXCLUDED.milestones_30h,
          updated_at = now()`,
       [
         userId,
@@ -107,6 +135,10 @@ export class ProfileStore {
         profile.minutes_per_day,
         profile.exam_track,
         profile.fluency_wpm,
+        profile.session_duration_mode || "lite_20",
+        profile.total_active_seconds || 0,
+        profile.paused_session_state ? JSON.stringify(profile.paused_session_state) : null,
+        JSON.stringify(profile.milestones_30h || []),
       ],
     );
     return profile;

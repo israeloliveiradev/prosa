@@ -79,6 +79,20 @@ export class Mailer {
             ],
           }),
         });
+        // If SMTP_HOST (like local Mailpit) is also configured, mirror a copy for immediate developer inspection
+        if (this.env.SMTP_HOST.trim()) {
+          try {
+            await sendSmtp({
+              host: this.env.SMTP_HOST,
+              port: this.env.SMTP_PORT,
+              from,
+              to: message.to,
+              subject: message.subject,
+              text: message.text,
+              html: message.html,
+            });
+          } catch {}
+        }
         return response.ok;
       } catch {
         return false;
