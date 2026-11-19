@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, Image, Platform } from "react-native
 import Svg, { Path, Circle } from "react-native-svg";
 import { tap } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
+import { speechService } from "@/services/speechService";
 
 const EINSTEIN_AVATAR = "/cast/einstein.png";
 
@@ -66,14 +67,14 @@ export function DailySessionScreen() {
   const handlePlayAudio = () => {
     void tap("medium");
     setAudioPlaying(true);
-    if (Platform.OS === "web" && typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance("Die Gedanken sind frei und fliegen wie der Wind.");
-      utterance.lang = "de-DE";
-      utterance.rate = 0.9;
-      window.speechSynthesis.speak(utterance);
-    }
-    setTimeout(() => setAudioPlaying(false), 2000);
+    const phrase = card?.targetPhrase?.replace(/[“”"«»]/g, "") || "Die Gedanken sind frei und fliegen wie der Wind.";
+    speechService.speak(phrase, {
+      lang: "de-DE",
+      mentorId: "einstein",
+      speed: "0.9x",
+      onEnd: () => setAudioPlaying(false),
+      onError: () => setAudioPlaying(false),
+    });
   };
 
   const phases = [

@@ -8,6 +8,7 @@ import {
   speechService,
   type VoiceEngineStatus,
   type VoiceEngineMode,
+  type ActivePlaybackInfo,
 } from "@/services/speechService";
 
 export default function SettingsScreen() {
@@ -27,14 +28,24 @@ export default function SettingsScreen() {
   const [voiceEngineStatus, setVoiceEngineStatus] = useState<VoiceEngineStatus>(() =>
     speechService.getStatus()
   );
+  const [playbackInfo, setPlaybackInfo] = useState<ActivePlaybackInfo>(() =>
+    speechService.getActivePlayback()
+  );
   const [isDownloadingModels, setIsDownloadingModels] = useState(false);
   const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const [isComparingVoices, setIsComparingVoices] = useState(false);
 
   useEffect(() => {
     const unsub = speechService.subscribe((status) => {
       setVoiceEngineStatus(status);
     });
-    return () => unsub();
+    const unsubPlayback = speechService.subscribePlayback((info) => {
+      setPlaybackInfo(info);
+    });
+    return () => {
+      unsub();
+      unsubPlayback();
+    };
   }, []);
 
   const handleSelectEngineMode = (mode: VoiceEngineMode) => {
@@ -95,6 +106,39 @@ export default function SettingsScreen() {
       onEnd: () => setIsTestingVoice(false),
       onError: () => setIsTestingVoice(false),
     });
+  };
+
+  const handleCompareVoices = async () => {
+    if (isComparingVoices) return;
+    setIsComparingVoices(true);
+    triggerToast("Reproduzindo Albert Einstein (Masculino grave, pausado, pitch 0.82)...");
+
+    const einsteinPhrase =
+      targetLang === "de"
+        ? "Die Phantasie ist wichtiger als das Wissen, denn das Wissen ist begrenzt."
+        : "A imaginação é mais importante que o conhecimento, pois o conhecimento é limitado.";
+
+    await speechService.speak(einsteinPhrase, {
+      lang: targetLang === "de" ? "de-DE" : "pt-BR",
+      mentorId: "einstein",
+      speed: "0.9x",
+    });
+
+    setTimeout(async () => {
+      triggerToast("Reproduzindo Marie Curie (Feminino cristalino, precisa, pitch 1.12)...");
+      const curiePhrase =
+        targetLang === "de"
+          ? "Man muss nichts im Leben fürchten, man muss nur alles verstehen."
+          : "Na vida, nada deve ser temido, somente compreendido para termos menos medo.";
+
+      await speechService.speak(curiePhrase, {
+        lang: targetLang === "de" ? "de-DE" : "pt-BR",
+        mentorId: "curie",
+        speed: "1.0x",
+        onEnd: () => setIsComparingVoices(false),
+        onError: () => setIsComparingVoices(false),
+      });
+    }, 3800);
   };
 
   // Daily goal state
@@ -604,6 +648,32 @@ export default function SettingsScreen() {
             />
           </div>
 
+          {/* Real-time Voice Synthesis Diagnostic HUD */}
+          <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-zinc-800 flex items-center justify-center text-teal-400 shrink-0">
+                <span className="material-symbols-outlined text-lg">
+                  {playbackInfo.isPlaying ? "graphic_eq" : "volume_up"}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
+                  Monitor de Síntese em Tempo Real (Diagnóstico Acústico)
+                </span>
+                <span className="text-xs font-semibold text-teal-300">
+                  Motor: {playbackInfo.isPlaying ? playbackInfo.engine : (voiceEngineStatus.mode === "hybrid" ? "Estúdio IA Híbrido (Kokoro/Piper)" : "Web Speech Neural")}
+                  {" • "}
+                  Voz: {playbackInfo.isPlaying ? playbackInfo.voice : `Pronto para ${activeMentor?.name || "Einstein"}`}
+                </span>
+              </div>
+            </div>
+            {playbackInfo.isPlaying && (
+              <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-3 py-1 rounded-full animate-pulse self-start sm:self-auto">
+                REPRODUZINDO ({playbackInfo.lang})
+              </span>
+            )}
+          </div>
+
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-3 pt-1">
             <button
@@ -631,6 +701,27 @@ export default function SettingsScreen() {
             >
               <span className="material-symbols-outlined text-sm text-stone-500">delete_outline</span>
               <span>Limpar Cache de Vozes</span>
+            </button>
+
+            <button
+              id="btn-compare-voices"
+              type="button"
+              onClick={handleCompareVoices}
+              disabled={isComparingVoices}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-[0_2px_0_#92400E] ${
+                isComparingVoices
+                  ? "bg-amber-600 text-white animate-pulse"
+                  : "bg-amber-500 hover:bg-amber-600 text-white"
+              }`}
+            >
+              <span className="material-symbols-outlined text-sm">
+                {isComparingVoices ? "hearing" : "compare_arrows"}
+              </span>
+              <span>
+                {isComparingVoices
+                  ? "Comparando Einstein vs Curie..."
+                  : "Testar e Comparar Vozes (Einstein vs Marie Curie)"}
+              </span>
             </button>
 
             <button

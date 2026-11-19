@@ -9,6 +9,7 @@
     "@expo-google-fonts/nunito": "^0.4.2",
     "@expo-google-fonts/source-sans-3": "^0.4.1",
     "@expo/ui": "~57.0.20",
+    "@mintplex-labs/piper-tts-web": "^1.0.5",
     "@tanstack/query-sync-storage-persister": "^5.103.2",
     "@tanstack/react-query": "^5.103.2",
     "@tanstack/react-query-persist-client": "^5.103.2",

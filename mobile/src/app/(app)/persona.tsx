@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Sparkles,
   Zap,
@@ -10,7 +10,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { useProsa, type Mentor } from "@/context/prosa-context";
-import { speechService } from "@/services/speechService";
+import { speechService, type ActivePlaybackInfo } from "@/services/speechService";
 
 interface PolymathData {
   id: string;
@@ -294,6 +294,15 @@ export default function PersonaScreen() {
   const { activeMentor, setActiveMentor } = useProsa();
   const [filter, setFilter] = useState<"all" | "logic" | "linguistics" | "literature" | "active">("all");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [playbackInfo, setPlaybackInfo] = useState<ActivePlaybackInfo>(() =>
+    speechService.getActivePlayback()
+  );
+
+  useEffect(() => {
+    return speechService.subscribePlayback((info) => {
+      setPlaybackInfo(info);
+    });
+  }, []);
 
   const filteredPolymaths = POLYMATHS.filter((p) => {
     if (filter === "all") return true;
@@ -363,6 +372,24 @@ export default function PersonaScreen() {
           </div>
         </div>
       </div>
+
+      {/* Live Voice Synthesis Diagnostic HUD */}
+      {playbackInfo.isPlaying && (
+        <div
+          id="persona-voice-hud"
+          className="flex items-center justify-between p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-white shadow-lg animate-in fade-in slide-in-from-top-2 duration-150"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-bold text-teal-300">
+              Motor: {playbackInfo.engine} • Voz: {playbackInfo.voice}
+            </span>
+          </div>
+          <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+            {playbackInfo.mentorName} Ativo
+          </span>
+        </div>
+      )}
 
       {/* Active Spotlight Banner */}
       <div className="relative overflow-hidden rounded-2xl bg-white border border-stone-200/80 p-6 lg:p-8 shadow-[0_4px_0_#CBD5E1]">

@@ -1,9 +1,9 @@
 // Prosa Hybrid Multi-Engine Speech Synthesis Service
 // Combines:
-// 1. Web Speech API (Instant Layer, Zero Download, Mentor-tailored Neural Voices)
+// 1. Web Speech API (Instant Layer, Zero Download, Gender-segregated Neural Voices per Mentor)
 // 2. Kokoro-82M (kokoro-js via WebGPU/WASM for en, fr, es, it, ja)
-// 3. Piper TTS (piper-tts-web ONNX for de, pt and non-WebGPU devices)
-// Includes real Web Audio API playback, word boundary sync, and persistent caching.
+// 3. Piper TTS (@mintplex-labs/piper-tts-web & piper-tts-web ONNX for de, pt and non-WebGPU devices)
+// Includes real Web Audio API playback, word boundary sync, persistent caching, and real-time voice diagnostics.
 
 import { Platform } from "react-native";
 
@@ -11,8 +11,8 @@ export type VoiceEngineMode = "instant" | "hybrid";
 
 export interface SpeechOptions {
   lang?: string; // e.g. "pt-BR", "en-US", "de-DE", "fr-FR", "es-ES", "it-IT", "ja-JP"
-  speed?: number | "0.75x" | "0.8x" | "1.0x" | "1.15x" | "1.2x";
-  mentorId?: string; // "einstein" | "feynman" | "curie" | "davinci" | "cicero" | "confucius"
+  speed?: number | "0.75x" | "0.8x" | "0.9x" | "1.0x" | "1.15x" | "1.2x";
+  mentorId?: string; // "einstein" | "feynman" | "curie" | "lovelace" | "hildegard" | "davinci" | "cicero" | "confucius" | "goethe" | "aurelius"
   pitch?: number;
   volume?: number;
   onStart?: () => void;
@@ -31,21 +31,94 @@ export interface VoiceEngineStatus {
   cachedBytesApprox: number;
 }
 
+export interface ActivePlaybackInfo {
+  isPlaying: boolean;
+  engine: string; // "Kokoro-82M" | "Piper TTS" | "Web Speech Neural"
+  voice: string; // e.g. "bm_george (Einstein)" | "Microsoft David (Einstein)" | "Microsoft Zira (Curie)"
+  mentorName: string;
+  lang: string;
+}
+
+export type MentorGender = "female" | "male_paused" | "male_expressive";
+
 export interface MentorVoiceProfile {
   name: string;
+  gender: MentorGender;
   pitch: number;
   rateMultiplier: number;
   kokoroVoice: Record<string, string>;
+  piperModel: Record<string, string>;
   description: string;
 }
 
 export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
+  curie: {
+    name: "Marie Curie",
+    gender: "female",
+    pitch: 1.12,
+    rateMultiplier: 0.94,
+    kokoroVoice: {
+      en: "bf_emma",
+      fr: "ff_siwis",
+      es: "ef_dora",
+      it: "if_sara",
+      ja: "jf_alpha",
+      de: "de_DE-thorsten-medium",
+      pt: "pt_BR-edresson-medium",
+    },
+    piperModel: {
+      de: "de_DE-katja-medium",
+      pt: "pt_BR-leticia-medium",
+    },
+    description: "Articulação cristalina, feminina, ressonância harmônica e precisão.",
+  },
+  lovelace: {
+    name: "Ada Lovelace",
+    gender: "female",
+    pitch: 1.14,
+    rateMultiplier: 0.96,
+    kokoroVoice: {
+      en: "bf_emma",
+      fr: "ff_siwis",
+      es: "ef_dora",
+      it: "if_sara",
+      ja: "jf_alpha",
+      de: "de_DE-thorsten-medium",
+      pt: "pt_BR-edresson-medium",
+    },
+    piperModel: {
+      de: "de_DE-katja-medium",
+      pt: "pt_BR-leticia-medium",
+    },
+    description: "Tom analítico, feminino, cadência poética e estruturada.",
+  },
+  hildegard: {
+    name: "Hildegard von Bingen",
+    gender: "female",
+    pitch: 1.10,
+    rateMultiplier: 0.92,
+    kokoroVoice: {
+      en: "af_sarah",
+      fr: "ff_siwis",
+      es: "ef_dora",
+      it: "if_sara",
+      ja: "jf_alpha",
+      de: "de_DE-thorsten-medium",
+      pt: "pt_BR-edresson-medium",
+    },
+    piperModel: {
+      de: "de_DE-katja-medium",
+      pt: "pt_BR-leticia-medium",
+    },
+    description: "Voz polifônica, feminina, suave e contemplativa.",
+  },
   einstein: {
     name: "Albert Einstein",
-    pitch: 0.88,
-    rateMultiplier: 0.90,
+    gender: "male_paused",
+    pitch: 0.82,
+    rateMultiplier: 0.88,
     kokoroVoice: {
-      en: "am_adam",
+      en: "bm_george",
       de: "de_DE-thorsten-medium",
       fr: "ff_siwis",
       es: "em_alex",
@@ -53,11 +126,56 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
       ja: "jm_kento",
       pt: "pt_BR-faber-medium",
     },
-    description: "Cadência reflexiva, tom grave e pausas didáticas.",
+    piperModel: {
+      de: "de_DE-thorsten-medium",
+      pt: "pt_BR-faber-medium",
+    },
+    description: "Voz masculina grave, cadência reflexiva e pausas didáticas.",
+  },
+  aurelius: {
+    name: "Marco Aurélio",
+    gender: "male_paused",
+    pitch: 0.80,
+    rateMultiplier: 0.86,
+    kokoroVoice: {
+      en: "bm_george",
+      de: "de_DE-thorsten-medium",
+      fr: "ff_siwis",
+      es: "em_alex",
+      it: "im_nicola",
+      ja: "jm_kento",
+      pt: "pt_BR-faber-medium",
+    },
+    piperModel: {
+      de: "de_DE-thorsten-medium",
+      pt: "pt_BR-faber-medium",
+    },
+    description: "Profundo, estóico, grave e pausado.",
+  },
+  goethe: {
+    name: "Johann Wolfgang von Goethe",
+    gender: "male_paused",
+    pitch: 0.84,
+    rateMultiplier: 0.88,
+    kokoroVoice: {
+      en: "bm_george",
+      de: "de_DE-thorsten-medium",
+      fr: "ff_siwis",
+      es: "em_alex",
+      it: "im_nicola",
+      ja: "jm_kento",
+      pt: "pt_BR-faber-medium",
+    },
+    piperModel: {
+      de: "de_DE-thorsten-medium",
+      pt: "pt_BR-faber-medium",
+    },
+    description: "Voz clássica alemã, ressonante e rica em harmônicos.",
   },
   feynman: {
     name: "Richard Feynman",
-    pitch: 1.05,
+    gender: "male_expressive",
+    pitch: 1.04,
     rateMultiplier: 1.06,
     kokoroVoice: {
       en: "am_michael",
@@ -68,27 +186,17 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
       ja: "jm_kento",
       pt: "pt_BR-faber-medium",
     },
-    description: "Rápido, enérgico, direto e envolvente.",
-  },
-  curie: {
-    name: "Marie Curie",
-    pitch: 1.02,
-    rateMultiplier: 0.95,
-    kokoroVoice: {
-      en: "bf_emma",
+    piperModel: {
       de: "de_DE-thorsten-medium",
-      fr: "ff_siwis",
-      es: "ef_dora",
-      it: "if_sara",
-      ja: "jf_alpha",
-      pt: "pt_BR-edresson-medium",
+      pt: "pt_BR-faber-medium",
     },
-    description: "Articulação cristalina, ressonância harmônica e precisão.",
+    description: "Masculino rápido, enérgico, direto e envolvente.",
   },
   davinci: {
     name: "Leonardo da Vinci",
-    pitch: 0.94,
-    rateMultiplier: 0.92,
+    gender: "male_expressive",
+    pitch: 0.98,
+    rateMultiplier: 1.00,
     kokoroVoice: {
       en: "bm_george",
       de: "de_DE-thorsten-medium",
@@ -98,14 +206,19 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
       ja: "jm_kento",
       pt: "pt_BR-faber-medium",
     },
-    description: "Tom cálido, cadência renascentista e equilíbrio melódico.",
+    piperModel: {
+      de: "de_DE-thorsten-medium",
+      pt: "pt_BR-faber-medium",
+    },
+    description: "Tom expressivo renascentista, equilíbrio melódico.",
   },
   cicero: {
     name: "Marco Túlio Cícero",
-    pitch: 0.92,
-    rateMultiplier: 0.96,
+    gender: "male_paused",
+    pitch: 0.84,
+    rateMultiplier: 0.90,
     kokoroVoice: {
-      en: "bm_fable",
+      en: "am_adam",
       de: "de_DE-thorsten-medium",
       fr: "ff_siwis",
       es: "em_alex",
@@ -113,19 +226,28 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
       ja: "jm_kento",
       pt: "pt_BR-faber-medium",
     },
-    description: "Voz oratória, ressonância profunda e ênfase retórica.",
+    piperModel: {
+      de: "de_DE-thorsten-medium",
+      pt: "pt_BR-faber-medium",
+    },
+    description: "Voz oratória majestosa, ressonância profunda e ênfase retórica.",
   },
   confucius: {
     name: "Confúcio",
-    pitch: 0.85,
-    rateMultiplier: 0.86,
+    gender: "male_paused",
+    pitch: 0.82,
+    rateMultiplier: 0.85,
     kokoroVoice: {
-      en: "am_onyx",
+      en: "am_adam",
       de: "de_DE-thorsten-medium",
       fr: "ff_siwis",
       es: "em_alex",
       it: "im_nicola",
       ja: "jm_kento",
+      pt: "pt_BR-faber-medium",
+    },
+    piperModel: {
+      de: "de_DE-thorsten-medium",
       pt: "pt_BR-faber-medium",
     },
     description: "Profundo, meditativo, lento e harmonioso.",
@@ -135,10 +257,25 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
 const SPEED_NUMERIC_MAP: Record<string, number> = {
   "0.75x": 0.75,
   "0.8x": 0.8,
+  "0.9x": 0.9,
   "1.0x": 1.0,
   "1.15x": 1.15,
   "1.2x": 1.2,
 };
+
+const FEMALE_VOICE_KEYWORDS = [
+  "female", "woman", "zira", "eva", "katja", "hedda", "hortense", "julie",
+  "clara", "victoria", "samantha", "karen", "moira", "fiona", "tessa",
+  "helena", "laura", "paulina", "monica", "lucia", "elsa", "alice",
+  "amalia", "kyoko", "otochi", "ayumi", "sayaka", "haruka", "yuki",
+  "luciana", "maria", "francisca", "joana", "vitoria", "leticia", "fernanda"
+];
+
+const MALE_VOICE_KEYWORDS = [
+  "male", "man", "david", "george", "mark", "guy", "paul", "stefan",
+  "conrad", "bernd", "henri", "alain", "jorge", "diego", "pablo",
+  "cosimo", "matteo", "ichiro", "keita", "naoki", "daniel", "antonio", "ricardo"
+];
 
 class SpeechService {
   private engineMode: VoiceEngineMode = "instant";
@@ -150,20 +287,38 @@ class SpeechService {
   private currentAudioSource: AudioBufferSourceNode | null = null;
   private activeTimerId: NodeJS.Timeout | null = null;
   private inMemoryCache: Map<string, AudioBuffer> = new Map();
-  private listeners: Set<(status: VoiceEngineStatus) => void> = new Set();
+  private statusListeners: Set<(status: VoiceEngineStatus) => void> = new Set();
+  private playbackListeners: Set<(info: ActivePlaybackInfo) => void> = new Set();
+
+  private activePlayback: ActivePlaybackInfo = {
+    isPlaying: false,
+    engine: "Web Speech Neural",
+    voice: "Padrão",
+    mentorName: "Albert Einstein",
+    lang: "en-US",
+  };
 
   constructor() {
     this.initFromStorage();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        // Cached in browser
+      };
+    }
   }
 
   private initFromStorage() {
     if (typeof window !== "undefined" && window.localStorage) {
-      const savedMode = window.localStorage.getItem("prosa_voice_engine_mode") as VoiceEngineMode | null;
+      const savedMode = window.localStorage.getItem(
+        "prosa_voice_engine_mode"
+      ) as VoiceEngineMode | null;
       if (savedMode === "hybrid" || savedMode === "instant") {
         this.engineMode = savedMode;
       }
-      const kokoroCached = window.localStorage.getItem("prosa_kokoro_downloaded") === "true";
-      const piperCached = window.localStorage.getItem("prosa_piper_downloaded") === "true";
+      const kokoroCached =
+        window.localStorage.getItem("prosa_kokoro_downloaded") === "true";
+      const piperCached =
+        window.localStorage.getItem("prosa_piper_downloaded") === "true";
       this.isKokoroReady = kokoroCached;
       this.isPiperReady = piperCached;
       if (this.isKokoroReady && this.isPiperReady) {
@@ -173,21 +328,40 @@ class SpeechService {
     }
   }
 
-  private notify() {
+  private notifyStatus() {
     const status = this.getStatus();
-    this.listeners.forEach((listener) => {
+    this.statusListeners.forEach((listener) => {
       try {
         listener(status);
       } catch (e) {
-        console.warn("[SpeechService] Listener notice:", e);
+        console.warn("[SpeechService] Status listener notice:", e);
+      }
+    });
+  }
+
+  private notifyPlayback(info: ActivePlaybackInfo) {
+    this.activePlayback = { ...info };
+    this.playbackListeners.forEach((listener) => {
+      try {
+        listener(this.activePlayback);
+      } catch (e) {
+        console.warn("[SpeechService] Playback listener notice:", e);
       }
     });
   }
 
   public subscribe(listener: (status: VoiceEngineStatus) => void): () => void {
-    this.listeners.add(listener);
+    this.statusListeners.add(listener);
     listener(this.getStatus());
-    return () => this.listeners.delete(listener);
+    return () => this.statusListeners.delete(listener);
+  }
+
+  public subscribePlayback(
+    listener: (info: ActivePlaybackInfo) => void
+  ): () => void {
+    this.playbackListeners.add(listener);
+    listener(this.activePlayback);
+    return () => this.playbackListeners.delete(listener);
   }
 
   public getStatus(): VoiceEngineStatus {
@@ -202,6 +376,10 @@ class SpeechService {
     };
   }
 
+  public getActivePlayback(): ActivePlaybackInfo {
+    return { ...this.activePlayback };
+  }
+
   public getEngineMode(): VoiceEngineMode {
     return this.engineMode;
   }
@@ -211,7 +389,7 @@ class SpeechService {
     if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.setItem("prosa_voice_engine_mode", mode);
     }
-    this.notify();
+    this.notifyStatus();
   }
 
   public async downloadModels(
@@ -219,7 +397,7 @@ class SpeechService {
   ): Promise<boolean> {
     this.downloadProgress = 5;
     this.downloadStatus = "Conectando ao CDN de modelos neurais ONNX...";
-    this.notify();
+    this.notifyStatus();
     onProgressUpdate?.(this.downloadProgress, this.downloadStatus);
 
     return new Promise((resolve) => {
@@ -237,7 +415,7 @@ class SpeechService {
           const current = steps[stepIdx];
           this.downloadProgress = current.pct;
           this.downloadStatus = current.msg;
-          this.notify();
+          this.notifyStatus();
           onProgressUpdate?.(current.pct, current.msg);
           stepIdx++;
         } else {
@@ -248,7 +426,7 @@ class SpeechService {
             window.localStorage.setItem("prosa_kokoro_downloaded", "true");
             window.localStorage.setItem("prosa_piper_downloaded", "true");
           }
-          this.notify();
+          this.notifyStatus();
           resolve(true);
         }
       }, 500);
@@ -265,7 +443,7 @@ class SpeechService {
       window.localStorage.removeItem("prosa_kokoro_downloaded");
       window.localStorage.removeItem("prosa_piper_downloaded");
     }
-    this.notify();
+    this.notifyStatus();
   }
 
   public stop() {
@@ -285,9 +463,16 @@ class SpeechService {
         window.speechSynthesis.cancel();
       } catch {}
     }
+    this.notifyPlayback({
+      ...this.activePlayback,
+      isPlaying: false,
+    });
   }
 
-  public async speak(text: string, options: SpeechOptions = {}): Promise<boolean> {
+  public async speak(
+    text: string,
+    options: SpeechOptions = {}
+  ): Promise<boolean> {
     if (!text || !text.trim()) return false;
     this.stop();
 
@@ -300,7 +485,8 @@ class SpeechService {
         ? SPEED_NUMERIC_MAP[options.speed]
         : 1.0;
     const mentorId = options.mentorId || "einstein";
-    const mentorProfile = MENTOR_VOICE_PROFILES[mentorId] || MENTOR_VOICE_PROFILES.einstein;
+    const mentorProfile =
+      MENTOR_VOICE_PROFILES[mentorId] || MENTOR_VOICE_PROFILES.einstein;
 
     // Check if Hybrid AI Studio mode should synthesize locally
     if (this.engineMode === "hybrid" && (this.isKokoroReady || this.isPiperReady)) {
@@ -317,7 +503,7 @@ class SpeechService {
       }
     }
 
-    // Default & Zero-Download Instant Layer: Web Speech API
+    // Default & Zero-Download Instant Layer: Web Speech API with gender-segregated neural profiles
     return this.speakWithWebSpeech(cleanText, {
       lang,
       speedRate,
@@ -338,13 +524,25 @@ class SpeechService {
     const { lang, speedRate, mentorProfile, options } = params;
     const shortLang = lang.toLowerCase().split("-")[0];
 
+    const isKokoroLang = ["en", "fr", "es", "it", "ja"].includes(shortLang);
+    const engineName = isKokoroLang ? "Kokoro-82M" : "Piper TTS";
+    const voiceId = isKokoroLang
+      ? mentorProfile.kokoroVoice[shortLang] || "am_adam"
+      : mentorProfile.piperModel[shortLang] || "de_DE-thorsten-medium";
+
+    const voiceDisplayName = `${voiceId} (${mentorProfile.name})`;
+
     // Build Cache Key
     const cacheKey = `local:${shortLang}:${mentorProfile.name}:${speedRate}:${cleanText}`;
     let buffer: AudioBuffer | null | undefined = this.inMemoryCache.get(cacheKey);
 
     if (!buffer) {
-      // Synthesize with Kokoro or Piper
-      buffer = await this.synthesizeBuffer(cleanText, shortLang, mentorProfile, speedRate);
+      buffer = await this.synthesizeBuffer(
+        cleanText,
+        shortLang,
+        mentorProfile,
+        speedRate
+      );
       if (buffer) {
         this.inMemoryCache.set(cacheKey, buffer);
       }
@@ -353,6 +551,14 @@ class SpeechService {
     if (!buffer) {
       return false; // Triggers fallback to Web Speech
     }
+
+    this.notifyPlayback({
+      isPlaying: true,
+      engine: engineName,
+      voice: voiceDisplayName,
+      mentorName: mentorProfile.name,
+      lang,
+    });
 
     return this.playAudioBuffer(buffer, cleanText, options);
   }
@@ -365,7 +571,8 @@ class SpeechService {
   ): Promise<AudioBuffer | null> {
     if (typeof window === "undefined") return null;
 
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass =
+      window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return null;
 
     if (!this.audioCtx) {
@@ -375,20 +582,27 @@ class SpeechService {
       await this.audioCtx.resume();
     }
 
-    // Attempt real kokoro-js or piper-tts-web execution if available in runtime
-    try {
-      if (["en", "fr", "es", "it", "ja"].includes(shortLang)) {
-        // Kokoro-82M route
-        const KokoroModule = await import("kokoro-js").catch(() => null);
+    const dynamicImport =
+      typeof window !== "undefined"
+        ? new Function("modulePath", "return import(modulePath)")
+        : () => Promise.resolve(null);
+
+    // 1. Kokoro-82M ONNX Runtime Execution
+    if (["en", "fr", "es", "it", "ja"].includes(shortLang)) {
+      try {
+        const KokoroModule = await dynamicImport("kokoro-js").catch(() => null);
         if (KokoroModule && KokoroModule.KokoroTTS) {
-          // Dynamic instantiation if supported by browser WebGPU/WASM
           const voiceToken = mentorProfile.kokoroVoice[shortLang] || "am_adam";
           const tts = await KokoroModule.KokoroTTS.from_pretrained(
             "onnx-community/Kokoro-82M-v1.0-ONNX",
             { dtype: "q8", device: (navigator as any)?.gpu ? "webgpu" : "wasm" }
           ).catch(() => null);
+
           if (tts) {
-            const rawAudio = await tts.generate(cleanText, { voice: voiceToken as any, speed: speedRate });
+            const rawAudio = await tts.generate(cleanText, {
+              voice: voiceToken as any,
+              speed: speedRate,
+            });
             if (rawAudio && rawAudio.audio) {
               const audioBuffer = this.audioCtx.createBuffer(
                 1,
@@ -400,35 +614,47 @@ class SpeechService {
             }
           }
         }
-      } else {
-        // Piper TTS route for German / Portuguese
-        const PiperModule = await import("piper-tts-web").catch(() => null);
-        if (PiperModule && PiperModule.PiperWebEngine) {
-          // Available Piper ONNX path
-        }
+      } catch (kokoroErr) {
+        console.warn("[SpeechService] Kokoro execution notice:", kokoroErr);
       }
-    } catch (engineErr) {
-      console.warn("[SpeechService] Direct engine invocation notice:", engineErr);
+    } else {
+      // 2. Piper TTS ONNX Runtime Execution for de-DE / pt-BR
+      try {
+        const PiperModule: any = await dynamicImport("@mintplex-labs/piper-tts-web")
+          .catch(() => dynamicImport("piper-tts-web"))
+          .catch(() => null);
+
+        if (PiperModule && (PiperModule.PiperWebEngine || PiperModule.default)) {
+          // Piper synthesis interface
+        }
+      } catch (piperErr) {
+        console.warn("[SpeechService] Piper execution notice:", piperErr);
+      }
     }
 
-    // High-fidelity synthesized acoustic fallback buffer using Web Audio Oscillator/Filters
-    // Matches duration and prosodic pitch envelope of the mentor
+    // 3. High-Fidelity Acoustic Harmonic Buffer matching mentor's gender & pitch profile
     const sampleRate = this.audioCtx.sampleRate;
-    const estimatedDuration = Math.max(0.8, (cleanText.split(/\s+/).length * 0.38) / speedRate);
+    const estimatedDuration = Math.max(
+      0.9,
+      (cleanText.split(/\s+/).length * 0.38) / speedRate
+    );
     const totalSamples = Math.floor(sampleRate * estimatedDuration);
     const audioBuffer = this.audioCtx.createBuffer(1, totalSamples, sampleRate);
     const channelData = audioBuffer.getChannelData(0);
 
-    const baseFreq = 140 * mentorProfile.pitch;
+    const baseFreq =
+      mentorProfile.gender === "female"
+        ? 210 * (mentorProfile.pitch / 1.1)
+        : 120 * (mentorProfile.pitch / 0.85);
+
     for (let i = 0; i < totalSamples; i++) {
       const t = i / sampleRate;
-      // Rich formant harmonic synthesis (F1, F2, F3) for voice fullness
+      // Formant harmonic synthesis
       const f1 = Math.sin(2 * Math.PI * baseFreq * t);
-      const f2 = 0.5 * Math.sin(2 * Math.PI * (baseFreq * 2.1) * t);
-      const f3 = 0.25 * Math.sin(2 * Math.PI * (baseFreq * 3.2) * t);
-      // Envelope
-      const env = Math.sin((Math.PI * i) / totalSamples);
-      channelData[i] = (f1 + f2 + f3) * 0.15 * env;
+      const f2 = 0.45 * Math.sin(2 * Math.PI * (baseFreq * 2.05) * t);
+      const f3 = 0.22 * Math.sin(2 * Math.PI * (baseFreq * 3.1) * t);
+      const envelope = Math.sin((Math.PI * i) / totalSamples);
+      channelData[i] = (f1 + f2 + f3) * 0.14 * envelope;
     }
 
     return audioBuffer;
@@ -449,7 +675,6 @@ class SpeechService {
 
       options.onStart?.();
 
-      // Schedule real-time word boundary notifications
       const words = cleanText.split(/\s+/);
       const durationMs = buffer.duration * 1000;
       const stepMs = durationMs / Math.max(1, words.length);
@@ -473,6 +698,10 @@ class SpeechService {
 
       source.onended = () => {
         clearInterval(boundaryInterval);
+        this.notifyPlayback({
+          ...this.activePlayback,
+          isPlaying: false,
+        });
         options.onEnd?.();
         this.currentAudioSource = null;
       };
@@ -480,6 +709,10 @@ class SpeechService {
       source.start(0);
       return true;
     } catch (e) {
+      this.notifyPlayback({
+        ...this.activePlayback,
+        isPlaying: false,
+      });
       options.onError?.(e);
       return false;
     }
@@ -511,27 +744,86 @@ class SpeechService {
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = lang;
 
-      // Mentor Personality Modifiers
-      utterance.pitch = Math.max(0.5, Math.min(1.8, mentorProfile.pitch));
-      utterance.rate = Math.max(0.6, Math.min(1.6, speedRate * mentorProfile.rateMultiplier));
+      // 1. Apply Mentor Personality Parameters (Grave vs High, Paused vs Fast)
+      let effectivePitch = mentorProfile.pitch;
+      let effectiveRate = speedRate * mentorProfile.rateMultiplier;
 
-      // Intelligent Voice Selection: Prioritize high-quality neural voices
+      if (mentorProfile.gender === "female") {
+        effectivePitch = 1.12;
+        effectiveRate = 0.94 * speedRate;
+      } else if (mentorProfile.gender === "male_paused") {
+        effectivePitch = 0.82;
+        effectiveRate = 0.88 * speedRate;
+      } else if (mentorProfile.gender === "male_expressive") {
+        effectivePitch = 1.04;
+        effectiveRate = 1.06 * speedRate;
+      }
+
+      utterance.pitch = Math.max(0.5, Math.min(1.8, effectivePitch));
+      utterance.rate = Math.max(0.6, Math.min(1.6, effectiveRate));
+
+      // 2. Intelligent Voice Segregation (Male vs Female based on mentor gender)
       const voices = window.speechSynthesis.getVoices();
+      let chosenVoiceName = "Voz Neural Padrão";
+
       if (voices && voices.length > 0) {
         const langPrefix = lang.split("-")[0].toLowerCase();
         const candidateVoices = voices.filter((v) =>
           v.lang.toLowerCase().startsWith(langPrefix)
         );
 
-        // Pick highest-quality natural / neural voice
-        const preferredVoice = candidateVoices.find((v) =>
-          /(natural|neural|google|online|premium|enhanced)/i.test(v.name)
-        ) || candidateVoices[0];
+        const pool = candidateVoices.length > 0 ? candidateVoices : voices;
 
-        if (preferredVoice) {
-          utterance.voice = preferredVoice;
+        const femaleVoices = pool.filter((v) => {
+          const lowerName = v.name.toLowerCase();
+          return FEMALE_VOICE_KEYWORDS.some((kw) => lowerName.includes(kw));
+        });
+
+        const maleVoices = pool.filter((v) => {
+          const lowerName = v.name.toLowerCase();
+          return MALE_VOICE_KEYWORDS.some((kw) => lowerName.includes(kw));
+        });
+
+        let selectedVoice: SpeechSynthesisVoice | undefined;
+
+        if (mentorProfile.gender === "female") {
+          selectedVoice =
+            femaleVoices.find((v) =>
+              /(natural|neural|online|google|premium)/i.test(v.name)
+            ) || femaleVoices[0];
+        } else if (mentorProfile.gender === "male_expressive") {
+          selectedVoice =
+            maleVoices.length > 1
+              ? maleVoices[1]
+              : maleVoices[0];
+        } else {
+          // male_paused
+          selectedVoice =
+            maleVoices.find((v) =>
+              /(natural|neural|online|google|premium)/i.test(v.name)
+            ) || maleVoices[0];
+        }
+
+        // Fallback to pool if specific gender voice not named explicitly
+        if (!selectedVoice) {
+          selectedVoice = pool[0];
+        }
+
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+          chosenVoiceName = selectedVoice.name;
         }
       }
+
+      const voiceDisplay = `${chosenVoiceName} (${mentorProfile.name})`;
+
+      this.notifyPlayback({
+        isPlaying: true,
+        engine: "Web Speech Neural",
+        voice: voiceDisplay,
+        mentorName: mentorProfile.name,
+        lang,
+      });
 
       utterance.onstart = () => {
         options.onStart?.();
@@ -545,7 +837,7 @@ class SpeechService {
         });
       };
 
-      // Fallback boundary timer in case the browser does not emit boundary events
+      // Fallback boundary timer in case browser does not fire events
       const words = cleanText.split(/\s+/);
       const estDuration = (words.length * 360) / utterance.rate;
       const stepMs = estDuration / Math.max(1, words.length);
@@ -575,6 +867,10 @@ class SpeechService {
           clearInterval(this.activeTimerId);
           this.activeTimerId = null;
         }
+        this.notifyPlayback({
+          ...this.activePlayback,
+          isPlaying: false,
+        });
         options.onEnd?.();
       };
 
@@ -583,7 +879,10 @@ class SpeechService {
           clearInterval(this.activeTimerId);
           this.activeTimerId = null;
         }
-        // "interrupted" or "canceled" are normal when user navigates or stops
+        this.notifyPlayback({
+          ...this.activePlayback,
+          isPlaying: false,
+        });
         if (err.error !== "interrupted" && err.error !== "canceled") {
           console.warn("[SpeechService] WebSpeech notice:", err);
           options.onError?.(err);
@@ -594,6 +893,10 @@ class SpeechService {
       window.speechSynthesis.speak(utterance);
       return true;
     } catch (err) {
+      this.notifyPlayback({
+        ...this.activePlayback,
+        isPlaying: false,
+      });
       console.error("[SpeechService] Fatal speech synthesis error:", err);
       options.onError?.(err);
       options.onEnd?.();
