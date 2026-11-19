@@ -10,38 +10,74 @@ export interface Mentor {
   quote: string;
 }
 
-export interface CourseTrack {
-  targetLang: string;
-  level: string;
+export interface FSRSCardProgress {
+  id: string | number;
+  difficulty: number;
+  stability: number;
+  interval: number;
+  reps: number;
+  lastReviewed?: string;
+  retention: number;
+}
+
+export interface CourseData {
+  started: boolean;
+  level: "A1" | "A2" | "B1" | "B2" | "C1";
   xp: number;
-  streak: number;
+  completedNodeIds: string[];
+  activeNodeId: string;
+  fsrsCards: FSRSCardProgress[];
+  prosaScore: number;
+  pronunciationScores: number[];
+  sessionsCount: number;
   currentCardIndex: number;
-  activeMentor: Mentor;
 }
 
 export interface ProsaContextValue {
-  xp: number;
+  // Global User State
+  userName: string;
+  setUserName: (name: string) => void;
   gems: number;
   streak: number;
-  targetLang: string;
-  throughLang: string;
-  interfaceLang: string;
+  bestStreak: number;
+  isPro: boolean;
   activeMentor: Mentor;
+  totalXp: number;
+
+  // Language Matrix State
+  targetLang: string;
+  supportLang: string;
+  throughLang: string; // backwards compatibility alias
+  uiLang: string;
+  interfaceLang: string; // backwards compatibility alias
+
+  // Isolated Course State
+  courses: Record<string, CourseData>;
+  activeCourse: CourseData;
   currentLevel: string;
   currentCardIndex: number;
-  courseTracks: Record<string, CourseTrack>;
-  isPro: boolean;
-  addXp: (amount: number) => void;
-  setXp: (xp: number) => void;
-  addGems: (amount: number) => void;
-  setGems: (gems: number) => void;
+  xp: number; // active course xp
+
+  // Actions
   setTargetLang: (lang: string) => void;
+  setSupportLang: (lang: string) => void;
   setThroughLang: (lang: string) => void;
+  setUiLang: (lang: string) => void;
   setInterfaceLang: (lang: string) => void;
   setActiveMentor: (mentor: Mentor) => void;
-  setCurrentLevel: (level: string) => void;
-  setCurrentCardIndex: (index: number) => void;
   setIsPro: (pro: boolean) => void;
+  addXp: (amount: number) => void;
+  setXp: (amount: number) => void;
+  addGems: (amount: number) => void;
+  setGems: (amount: number) => void;
+
+  startCourseFromScratch: (lang: string) => void;
+  startCourseWithPlacement: (lang: string, level: "A1" | "A2" | "B1" | "B2" | "C1") => void;
+  completeTrailNode: (nodeId: string, earnedXp: number) => void;
+  rateFSRSCard: (cardId: string | number, rating: "again" | "hard" | "good" | "easy") => void;
+  recordPhoneticScore: (score: number) => void;
+  resetCourse: (lang: string) => void;
+  syncSupportWithUi: () => void;
   resetProgress: () => void;
 }
 
@@ -96,23 +132,129 @@ export const DEFAULT_MENTORS_BY_LANG: Record<string, Mentor> = {
   },
 };
 
-const DEFAULT_MENTOR: Mentor = DEFAULT_MENTORS_BY_LANG.en;
+const DEFAULT_COURSES: Record<string, CourseData> = {
+  en: {
+    started: true,
+    level: "B1",
+    xp: 240,
+    completedNodeIds: ["en-node-1"],
+    activeNodeId: "en-node-2",
+    fsrsCards: [
+      { id: "en-card-1", difficulty: 0.3, stability: 2.5, interval: 3, reps: 2, retention: 92 },
+      { id: "en-card-2", difficulty: 0.4, stability: 1.8, interval: 1, reps: 1, retention: 88 },
+    ],
+    prosaScore: 780,
+    pronunciationScores: [94, 96, 92],
+    sessionsCount: 14,
+    currentCardIndex: 0,
+  },
+  de: {
+    started: false,
+    level: "A1",
+    xp: 0,
+    completedNodeIds: [],
+    activeNodeId: "de-node-1",
+    fsrsCards: [],
+    prosaScore: 0,
+    pronunciationScores: [],
+    sessionsCount: 0,
+    currentCardIndex: 0,
+  },
+  fr: {
+    started: false,
+    level: "A1",
+    xp: 0,
+    completedNodeIds: [],
+    activeNodeId: "fr-node-1",
+    fsrsCards: [],
+    prosaScore: 0,
+    pronunciationScores: [],
+    sessionsCount: 0,
+    currentCardIndex: 0,
+  },
+  ja: {
+    started: false,
+    level: "A1",
+    xp: 0,
+    completedNodeIds: [],
+    activeNodeId: "ja-node-1",
+    fsrsCards: [],
+    prosaScore: 0,
+    pronunciationScores: [],
+    sessionsCount: 0,
+    currentCardIndex: 0,
+  },
+  es: {
+    started: false,
+    level: "A1",
+    xp: 0,
+    completedNodeIds: [],
+    activeNodeId: "es-node-1",
+    fsrsCards: [],
+    prosaScore: 0,
+    pronunciationScores: [],
+    sessionsCount: 0,
+    currentCardIndex: 0,
+  },
+  it: {
+    started: false,
+    level: "A1",
+    xp: 0,
+    completedNodeIds: [],
+    activeNodeId: "it-node-1",
+    fsrsCards: [],
+    prosaScore: 0,
+    pronunciationScores: [],
+    sessionsCount: 0,
+    currentCardIndex: 0,
+  },
+};
 
-const STATS_STORAGE_KEY = "prosa.user_stats.v2";
-const TRACKS_STORAGE_KEY = "prosa.course_tracks.v3";
+const COURSES_STORAGE_KEY = "prosa.courses_matrix.v4";
+const USER_STORAGE_KEY = "prosa.user_global.v4";
 
 const ProsaContext = createContext<ProsaContextValue | null>(null);
 
-const defaultTrackForLang = (lang: string): CourseTrack => ({
-  targetLang: lang,
-  level: "A1",
-  xp: 0,
-  streak: 1,
-  currentCardIndex: 0,
-  activeMentor: DEFAULT_MENTORS_BY_LANG[lang] || DEFAULT_MENTORS_BY_LANG.en,
-});
-
 export function ProsaProvider({ children }: { children: ReactNode }) {
+  // 1. Global User Info
+  const [userName, setUserNameState] = useState<string>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const local = window.localStorage?.getItem("prosa_user_name");
+        if (local) return local;
+      }
+      const explicit = kv.getString("prosa.user_name.v1");
+      if (explicit) return explicit;
+    } catch { }
+    return "Aprendiz Polímata";
+  });
+
+  const [gems, setGemsState] = useState<number>(() => {
+    try {
+      const saved = kv.getString(USER_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.gems === "number") return parsed.gems;
+      }
+    } catch { }
+    return 50;
+  });
+
+  const [streak, setStreakState] = useState<number>(() => {
+    try {
+      const saved = kv.getString(USER_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.streak === "number") return parsed.streak;
+      }
+    } catch { }
+    return 1;
+  });
+
+  const [bestStreak, setBestStreakState] = useState<number>(14);
+  const [isPro, setIsPro] = useState(false);
+
+  // 2. Language Matrix
   const [targetLang, setTargetLangState] = useState<string>(() => {
     try {
       if (typeof window !== "undefined") {
@@ -121,216 +263,356 @@ export function ProsaProvider({ children }: { children: ReactNode }) {
       }
       const explicit = kv.getString("prosa.target_lang.v1");
       if (explicit) return explicit;
-      const journey = kv.getString("prosa.journey.v1");
-      if (journey) {
-        const parsed = JSON.parse(journey);
-        if (parsed.target_lang) return parsed.target_lang;
-      }
     } catch { }
     return "en";
   });
 
-  const [throughLang, setThroughLangState] = useState<string>(() => {
+  const [supportLang, setSupportLangState] = useState<string>(() => {
     try {
       if (typeof window !== "undefined") {
-        const local = window.localStorage?.getItem("prosa_through_lang");
+        const local = window.localStorage?.getItem("prosa_support_lang");
         if (local) return local;
       }
-      const explicit = kv.getString("prosa.through_lang.v1");
+      const explicit = kv.getString("prosa.support_lang.v1");
       if (explicit) return explicit;
-      const journey = kv.getString("prosa.journey.v1");
-      if (journey) {
-        const parsed = JSON.parse(journey);
-        if (parsed.through_lang) return parsed.through_lang;
-      }
     } catch { }
-    return "pt";
+    return "pt-BR";
   });
 
-  const [courseTracks, setCourseTracks] = useState<Record<string, CourseTrack>>(() => {
+  const [uiLang, setUiLangState] = useState<string>(() => {
     try {
-      const saved = kv.getString(TRACKS_STORAGE_KEY);
+      if (typeof window !== "undefined") {
+        const local = window.localStorage?.getItem("prosa_ui_lang");
+        if (local) return local;
+      }
+      const explicit = kv.getString("prosa.ui_lang.v1");
+      if (explicit) return explicit;
+    } catch { }
+    return "pt-BR";
+  });
+
+  // 3. Isolated Courses by Language
+  const [courses, setCourses] = useState<Record<string, CourseData>>(() => {
+    try {
+      const saved = kv.getString(COURSES_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === "object") return parsed;
+        if (parsed && typeof parsed === "object") {
+          return { ...DEFAULT_COURSES, ...parsed };
+        }
       }
     } catch { }
-    return {
-      en: {
-        targetLang: "en",
-        level: "B1",
-        xp: 240,
-        streak: 1,
-        currentCardIndex: 0,
-        activeMentor: DEFAULT_MENTORS_BY_LANG.en,
-      },
-    };
+    return DEFAULT_COURSES;
   });
 
-  const activeTrack = courseTracks[targetLang] || defaultTrackForLang(targetLang);
+  const activeMentor = DEFAULT_MENTORS_BY_LANG[targetLang] || DEFAULT_MENTORS_BY_LANG.en;
 
-  const [xp, setXpState] = useState<number>(activeTrack.xp);
-  const [gems, setGemsState] = useState<number>(() => {
+  const activeCourse = courses[targetLang] || {
+    started: false,
+    level: "A1",
+    xp: 0,
+    completedNodeIds: [],
+    activeNodeId: `${targetLang}-node-1`,
+    fsrsCards: [],
+    prosaScore: 0,
+    pronunciationScores: [],
+    sessionsCount: 0,
+    currentCardIndex: 0,
+  };
+
+  // Total XP across all started courses
+  const totalXp = Object.values(courses).reduce((acc, c) => acc + (c.started ? c.xp : 0), 0);
+
+  // Persistence helpers
+  const persistUserGlobal = (updated: { gems?: number; streak?: number; bestStreak?: number }) => {
     try {
-      const saved = kv.getString(STATS_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed.gems === "number") return parsed.gems;
-      }
+      const next = { gems: updated.gems ?? gems, streak: updated.streak ?? streak, bestStreak: updated.bestStreak ?? bestStreak };
+      kv.set(USER_STORAGE_KEY, JSON.stringify(next));
     } catch { }
-    return 50;
-  });
-  const [streak, setStreakState] = useState<number>(activeTrack.streak);
-  const [currentLevel, setCurrentLevelState] = useState<string>(activeTrack.level);
-  const [currentCardIndex, setCurrentCardIndexState] = useState<number>(activeTrack.currentCardIndex);
-  const [activeMentor, setActiveMentorState] = useState<Mentor>(activeTrack.activeMentor);
-  const [interfaceLang, setInterfaceLang] = useState("pt-BR");
-  const [isPro, setIsPro] = useState(false);
+  };
 
-  // Sync track when changing target language (isolated sub-course per language)
-  const setTargetLang = (nextLang: string) => {
-    if (nextLang === targetLang) return;
-
-    // 1. Snapshot current track state
-    const currentTrackSnapshot: CourseTrack = {
-      targetLang,
-      level: currentLevel,
-      xp,
-      streak,
-      currentCardIndex,
-      activeMentor,
-    };
-
-    // 2. Fetch or initialize next track
-    const nextTrack = courseTracks[nextLang] || defaultTrackForLang(nextLang);
-
-    const updatedTracks: Record<string, CourseTrack> = {
-      ...courseTracks,
-      [targetLang]: currentTrackSnapshot,
-      [nextLang]: nextTrack,
-    };
-
-    setCourseTracks(updatedTracks);
+  const persistCourses = (updated: Record<string, CourseData>) => {
     try {
-      kv.set(TRACKS_STORAGE_KEY, JSON.stringify(updatedTracks));
-      kv.set("prosa.target_lang.v1", nextLang);
+      kv.set(COURSES_STORAGE_KEY, JSON.stringify(updated));
+    } catch { }
+  };
+
+  const setUserName = (name: string) => {
+    setUserNameState(name);
+    try {
+      kv.set("prosa.user_name.v1", name);
       if (typeof window !== "undefined") {
-        window.localStorage?.setItem("prosa_target_lang", nextLang);
+        window.localStorage?.setItem("prosa_user_name", name);
       }
     } catch { }
-
-    // 3. Switch active runtime state to next track
-    setTargetLangState(nextLang);
-    setXpState(nextTrack.xp);
-    setStreakState(nextTrack.streak);
-    setCurrentLevelState(nextTrack.level);
-    setCurrentCardIndexState(nextTrack.currentCardIndex);
-    setActiveMentorState(nextTrack.activeMentor);
   };
 
-  const setThroughLang = (lang: string) => {
-    setThroughLangState(lang);
+  const setTargetLang = (lang: string) => {
+    setTargetLangState(lang);
     try {
-      kv.set("prosa.through_lang.v1", lang);
+      kv.set("prosa.target_lang.v1", lang);
       if (typeof window !== "undefined") {
-        window.localStorage?.setItem("prosa_through_lang", lang);
+        window.localStorage?.setItem("prosa_target_lang", lang);
       }
     } catch { }
   };
 
-  const persistCurrentTrack = (trackUpdate: Partial<CourseTrack>) => {
-    setCourseTracks((prev) => {
-      const current = prev[targetLang] || defaultTrackForLang(targetLang);
-      const updated: CourseTrack = { ...current, ...trackUpdate };
-      const nextTracks = { ...prev, [targetLang]: updated };
-      try {
-        kv.set(TRACKS_STORAGE_KEY, JSON.stringify(nextTracks));
-      } catch { }
-      return nextTracks;
-    });
+  const setSupportLang = (lang: string) => {
+    setSupportLangState(lang);
+    try {
+      kv.set("prosa.support_lang.v1", lang);
+      if (typeof window !== "undefined") {
+        window.localStorage?.setItem("prosa_support_lang", lang);
+      }
+    } catch { }
   };
 
-  const setXp = (val: number) => {
-    setXpState(val);
-    persistCurrentTrack({ xp: val });
+  const setUiLang = (lang: string) => {
+    setUiLangState(lang);
+    try {
+      kv.set("prosa.ui_lang.v1", lang);
+      if (typeof window !== "undefined") {
+        window.localStorage?.setItem("prosa_ui_lang", lang);
+      }
+    } catch { }
   };
 
-  const addXp = (amount: number) => {
-    setXpState((prev) => {
+  const syncSupportWithUi = () => {
+    setSupportLang(uiLang);
+  };
+
+  const addGems = (amount: number) => {
+    setGemsState((prev) => {
       const next = prev + amount;
-      persistCurrentTrack({ xp: next });
+      persistUserGlobal({ gems: next });
       return next;
     });
   };
 
   const setGems = (val: number) => {
     setGemsState(val);
-    try {
-      kv.set(STATS_STORAGE_KEY, JSON.stringify({ xp, gems: val, streak }));
-    } catch { }
+    persistUserGlobal({ gems: val });
   };
 
-  const addGems = (amount: number) => {
-    setGemsState((prev) => {
-      const next = prev + amount;
-      try {
-        kv.set(STATS_STORAGE_KEY, JSON.stringify({ xp, gems: next, streak }));
-      } catch { }
+  const startCourseFromScratch = (lang: string) => {
+    setCourses((prev) => {
+      const updatedCourse: CourseData = {
+        started: true,
+        level: "A1",
+        xp: 0,
+        completedNodeIds: [],
+        activeNodeId: `${lang}-node-1`,
+        fsrsCards: [],
+        prosaScore: 100,
+        pronunciationScores: [],
+        sessionsCount: 0,
+        currentCardIndex: 0,
+      };
+      const next = { ...prev, [lang]: updatedCourse };
+      persistCourses(next);
+      return next;
+    });
+    setTargetLang(lang);
+  };
+
+  const startCourseWithPlacement = (lang: string, level: "A1" | "A2" | "B1" | "B2" | "C1") => {
+    const levelXpMap = { A1: 50, A2: 120, B1: 240, B2: 450, C1: 750 };
+    const levelScoreMap = { A1: 250, A2: 480, B1: 780, B2: 890, C1: 960 };
+    const unlockedMap = {
+      A1: [],
+      A2: [`${lang}-node-1`],
+      B1: [`${lang}-node-1`, `${lang}-node-2`],
+      B2: [`${lang}-node-1`, `${lang}-node-2`, `${lang}-node-3`],
+      C1: [`${lang}-node-1`, `${lang}-node-2`, `${lang}-node-3`, `${lang}-node-4`],
+    };
+
+    setCourses((prev) => {
+      const updatedCourse: CourseData = {
+        started: true,
+        level,
+        xp: levelXpMap[level] || 50,
+        completedNodeIds: unlockedMap[level] || [],
+        activeNodeId: `${lang}-node-${(unlockedMap[level]?.length || 0) + 1}`,
+        fsrsCards: [],
+        prosaScore: levelScoreMap[level] || 500,
+        pronunciationScores: [92, 95],
+        sessionsCount: 3,
+        currentCardIndex: 0,
+      };
+      const next = { ...prev, [lang]: updatedCourse };
+      persistCourses(next);
+      return next;
+    });
+    setTargetLang(lang);
+  };
+
+  const addXp = (amount: number) => {
+    setCourses((prev) => {
+      const curr = prev[targetLang] || activeCourse;
+      const updatedCourse: CourseData = {
+        ...curr,
+        started: true,
+        xp: curr.xp + amount,
+      };
+      const next = { ...prev, [targetLang]: updatedCourse };
+      persistCourses(next);
       return next;
     });
   };
 
-  const setCurrentLevel = (level: string) => {
-    setCurrentLevelState(level);
-    persistCurrentTrack({ level });
+  const setXp = (amount: number) => {
+    setCourses((prev) => {
+      const curr = prev[targetLang] || activeCourse;
+      const updatedCourse: CourseData = { ...curr, xp: amount };
+      const next = { ...prev, [targetLang]: updatedCourse };
+      persistCourses(next);
+      return next;
+    });
   };
 
-  const setCurrentCardIndex = (index: number) => {
-    setCurrentCardIndexState(index);
-    persistCurrentTrack({ currentCardIndex: index });
+  const completeTrailNode = (nodeId: string, earnedXp: number) => {
+    setCourses((prev) => {
+      const curr = prev[targetLang] || activeCourse;
+      const completed = Array.from(new Set([...curr.completedNodeIds, nodeId]));
+      const updatedCourse: CourseData = {
+        ...curr,
+        started: true,
+        completedNodeIds: completed,
+        xp: curr.xp + earnedXp,
+      };
+      const next = { ...prev, [targetLang]: updatedCourse };
+      persistCourses(next);
+      return next;
+    });
+    addGems(5);
   };
 
-  const setActiveMentor = (mentor: Mentor) => {
-    setActiveMentorState(mentor);
-    persistCurrentTrack({ activeMentor: mentor });
+  const rateFSRSCard = (cardId: string | number, rating: "again" | "hard" | "good" | "easy") => {
+    const xpBonus = { again: 10, hard: 15, good: 30, easy: 50 }[rating];
+    addXp(xpBonus);
+    addGems(1);
+
+    setCourses((prev) => {
+      const curr = prev[targetLang] || activeCourse;
+      const existingCards = [...curr.fsrsCards];
+      const cardIdx = existingCards.findIndex((c) => String(c.id) === String(cardId));
+
+      let card: FSRSCardProgress;
+      if (cardIdx >= 0) {
+        const c = existingCards[cardIdx];
+        const mult = { again: 0.8, hard: 1.1, good: 1.3, easy: 1.6 }[rating];
+        const nextInt = rating === "again" ? 1 : Math.max(1, Math.round(c.interval * mult));
+        card = {
+          ...c,
+          stability: Number((c.stability * mult).toFixed(2)),
+          interval: nextInt,
+          reps: rating === "again" ? 0 : c.reps + 1,
+          retention: Math.min(99, Math.round(c.retention + (rating === "good" || rating === "easy" ? 2 : -5))),
+          lastReviewed: new Date().toISOString(),
+        };
+        existingCards[cardIdx] = card;
+      } else {
+        card = {
+          id: cardId,
+          difficulty: rating === "again" ? 0.7 : 0.3,
+          stability: rating === "again" ? 0.8 : 2.0,
+          interval: rating === "again" ? 1 : 3,
+          reps: rating === "again" ? 0 : 1,
+          retention: rating === "again" ? 75 : 90,
+          lastReviewed: new Date().toISOString(),
+        };
+        existingCards.push(card);
+      }
+
+      const nextCards = {
+        ...curr,
+        fsrsCards: existingCards,
+        currentCardIndex: curr.currentCardIndex + 1,
+      };
+      const next = { ...prev, [targetLang]: nextCards };
+      persistCourses(next);
+      return next;
+    });
+  };
+
+  const recordPhoneticScore = (score: number) => {
+    setCourses((prev) => {
+      const curr = prev[targetLang] || activeCourse;
+      const scores = [...curr.pronunciationScores, score];
+      const updated: CourseData = {
+        ...curr,
+        pronunciationScores: scores,
+        sessionsCount: curr.sessionsCount + 1,
+      };
+      const next = { ...prev, [targetLang]: updated };
+      persistCourses(next);
+      return next;
+    });
+  };
+
+  const resetCourse = (lang: string) => {
+    setCourses((prev) => {
+      const cleanCourse: CourseData = {
+        started: false,
+        level: "A1",
+        xp: 0,
+        completedNodeIds: [],
+        activeNodeId: `${lang}-node-1`,
+        fsrsCards: [],
+        prosaScore: 0,
+        pronunciationScores: [],
+        sessionsCount: 0,
+        currentCardIndex: 0,
+      };
+      const next = { ...prev, [lang]: cleanCourse };
+      persistCourses(next);
+      return next;
+    });
   };
 
   const resetProgress = () => {
-    const cleanTrack = defaultTrackForLang(targetLang);
-    setXpState(0);
-    setGemsState(50);
-    setStreakState(1);
-    setCurrentLevelState(cleanTrack.level);
-    setCurrentCardIndexState(0);
-    setActiveMentorState(cleanTrack.activeMentor);
-    persistCurrentTrack(cleanTrack);
+    resetCourse(targetLang);
   };
 
   return (
     <ProsaContext.Provider
       value={{
-        xp,
+        userName,
+        setUserName,
         gems,
         streak,
-        targetLang,
-        throughLang,
-        interfaceLang,
-        activeMentor,
-        currentLevel,
-        currentCardIndex,
-        courseTracks,
+        bestStreak,
         isPro,
+        activeMentor,
+        totalXp,
+        targetLang,
+        supportLang,
+        throughLang: supportLang,
+        uiLang,
+        interfaceLang: uiLang,
+        courses,
+        activeCourse,
+        currentLevel: activeCourse.level,
+        currentCardIndex: activeCourse.currentCardIndex,
+        xp: activeCourse.xp,
+        setTargetLang,
+        setSupportLang,
+        setThroughLang: setSupportLang,
+        setUiLang,
+        setInterfaceLang: setUiLang,
+        setActiveMentor: () => {},
+        setIsPro,
         addXp,
         setXp,
         addGems,
         setGems,
-        setTargetLang,
-        setThroughLang,
-        setInterfaceLang,
-        setActiveMentor,
-        setCurrentLevel,
-        setCurrentCardIndex,
-        setIsPro,
+        startCourseFromScratch,
+        startCourseWithPlacement,
+        completeTrailNode,
+        rateFSRSCard,
+        recordPhoneticScore,
+        resetCourse,
+        syncSupportWithUi,
         resetProgress,
       }}
     >
