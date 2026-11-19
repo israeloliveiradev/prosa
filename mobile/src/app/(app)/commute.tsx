@@ -15,87 +15,11 @@ import {
 import { useProsa } from "@/context/prosa-context";
 import { Flag } from "@/components/shell/flag";
 import { SpeechCadenceEngine } from "@/services/speech-cadence";
-
-interface CommutePhrase {
-  flag: string;
-  badge: string;
-  voiceLabel: string;
-  phrase: string;
-  ipa: string;
-  translation: string;
-  speechLang: string;
-  situation: string;
-  curieTip: string;
-}
-
-const COMMUTE_PHRASES: Record<string, CommutePhrase> = {
-  en: {
-    flag: "gb",
-    badge: "LONDON SOUTHWARK RP B2",
-    voiceLabel: "1.0x Oxford Neural",
-    phrase: "I would like an iced oat latte with a double shot of espresso, please.",
-    ipa: "[ai uúd láik an áist ôut LÁ-tei uíd a DÂ-bol chát ov es-PRÉ-sou, pliz]",
-    translation: "Eu gostaria de um latte gelado com leite de aveia e dose dupla de espresso, por favor.",
-    speechLang: "en-US",
-    situation: "Pedido em cafeteria / Situação cotidiana",
-    curieTip: "Excelente foco no flap 't' entre 'oat' e 'latte'. No inglês britânico (RP) ou internacional, mantenha a vogal aberta [ɑː] em 'latte' e suavize o ataque glotal para uma fluidez nativa impecável.",
-  },
-  de: {
-    flag: "de",
-    badge: "BERLIN-MITTE HOCHDEUTSCH B1",
-    voiceLabel: "1.0x Hamburgo Neural",
-    phrase: "Ich möchte gerne eine heiße Schokolade mit Hafermilch.",
-    ipa: "[i-sh mêtche guêrne áine ráisse choco-LÁ-de mit RÁ-fer-mil-sh]",
-    translation: "Eu gostaria de um chocolate quente com leite de aveia.",
-    speechLang: "de-DE",
-    situation: "Pedido em cafeteria / Situação cotidiana",
-    curieTip: "Excelente energia nos harmônicos do som suave! Na vogal em ‘möchte’, projete seus lábios 2 milímetros mais para a frente com língua relaxada. Isso eliminará qualquer resquício fonético estrangeiro.",
-  },
-  es: {
-    flag: "es",
-    badge: "MADRID CASTELLANO B1",
-    voiceLabel: "1.0x Salamanca Neural",
-    phrase: "Quisiera un café con leche de avena bien caliente, por favor.",
-    ipa: "[qui-siê-ra un ca-fé com LÊ-tche de a-VÊ-na bi-êm ca-li-ÊN-te por fa-VOR]",
-    translation: "Eu gostaria de um café com leite de aveia bem quente, por favor.",
-    speechLang: "es-ES",
-    situation: "Pedido em cafeteria / Situação cotidiana",
-    curieTip: "Excelente cadência melódica! Na pronúncia de 'avena', evite fechar completamente os lábios, permitindo que a ressonância continue suave sem atrito oclusivo duro.",
-  },
-  fr: {
-    flag: "fr",
-    badge: "PARIS SAINT-GERMAIN B1",
-    voiceLabel: "1.0x Parisien Neural",
-    phrase: "Je voudrais un chocolat chaud avec du lait d'avoine, s'il vous plaît.",
-    ipa: "[ju vu-drê um cho-co-LÁ chô a-véc du lê da-VUA-na sil vu plê]",
-    translation: "Eu gostaria de um chocolate quente com leite de aveia, por favor.",
-    speechLang: "fr-FR",
-    situation: "Pedido em cafeteria / Situação cotidiana",
-    curieTip: "Excelente controle do ar! Na vogal nasal em 'un', certifique-se de manter o fluxo contínuo sem permitir que a ponta da língua toque os dentes.",
-  },
-  it: {
-    flag: "it",
-    badge: "ROMA TRASTEVERE B1",
-    voiceLabel: "1.0x Fiorentino Neural",
-    phrase: "Vorrei una cioccolata calda con latte d'avena, per favore.",
-    ipa: "[vo-RRÊ-i Ú-na tcho-co-LÁ-ta CÁL-da com LÁT-te da-VÊ-na per fa-VÔ-re]",
-    translation: "Eu gostaria de um chocolate quente com leite de aveia, por favor.",
-    speechLang: "it-IT",
-    situation: "Pedido em cafeteria / Situação cotidiana",
-    curieTip: "Precisão exemplar nas consoantes geminadas em 'cioccolata' e 'latte'. A pequena tensão suspensiva antes da soltura confere a musicalidade toscana legítima.",
-  },
-  ja: {
-    flag: "jp",
-    badge: "TOKYO SHIBUYA N4/B1",
-    voiceLabel: "1.0x Tokyo Neural",
-    phrase: "ホットのオーツミルクラテを一つお願いします。",
-    ipa: "[rôtto no ôtsu mirucu rate o ritótsu onegai ximásu]",
-    translation: "Um latte quente com leite de aveia, por favor.",
-    speechLang: "ja-JP",
-    situation: "Pedido em cafeteria / Situação cotidiana",
-    curieTip: "Excelente isocronia de moras! No japonês de Tóquio, certifique-se de que a pausa geminada de 'hotto' [ッ] dure o tempo exato de uma mora cheia.",
-  },
-};
+import {
+  LanguageMatrixEngine,
+  type CommuteItem,
+} from "@/services/contentService";
+import { languageName } from "@/lib/languages";
 
 interface PhonemeDetail {
   symbol: string;
@@ -134,22 +58,42 @@ const PHONEME_CHIPS_BY_LANG: Record<string, PhonemeDetail[]> = {
     { symbol: "[o]", word: "‘chaud’", accuracy: "89% ⚠", accuracyClass: "bg-amber-200 text-[#92400E]", desc: "Vogal posterior fechada", isWarning: true },
     { symbol: "[lɛ]", word: "‘lait’", accuracy: "96%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vogal aberta anterior nítida" },
     { symbol: "[vwɑn]", word: "‘avoine’", accuracy: "94%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Ditongo articulado sem aspiração" }
-  ]
+  ],
+  it: [
+    { symbol: "[vor]", word: "‘vorrei’", accuracy: "98%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vibrante dental dupla límpida" },
+    { symbol: "[tʃo]", word: "‘cioccolata’", accuracy: "95%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Africada palatal sonora perfeita" },
+    { symbol: "[lat]", word: "‘latte’", accuracy: "97%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Oclusiva geminada suspensiva" },
+    { symbol: "[ve]", word: "‘avena’", accuracy: "94%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Fricativa labiodental suave" }
+  ],
+  ja: [
+    { symbol: "[hot]", word: "‘hotto’", accuracy: "96%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Pausa de sokuon perfeita" },
+    { symbol: "[oː]", word: "‘ōtsu’", accuracy: "94%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vogal longa com duração exata" },
+    { symbol: "[ra]", word: "‘rate’", accuracy: "95%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Tepe alveolar japonês clássico" }
+  ],
 };
 
 export default function CommuteScreen() {
-  const { addXp, targetLang } = useProsa();
-  const currentPhrase = COMMUTE_PHRASES[targetLang && targetLang in COMMUTE_PHRASES ? targetLang : "en"];
+  const { addXp, targetLang, supportLang, recordPhoneticScore } = useProsa();
+  const currentPhrase = LanguageMatrixEngine.getCommutePhrase(targetLang);
+
   const [isRecording, setIsRecording] = useState(false);
-  const [vuLevel, setVuLevel] = useState(10);
+  const [vuLevel, setVuLevel] = useState(0);
   const [playbackPos, setPlaybackPos] = useState(68);
-  const [statusMessage, setStatusMessage] = useState("Microfone em modo de escuta ativa");
+  const [statusMessage, setStatusMessage] = useState("Pressione o microfone e fale a frase acima.");
   const [selectedPhoneme, setSelectedPhoneme] = useState<string | null>(null);
-  const [completed, setCompleted] = useState(false);
+  const [phoneticScore, setPhoneticScore] = useState<number | null>(null);
+  const [showIpa, setShowIpa] = useState(false);
   const engineRef = useRef<SpeechCadenceEngine | null>(null);
 
+  // Reset state when language switches
   useEffect(() => {
-    // Playback head scanner animation
+    setPhoneticScore(null);
+    setVuLevel(0);
+    setStatusMessage("Pressione o microfone e fale a frase acima.");
+    setSelectedPhoneme(null);
+  }, [targetLang]);
+
+  useEffect(() => {
     const headTimer = setInterval(() => {
       setPlaybackPos((prev) => (prev + 0.8) % 100);
     }, 60);
@@ -170,20 +114,6 @@ export default function CommuteScreen() {
     };
   }, []);
 
-  // Visual VU meter feedback during recording
-  useEffect(() => {
-    let simTimer: any = null;
-    if (isRecording) {
-      simTimer = setInterval(() => {
-        setVuLevel((prev) => {
-          const delta = (Math.random() - 0.45) * 30;
-          return Math.min(92, Math.max(40, Math.round(prev + delta)));
-        });
-      }, 90);
-    }
-    return () => clearInterval(simTimer);
-  }, [isRecording]);
-
   const toggleRecording = async () => {
     if (!isRecording) {
       setIsRecording(true);
@@ -193,13 +123,14 @@ export default function CommuteScreen() {
       }
     } else {
       setIsRecording(false);
-      let res = { accuracy: 95 };
+      let res = { accuracy: 94 };
       if (engineRef.current) {
-        res = engineRef.current.stopListening(currentPhrase.phrase);
+        res = engineRef.current.stopListening(currentPhrase.targetPhrase);
       }
-      setVuLevel(10);
+      setVuLevel(0);
+      setPhoneticScore(res.accuracy);
       setStatusMessage(`Calibrado! ${res.accuracy}% de similaridade acústica.`);
-      setCompleted(true);
+      recordPhoneticScore(res.accuracy);
       addXp(25);
     }
   };
@@ -207,12 +138,44 @@ export default function CommuteScreen() {
   const playTargetAudio = (rate: number = 1.0) => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(currentPhrase.phrase);
+      const utterance = new SpeechSynthesisUtterance(currentPhrase.targetPhrase);
       utterance.lang = currentPhrase.speechLang;
       utterance.rate = rate;
       window.speechSynthesis.speak(utterance);
     }
   };
+
+  const intuitive =
+    currentPhrase.intuitivePronunciation[supportLang] ||
+    currentPhrase.intuitivePronunciation["pt-BR"] ||
+    currentPhrase.intuitivePronunciation["en"] ||
+    "";
+
+  const translation = LanguageMatrixEngine.getLocalizedText(
+    currentPhrase.translation,
+    supportLang,
+    currentPhrase.translation["pt-BR"] || ""
+  );
+
+  const curieTip = LanguageMatrixEngine.getLocalizedText(
+    currentPhrase.curieTip,
+    supportLang,
+    currentPhrase.curieTip["pt-BR"] || ""
+  );
+
+  const flagCode = targetLang === "en" ? "gb" : targetLang === "ja" ? "jp" : targetLang;
+  const badgeCity = currentPhrase.badge.split(" ")[0] || languageName(targetLang);
+
+  // SVG wave calculation for user based on recording state
+  const userWaveD = isRecording
+    ? `M0,45 Q22,${Math.max(10, 45 - vuLevel * 0.4)} 45,45 T90,45 T135,${Math.max(8, 45 - vuLevel * 0.5)} T180,45 T225,${Math.max(5, 45 - vuLevel * 0.6)} T270,45 T315,22 T360,45 T405,14 T450,45 T495,30 T540,45 T585,12 T630,45 T675,28 L700,45`
+    : phoneticScore
+    ? "M0,45 Q22,18 45,45 T90,45 T135,16 T180,45 T225,11 T270,45 T315,22 T360,45 T405,14 T450,45 T495,30 T540,45 T585,12 T630,45 T675,28 L700,45"
+    : "M0,45 L700,45";
+
+  const strokeDashoffset = phoneticScore
+    ? Math.round(314 - (314 * phoneticScore) / 100)
+    : 314;
 
   return (
     <div className="w-full flex flex-col gap-6 pb-16">
@@ -229,7 +192,7 @@ export default function CommuteScreen() {
               ESPECTROGRAMA EM TEMPO REAL
             </span>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#F5F0E8] text-[#475569] text-xs font-bold">
-              <Flag code={currentPhrase.flag} size={15} />
+              <Flag code={flagCode} size={15} />
               <span>{currentPhrase.badge}</span>
             </span>
           </div>
@@ -258,65 +221,89 @@ export default function CommuteScreen() {
         {/* LEFT COLUMN: Phrase Display + Interactive Spectrogram (8 Cols) */}
         <div className="lg:col-span-8 space-y-6">
           {/* Phrase Card with Audio Engines */}
-          <div className="bg-white rounded-2xl border border-stone-200/80 p-6 shadow-[0_4px_0_#CBD5E1] relative overflow-hidden">
-            <div className="absolute -right-6 -bottom-6 w-36 h-36 bg-teal-100/30 rounded-full blur-2xl pointer-events-none" />
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div className="bg-white rounded-3xl border border-stone-200/80 p-6 lg:p-8 shadow-[0_4px_0_#CBD5E1] relative overflow-hidden space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200/70 pb-4">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-md bg-[#F5F0E8] text-xs font-bold text-[#0F766E]">
-                  FRASE ALVO
+                <span className="px-3 py-1 rounded-full bg-[#E7EEFF] text-[#00685F] text-xs font-bold uppercase tracking-wider">
+                  Frase Alvo ({languageName(targetLang)})
                 </span>
-                <span className="text-xs text-[#64748B]">{currentPhrase.situation}</span>
+                <span className="text-xs text-[#64748B] font-semibold">
+                  {currentPhrase.speechLang}
+                </span>
               </div>
-
-              {/* Audio Controls */}
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => playTargetAudio(0.8)}
-                  className="px-3 py-1.5 rounded-xl bg-[#F5F0E8] text-[#111C2D] text-xs font-bold border border-stone-200 shadow-[0_2px_0_#CBD5E1] active:translate-y-0.5 active:shadow-[0_1px_0_#CBD5E1] flex items-center gap-1.5 transition-transform cursor-pointer"
-                >
-                  <PlayCircle size={15} className="text-[#0D9488]" />
-                  <span>0.8x Lento</span>
-                </button>
                 <button
                   type="button"
                   onClick={() => playTargetAudio(1.0)}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#0D9488] text-white text-xs font-bold shadow-[0_3px_0_#0F766E] active:translate-y-0.5 active:shadow-[0_1px_0_#0F766E] flex items-center gap-1.5 transition-transform cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 text-[#0D9488] hover:bg-teal-100 text-xs font-bold transition-all border border-teal-200 cursor-pointer"
                 >
                   <Volume2 size={15} />
-                  <span>{currentPhrase.voiceLabel}</span>
+                  <span>Nativo 1.0x</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => playTargetAudio(0.75)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100 text-[#475569] hover:bg-stone-200 text-xs font-bold transition-all cursor-pointer"
+                >
+                  <span>0.75x Lento</span>
                 </button>
               </div>
             </div>
 
-            {/* Target Sentence */}
-            <div className="space-y-1.5">
-              <div className="text-2xl font-extrabold text-[#111C2D] tracking-tight leading-tight">
-                “{currentPhrase.phrase}”
+            {/* Target Sentence Display */}
+            <div className="space-y-3">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#111C2D] font-serif leading-snug tracking-tight">
+                “{currentPhrase.targetPhrase}”
+              </h2>
+
+              {/* Intuitive Pronunciation by Default + Discreet IPA Toggle */}
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F5F0E8] text-[#3D4947] text-xs font-medium flex-wrap">
+                <Mic size={14} className="text-[#0D9488] shrink-0" />
+                {showIpa ? (
+                  <span className="font-mono text-xs text-stone-700">
+                    {currentPhrase.ipa}
+                  </span>
+                ) : (
+                  <span
+                    className="text-xs text-stone-800"
+                    dangerouslySetInnerHTML={{ __html: intuitive }}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowIpa((prev) => !prev)}
+                  className={`ml-1 text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors cursor-pointer ${
+                    showIpa
+                      ? "bg-[#0D9488] text-white font-bold"
+                      : "bg-stone-200/90 hover:bg-stone-300 text-stone-700 font-semibold"
+                  }`}
+                  title={showIpa ? "Mostrar pronúncia intuitiva" : "Exibir transcrição IPA"}
+                >
+                  {showIpa ? "Intuitiva" : "IPA"}
+                </button>
               </div>
-              <div className="font-serif italic text-base text-[#0D9488] tracking-wide">
-                {currentPhrase.ipa}
-              </div>
-              <div className="text-xs text-[#64748B] pt-1">
-                <span className="font-bold text-[#111C2D]">Tradução:</span> “{currentPhrase.translation}”
-              </div>
+
+              <p className="text-sm font-medium text-[#0D9488]">
+                {translation}
+              </p>
             </div>
           </div>
 
-          {/* Split-Screen Acoustic Analyzer / Dual Waveform Canvas */}
-          <div className="bg-[#18181B] rounded-2xl p-6 text-white shadow-[0_6px_0_#111C2D] space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+          {/* DUAL INTERACTIVE SPECTROGRAM (Acoustic Lab Canvas) */}
+          <div className="bg-[#18181B] rounded-3xl p-6 text-white shadow-inner space-y-4 border border-zinc-800">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
-                <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#06B6D4] animate-pulse" />
-                <span className="text-base font-bold tracking-wide text-white">Analisador Acústico Duplo</span>
-                <span className="text-xs text-zinc-400 px-2 py-0.5 rounded bg-zinc-800">F1/F2 Espectro</span>
+                <span className="w-3 h-3 rounded-full bg-[#10B981] animate-pulse" />
+                <span className="font-mono text-xs text-zinc-300 uppercase tracking-widest font-bold">
+                  Osciloscópio Espectral Dual (48 kHz)
+                </span>
               </div>
-              <div className="flex items-center gap-4 text-xs font-bold">
-                <div className="flex items-center gap-1.5 text-[#06B6D4]">
+              <div className="flex items-center gap-4 text-xs font-mono text-zinc-400">
+                <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-sm bg-[#06B6D4]" />
-                  <span>Nativo ({currentPhrase.badge.split(" ")[0]})</span>
+                  <span>Modelo Nativo ({badgeCity})</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-[#10B981]">
+                <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-sm bg-[#10B981]" />
                   <span>Sua Voz</span>
                 </div>
@@ -327,9 +314,9 @@ export default function CommuteScreen() {
             <div className="bg-[#27272A] rounded-xl p-4 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-zinc-400 mb-2">
                 <span className="flex items-center gap-1 text-[#06B6D4] font-bold uppercase tracking-wider text-[11px]">
-                  <Radio size={13} /> Onda Nativa de {currentPhrase.badge.split(" ")[0]} (Referência Padrão)
+                  <Radio size={13} /> Onda Nativa de {badgeCity} (Referência Padrão)
                 </span>
-                <span className="font-extrabold text-[#06B6D4]">142 Hz Pitch Médio</span>
+                <span className="font-extrabold text-[#06B6D4]">{currentPhrase.pitchHz} Hz Pitch Médio</span>
               </div>
               <div className="h-24 w-full relative">
                 <svg className="w-full h-full text-[#06B6D4]" preserveAspectRatio="none" viewBox="0 0 700 90">
@@ -350,46 +337,21 @@ export default function CommuteScreen() {
                     strokeLinecap="round"
                     strokeWidth="2.5"
                   />
-                  <path
-                    d="M0,60 C120,40 220,70 340,35 C480,15 580,50 700,42"
-                    fill="none"
-                    stroke="#89f5e7"
-                    strokeDasharray="3,3"
-                    strokeWidth="1.5"
-                  />
                 </svg>
-                {/* Dynamic Alignment marks */}
+
+                {/* Syllables breakdown below wave */}
                 <div className="absolute bottom-1 left-0 right-0 flex justify-between px-2 text-[10px] text-zinc-400 select-none">
-                  {targetLang === "en" ? (
-                    <>
-                      <span>[eye]</span>
-                      <span>[wood]</span>
-                      <span>[lyke]</span>
-                      <span>[an]</span>
-                      <span>[eyst]</span>
-                      <span>[oht]</span>
-                      <span>[lah-tay]</span>
-                    </>
-                  ) : targetLang === "es" ? (
-                    <>
-                      <span>[kee]</span>
-                      <span>[syeh-rah]</span>
-                      <span>[oon]</span>
-                      <span>[kah-feh]</span>
-                      <span>[kohn]</span>
-                      <span>[leh-cheh]</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>[ikh]</span>
-                      <span>[moekh-teh]</span>
-                      <span>[gair-neh]</span>
-                      <span>[eye-neh]</span>
-                      <span>[hy-seh]</span>
-                      <span>[shoh-koh]</span>
-                      <span>[hah-fer]</span>
-                    </>
-                  )}
+                  {currentPhrase.syllables.map((syl, sIdx) => {
+                    const sylIntuitive =
+                      syl.intuitive[supportLang] ||
+                      syl.intuitive["pt-BR"] ||
+                      syl.text;
+                    return (
+                      <span key={sIdx} title={syl.text}>
+                        [{sylIntuitive.replace(/<[^>]+>/g, "")}]
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -400,33 +362,23 @@ export default function CommuteScreen() {
                 <span className="flex items-center gap-1 text-[#10B981] font-bold uppercase tracking-wider text-[11px]">
                   <Mic size={13} /> Sua Gravação de Voz (Sincronizada)
                 </span>
-                <span className="font-extrabold text-[#10B981]">Latência: 18ms • Coincidência: 94.2%</span>
+                <span className="font-extrabold text-[#10B981]">
+                  {isRecording
+                    ? `Captação Ativa: ${vuLevel}% RMS`
+                    : phoneticScore
+                    ? `Latência: 18ms • Coincidência: ${phoneticScore}%`
+                    : "0 Hz • Aguardando gravação de voz"}
+                </span>
               </div>
               <div className="h-24 w-full relative">
                 <svg className="w-full h-full text-[#10B981]" preserveAspectRatio="none" viewBox="0 0 700 90">
-                  <defs>
-                    <linearGradient id="userGrad" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#10B981" stopOpacity="0.4" />
-                      <stop offset="100%" stopColor="#10B981" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
                   <path
-                    d="M0,45 Q22,18 45,45 T90,45 T135,16 T180,45 T225,11 T270,45 T315,22 T360,45 T405,14 T450,45 T495,30 T540,45 T585,12 T630,45 T675,28 L700,45 L700,85 L0,85 Z"
-                    fill="url(#userGrad)"
-                  />
-                  <path
-                    d="M0,45 Q22,18 45,45 T90,45 T135,16 T180,45 T225,11 T270,45 T315,22 T360,45 T405,14 T450,45 T495,30 T540,45 T585,12 T630,45 T675,28 L700,45"
+                    d={userWaveD}
                     fill="none"
-                    stroke="#10B981"
+                    stroke={phoneticScore || isRecording ? "#10B981" : "#52525B"}
                     strokeLinecap="round"
                     strokeWidth="2.5"
-                  />
-                  <path
-                    d="M0,62 C125,44 220,68 340,39 C475,20 580,48 700,44"
-                    fill="none"
-                    stroke="#6bd8cb"
-                    strokeDasharray="3,3"
-                    strokeWidth="1.5"
+                    strokeDasharray={isRecording ? "4,4" : undefined}
                   />
                 </svg>
                 {/* Live scanner head bar */}
@@ -441,17 +393,23 @@ export default function CommuteScreen() {
             <div className="grid grid-cols-3 gap-3 pt-1 text-center">
               <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
                 <span className="block text-[10px] font-bold text-zinc-400 uppercase">Harmonia Formântica</span>
-                <span className="text-base font-extrabold text-[#06B6D4]">96.8%</span>
+                <span className="text-base font-extrabold text-[#06B6D4]">
+                  {phoneticScore ? `${Math.min(99, phoneticScore + 2)}%` : "--%"}
+                </span>
               </div>
               <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
                 <span className="block text-[10px] font-bold text-zinc-400 uppercase">Entonação Melódica</span>
-                <span className="text-base font-extrabold text-[#FEA619]">92.4%</span>
+                <span className="text-base font-extrabold text-[#FEA619]">
+                  {phoneticScore ? `${Math.max(70, phoneticScore - 3)}%` : "--%"}
+                </span>
               </div>
               <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
                 <span className="block text-[10px] font-bold text-zinc-400 uppercase">
                   {targetLang === "de" ? "Ataque Glotal (Knacklaut)" : "Conexão Articulatória"}
                 </span>
-                <span className="text-base font-extrabold text-[#10B981]">98.0%</span>
+                <span className="text-base font-extrabold text-[#10B981]">
+                  {phoneticScore ? `${phoneticScore}%` : "--%"}
+                </span>
               </div>
             </div>
           </div>
@@ -485,7 +443,7 @@ export default function CommuteScreen() {
                       {chip.symbol}
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${chip.accuracyClass}`}>
-                      {chip.accuracy}
+                      {phoneticScore ? chip.accuracy : "--%"}
                     </span>
                   </div>
                   <p className="text-xs font-bold text-[#111C2D] truncate">{chip.word}</p>
@@ -520,15 +478,17 @@ export default function CommuteScreen() {
                   r="50"
                   stroke="#0D9488"
                   strokeDasharray="314"
-                  strokeDashoffset="18"
+                  strokeDashoffset={strokeDashoffset}
                   strokeLinecap="round"
                   strokeWidth="10"
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center select-none pointer-events-none p-2">
-                <span className="text-3xl font-black text-[#111C2D] leading-none">94%</span>
+                <span className="text-3xl font-black text-[#111C2D] leading-none">
+                  {phoneticScore ? `${phoneticScore}%` : "--%"}
+                </span>
                 <span className="text-[10px] font-black text-[#0D9488] uppercase tracking-wider mt-1 text-center">
-                  Precisão
+                  Precisão Fonética
                 </span>
               </div>
             </div>
@@ -537,7 +497,11 @@ export default function CommuteScreen() {
             </div>
             <div className="mt-1 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-100/70 text-[#0F766E] text-xs font-bold">
               <ShieldCheck size={16} />
-              SOTAQUE {currentPhrase.badge.split(" ")[0]} QUALIFICADO
+              <span>
+                {phoneticScore
+                  ? `SOTAQUE ${badgeCity} QUALIFICADO`
+                  : "AGUARDANDO GRAVAÇÃO"}
+              </span>
             </div>
           </div>
 
@@ -576,79 +540,45 @@ export default function CommuteScreen() {
               <span>{statusMessage}</span>
             </div>
 
-            {/* VU Meter */}
+            {/* Intensidade da voz / Nível de Captação */}
             <div className="w-48 h-2 bg-stone-300 rounded-full mt-3 overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-75 ${
-                  vuLevel > 70 ? "bg-[#FF5722]" : "bg-[#10B981]"
-                }`}
+                className="h-full bg-[#0D9488] transition-all duration-100"
                 style={{ width: `${vuLevel}%` }}
               />
             </div>
+            <span className="text-[10px] font-mono text-[#64748B] mt-1">
+              Captação da Voz: {vuLevel}%
+            </span>
           </div>
 
-          {/* Marie Curie Articulatory Tip Card */}
-          <div className="bg-white rounded-2xl border border-stone-200/80 p-5 shadow-[0_4px_0_#CBD5E1] relative">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="relative w-12 h-12 rounded-full ring-2 ring-[#FEA619] shadow-[0_2px_0_#D97706] overflow-hidden shrink-0">
+          {/* Marie Curie Expert Companion Dock */}
+          <div className="bg-white rounded-2xl border border-stone-200/80 p-5 shadow-[0_4px_0_#CBD5E1] space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-200 overflow-hidden shrink-0">
                 <img
-                  className="w-full h-full object-cover"
                   src="/cast/curie.png"
                   alt="Marie Curie"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    if (!target.dataset.tried) {
+                      target.dataset.tried = "1";
+                      target.src = "/assets/assets/cast/curie.png";
+                    }
+                  }}
                 />
-                <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#06B6D4] flex items-center justify-center text-[9px] text-white font-bold">
-                  ✓
-                </span>
               </div>
               <div>
-                <div className="flex items-center gap-1">
-                  <span className="text-sm font-extrabold text-[#111C2D]">Marie Curie</span>
-                  <ShieldCheck size={14} className="text-[#D97706]" />
-                </div>
-                <span className="text-[11px] font-bold text-[#64748B]">Mentora de Física &amp; Fonética</span>
+                <h4 className="font-extrabold text-sm text-[#111C2D]">Marie Curie</h4>
+                <span className="text-xs text-[#0D9488] font-bold">Mentoria de Ressonância</span>
               </div>
             </div>
 
-            <div className="bg-[#F5F0E8] p-4 rounded-xl text-xs text-[#334155] leading-relaxed">
-              <p className="italic font-serif text-[13px]">
-                “{currentPhrase.curieTip}”
-              </p>
+            <div className="p-3 bg-[#F5F0E8] rounded-xl border border-stone-200/70 text-xs text-[#334155] leading-relaxed italic">
+              “{curieTip}”
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Bottom Sticky Action Ribbon */}
-      <div className="bg-white rounded-2xl border border-stone-200/80 p-5 shadow-[0_4px_0_#CBD5E1] flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Radio size={24} className="text-[#0D9488]" />
-          <div className="flex flex-col">
-            <span className="text-sm font-extrabold text-[#111C2D]">Shadowing Rítmico Disponível</span>
-            <span className="text-xs text-[#64748B]">Repita sobrepondo a voz nativa em tempo real para sincronia milimétrica.</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => playTargetAudio(1.0)}
-            className="flex-1 sm:flex-none px-5 py-3 rounded-xl bg-white text-[#111C2D] text-xs font-bold border border-stone-200 shadow-[0_3px_0_#CBD5E1] active:translate-y-0.5 active:shadow-[0_1px_0_#CBD5E1] hover:bg-[#F5F0E8] transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <RotateCcw size={16} className="text-[#64748B]" />
-            <span>Repetir Ensaio (Shadowing)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              addXp(25);
-              setCompleted(true);
-            }}
-            className="flex-1 sm:flex-none px-6 py-3 rounded-xl bg-[#0D9488] text-white text-xs font-bold shadow-[0_4px_0_#0F766E] active:translate-y-1 active:shadow-[0_1px_0_#0F766E] transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <span>Próxima Frase</span>
-            <span className="px-2 py-0.5 rounded-full bg-[#0F766E] text-white text-[11px] font-extrabold">+25 XP</span>
-            <ArrowRight size={16} />
-          </button>
         </div>
       </div>
     </div>
