@@ -298,6 +298,7 @@ class SpeechService {
     lang: "en-US",
   };
   private cachedVoices: SpeechSynthesisVoice[] = [];
+  private activeUtterance: SpeechSynthesisUtterance | null = null;
 
   constructor() {
     this.initFromStorage();
@@ -465,6 +466,7 @@ class SpeechService {
         window.speechSynthesis.cancel();
       } catch {}
     }
+    this.activeUtterance = null;
     this.notifyPlayback({
       ...this.activePlayback,
       isPlaying: false,
@@ -636,32 +638,10 @@ class SpeechService {
       }
     }
 
-    // 3. High-Fidelity Acoustic Harmonic Buffer matching mentor's gender & pitch profile
-    const sampleRate = this.audioCtx.sampleRate;
-    const estimatedDuration = Math.max(
-      0.9,
-      (cleanText.split(/\s+/).length * 0.38) / speedRate
-    );
-    const totalSamples = Math.floor(sampleRate * estimatedDuration);
-    const audioBuffer = this.audioCtx.createBuffer(1, totalSamples, sampleRate);
-    const channelData = audioBuffer.getChannelData(0);
-
-    const baseFreq =
-      mentorProfile.gender === "female"
-        ? 210 * (mentorProfile.pitch / 1.1)
-        : 120 * (mentorProfile.pitch / 0.85);
-
-    for (let i = 0; i < totalSamples; i++) {
-      const t = i / sampleRate;
-      // Formant harmonic synthesis
-      const f1 = Math.sin(2 * Math.PI * baseFreq * t);
-      const f2 = 0.45 * Math.sin(2 * Math.PI * (baseFreq * 2.05) * t);
-      const f3 = 0.22 * Math.sin(2 * Math.PI * (baseFreq * 3.1) * t);
-      const envelope = Math.sin((Math.PI * i) / totalSamples);
-      channelData[i] = (f1 + f2 + f3) * 0.14 * envelope;
-    }
-
-    return audioBuffer;
+    // If Kokoro or Piper did not generate speech audio, return null.
+    // Returning null causes speakWithLocalAi to return false,
+    // which immediately falls back to speakWithWebSpeech, so the actual words are ALWAYS spoken!
+    return null;
   }
 
   private playAudioBuffer(
@@ -744,8 +724,12 @@ class SpeechService {
     }
 
     try {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(cleanText);
+      this.activeUtterance = utterance;
       utterance.lang = lang;
 
       // 1. Apply Mentor Personality Parameters (Grave vs High, Paused vs Fast)
@@ -880,6 +864,7 @@ class SpeechService {
       }, stepMs);
 
       utterance.onend = () => {
+        this.activeUtterance = null;
         if (this.activeTimerId) {
           clearInterval(this.activeTimerId);
           this.activeTimerId = null;
@@ -892,6 +877,7 @@ class SpeechService {
       };
 
       utterance.onerror = (err) => {
+        this.activeUtterance = null;
         if (this.activeTimerId) {
           clearInterval(this.activeTimerId);
           this.activeTimerId = null;
