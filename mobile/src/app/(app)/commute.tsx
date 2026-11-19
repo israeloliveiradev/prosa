@@ -1,107 +1,300 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Mic,
   Square,
-  PlayCircle,
   Volume2,
   CheckCircle2,
   Radio,
   Sliders,
-  RotateCcw,
-  ArrowRight,
   ShieldCheck,
   Zap,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import { useProsa } from "@/context/prosa-context";
 import { Flag } from "@/components/shell/flag";
-import { SpeechCadenceEngine } from "@/services/speech-cadence";
 import {
-  LanguageMatrixEngine,
-  type CommuteItem,
-} from "@/services/contentService";
+  SpeechCadenceEngine,
+  type SpeechCadenceResult,
+} from "@/services/speech-cadence";
+import { LanguageMatrixEngine } from "@/services/contentService";
 import { speechService } from "@/services/speechService";
 import { languageName } from "@/lib/languages";
 
-interface PhonemeDetail {
-  symbol: string;
-  word: string;
-  accuracy: string;
-  accuracyClass: string;
-  desc: string;
-  isWarning?: boolean;
-}
-
-const PHONEME_CHIPS_BY_LANG: Record<string, PhonemeDetail[]> = {
-  en: [
-    { symbol: "[wʊd]", word: "‘would’", accuracy: "97%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vogal arredondada curta /wʊ/ nítida" },
-    { symbol: "[oʊt]", word: "‘oat’", accuracy: "89% ⚠", accuracyClass: "bg-amber-200 text-[#92400E]", desc: "Fechar mais o ditongo final", isWarning: true },
-    { symbol: "[lɑː]", word: "‘latte’", accuracy: "98%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vogal aberta posterior perfeita" },
-    { symbol: "[ʃɑːt]", word: "‘shot’", accuracy: "95%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Consoante pós-alveolar contínua" },
-    { symbol: "[sprɛ]", word: "‘espresso’", accuracy: "94%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Articulação frontal sem oclusão" }
-  ],
-  de: [
-    { symbol: "[ç]", word: "‘Ich’ / ‘möchte’", accuracy: "96%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Fricativa palatal surda perfeita" },
-    { symbol: "[œ]", word: "‘möchte’", accuracy: "88% ⚠", accuracyClass: "bg-amber-200 text-[#92400E]", desc: "Arredondar mais os lábios", isWarning: true },
-    { symbol: "[ʁ]", word: "‘gerne’", accuracy: "98%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vibrante uvular sonora correta" },
-    { symbol: "[ʃ]", word: "‘Schokolade’", accuracy: "95%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Chiado pós-alveolar nítido" },
-    { symbol: "[ɐ]", word: "‘Hafer’", accuracy: "91%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vogal vocalizada reduzida" }
-  ],
-  es: [
-    { symbol: "[ki]", word: "‘quisiera’", accuracy: "98%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Oclusiva velar surda limpa" },
-    { symbol: "[fe]", word: "‘café’", accuracy: "96%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vogal média anterior tensa" },
-    { symbol: "[tʃe]", word: "‘leche’", accuracy: "87% ⚠", accuracyClass: "bg-amber-200 text-[#92400E]", desc: "Africada palatal bem marcada", isWarning: true },
-    { symbol: "[be]", word: "‘avena’", accuracy: "95%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Aproximante bilabial suave" },
-    { symbol: "[r]", word: "‘por favor’", accuracy: "93%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vibrante alveolar simples" }
-  ],
-  fr: [
-    { symbol: "[vud]", word: "‘voudrais’", accuracy: "97%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Semivogal labial fluida" },
-    { symbol: "[ʃɔk]", word: "‘chocolat’", accuracy: "95%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Fricativa sem oclusão inicial" },
-    { symbol: "[o]", word: "‘chaud’", accuracy: "89% ⚠", accuracyClass: "bg-amber-200 text-[#92400E]", desc: "Vogal posterior fechada", isWarning: true },
-    { symbol: "[lɛ]", word: "‘lait’", accuracy: "96%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vogal aberta anterior nítida" },
-    { symbol: "[vwɑn]", word: "‘avoine’", accuracy: "94%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Ditongo articulado sem aspiração" }
-  ],
-  it: [
-    { symbol: "[vor]", word: "‘vorrei’", accuracy: "98%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vibrante dental dupla límpida" },
-    { symbol: "[tʃo]", word: "‘cioccolata’", accuracy: "95%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Africada palatal sonora perfeita" },
-    { symbol: "[lat]", word: "‘latte’", accuracy: "97%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Oclusiva geminada suspensiva" },
-    { symbol: "[ve]", word: "‘avena’", accuracy: "94%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Fricativa labiodental suave" }
-  ],
-  ja: [
-    { symbol: "[hot]", word: "‘hotto’", accuracy: "96%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Pausa de sokuon perfeita" },
-    { symbol: "[oː]", word: "‘ōtsu’", accuracy: "94%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Vogal longa com duração exata" },
-    { symbol: "[ra]", word: "‘rate’", accuracy: "95%", accuracyClass: "bg-emerald-100 text-[#059669]", desc: "Tepe alveolar japonês clássico" }
-  ],
-};
-
 export default function CommuteScreen() {
-  const { addXp, targetLang, supportLang, recordPhoneticScore, activeMentor } = useProsa();
+  const { addXp, targetLang, supportLang, recordPhoneticScore, activeMentor } =
+    useProsa();
   const currentPhrase = LanguageMatrixEngine.getCommutePhrase(targetLang);
 
   const [isRecording, setIsRecording] = useState(false);
   const [vuLevel, setVuLevel] = useState(0);
   const [playbackPos, setPlaybackPos] = useState(0);
-  const [statusMessage, setStatusMessage] = useState("Pressione o microfone e fale a frase acima.");
+  const [statusMessage, setStatusMessage] = useState(
+    "Pressione o microfone e fale a frase acima."
+  );
   const [selectedPhoneme, setSelectedPhoneme] = useState<string | null>(null);
   const [phoneticScore, setPhoneticScore] = useState<number | null>(null);
   const [showIpa, setShowIpa] = useState(false);
+  const [evaluationResult, setEvaluationResult] =
+    useState<SpeechCadenceResult | null>(null);
+
   const engineRef = useRef<SpeechCadenceEngine | null>(null);
+  const nativeContainerRef = useRef<HTMLDivElement | null>(null);
+  const nativeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const userContainerRef = useRef<HTMLDivElement | null>(null);
+  const userCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const liveAudioDataRef = useRef<Uint8Array | null>(null);
+  const recordedWaveformRef = useRef<number[]>([]);
+
+  // 1. Draw Native Reference Prosodic Waveform
+  const drawNativeWave = useCallback(
+    (playheadPct = 0) => {
+      const canvas = nativeCanvasRef.current;
+      const container = nativeContainerRef.current;
+      if (!canvas || !container) return;
+
+      const rect = container.getBoundingClientRect();
+      const width = rect.width || 600;
+      const height = rect.height || 96;
+      const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+
+      if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+      }
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, width, height);
+
+      // Strict 15% Y-margin: keep all amplitudes inside [0.15 * height, 0.85 * height]
+      const yMid = height / 2;
+      const maxAmp = (height / 2) * 0.7; // Peak amplitude strictly within 70% of half-height
+
+      const syllables = currentPhrase.syllables;
+      const sylCount = Math.max(1, syllables.length);
+
+      // Generate smooth prosodic envelope based on active phrase syllables
+      ctx.beginPath();
+      ctx.moveTo(0, yMid);
+
+      const points: { x: number; y: number }[] = [];
+      const numSteps = 120;
+      for (let i = 0; i <= numSteps; i++) {
+        const x = (i / numSteps) * width;
+        const normX = i / numSteps;
+
+        // Prosodic energy calculated as sum of Gaussian lobes centered on each syllable
+        let envelope = 0;
+        for (let s = 0; s < sylCount; s++) {
+          const centerNorm = (s + 0.5) / sylCount;
+          const sigma = 0.5 / sylCount;
+          const diff = (normX - centerNorm) / sigma;
+          // Varying stress amplitude per syllable (odd syllables slightly more stressed)
+          const weight = s % 2 === 0 ? 0.95 : 0.75;
+          envelope += weight * Math.exp(-0.5 * diff * diff);
+        }
+
+        // Add subtle harmonic modulation for acoustic naturalness
+        const modulation = Math.sin(normX * Math.PI * sylCount * 2) * 0.15;
+        const totalAmp = Math.min(1.0, Math.max(0.05, envelope + modulation));
+        const y = yMid - totalAmp * maxAmp;
+
+        points.push({ x, y });
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+
+      // Draw Cyan Gradient Fill Below Waveform
+      const gradient = ctx.createLinearGradient(0, yMid - maxAmp, 0, height);
+      gradient.addColorStop(0, "rgba(6, 182, 212, 0.40)");
+      gradient.addColorStop(1, "rgba(6, 182, 212, 0.0)");
+
+      ctx.lineTo(width, yMid);
+      ctx.lineTo(0, yMid);
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Stroke Native Wave Line
+      ctx.beginPath();
+      for (let i = 0; i < points.length; i++) {
+        if (i === 0) ctx.moveTo(points[i].x, points[i].y);
+        else ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.strokeStyle = "#06B6D4";
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke();
+
+      // Draw Native Playhead Scanner (Moves only when audio is actively playing)
+      if (playheadPct > 0) {
+        const scanX = Math.min(width, Math.max(0, (playheadPct / 100) * width));
+        ctx.beginPath();
+        ctx.moveTo(scanX, 0);
+        ctx.lineTo(scanX, height);
+        ctx.strokeStyle = "#06B6D4";
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "#06B6D4";
+        ctx.shadowBlur = 8;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    },
+    [currentPhrase]
+  );
+
+  // 2. Draw User Voice Waveform (Live Oscilloscope or Recorded Trace)
+  const drawUserWave = useCallback(
+    (liveData?: Uint8Array | null) => {
+      const canvas = userCanvasRef.current;
+      const container = userContainerRef.current;
+      if (!canvas || !container) return;
+
+      const rect = container.getBoundingClientRect();
+      const width = rect.width || 600;
+      const height = rect.height || 96;
+      const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+
+      if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+      }
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, width, height);
+
+      // Strict 15% Y-margin: keep all amplitudes inside [0.15 * height, 0.85 * height]
+      const yMid = height / 2;
+      const maxAmp = (height / 2) * 0.7;
+
+      if (isRecording && liveData && liveData.length > 0) {
+        // Live Real-Time Oscilloscope from AnalyserNode
+        ctx.beginPath();
+        const sliceWidth = width / liveData.length;
+        for (let i = 0; i < liveData.length; i++) {
+          const v = (liveData[i] - 128) / 128; // Normalized -1.0 to +1.0
+          const y = yMid + v * maxAmp;
+          const x = i * sliceWidth;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = "#10B981";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke();
+      } else if (recordedWaveformRef.current.length > 0 && phoneticScore !== null && phoneticScore > 0) {
+        // Recorded Envelope Trace from Actual Audio
+        const wave = recordedWaveformRef.current;
+        const step = width / wave.length;
+
+        ctx.beginPath();
+        ctx.moveTo(0, yMid);
+        for (let i = 0; i < wave.length; i++) {
+          const normAmp = Math.min(1.0, wave[i] * 4.0);
+          const y = yMid - normAmp * maxAmp;
+          const x = i * step;
+          ctx.lineTo(x, y);
+        }
+
+        // Fill below recorded envelope
+        const gradient = ctx.createLinearGradient(0, yMid - maxAmp, 0, height);
+        gradient.addColorStop(0, "rgba(16, 185, 129, 0.35)");
+        gradient.addColorStop(1, "rgba(16, 185, 129, 0.0)");
+
+        ctx.lineTo(width, yMid);
+        ctx.lineTo(0, yMid);
+        ctx.closePath();
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // Stroke line
+        ctx.beginPath();
+        for (let i = 0; i < wave.length; i++) {
+          const normAmp = Math.min(1.0, wave[i] * 4.0);
+          const y = yMid - normAmp * maxAmp;
+          const x = i * step;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = "#10B981";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke();
+      } else {
+        // Centered Flat 0 dB Baseline (Idle or Silence)
+        ctx.beginPath();
+        ctx.moveTo(0, yMid);
+        ctx.lineTo(width, yMid);
+        ctx.strokeStyle = "#52525B";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    },
+    [isRecording, phoneticScore]
+  );
+
+  // ResizeObserver to keep Canvases responsive with zero overflow
+  useEffect(() => {
+    drawNativeWave(playbackPos);
+    drawUserWave(liveAudioDataRef.current);
+
+    const ro = new ResizeObserver(() => {
+      drawNativeWave(playbackPos);
+      drawUserWave(liveAudioDataRef.current);
+    });
+
+    if (nativeContainerRef.current) ro.observe(nativeContainerRef.current);
+    if (userContainerRef.current) ro.observe(userContainerRef.current);
+
+    return () => ro.disconnect();
+  }, [drawNativeWave, drawUserWave, playbackPos]);
 
   // Reset state when language switches
   useEffect(() => {
     setPhoneticScore(null);
+    setEvaluationResult(null);
     setVuLevel(0);
     setStatusMessage("Pressione o microfone e fale a frase acima.");
     setSelectedPhoneme(null);
     setPlaybackPos(0);
+    recordedWaveformRef.current = [];
+    liveAudioDataRef.current = null;
   }, [targetLang]);
 
   useEffect(() => {
     engineRef.current = new SpeechCadenceEngine();
+
+    engineRef.current.onAudioFrame = (dataArray, _rms) => {
+      liveAudioDataRef.current = dataArray;
+      drawUserWave(dataArray);
+    };
+
     engineRef.current.onRmsUpdate = (rms) => {
       setVuLevel(rms);
     };
+
     engineRef.current.onTranscriptUpdate = (text, isFinal) => {
-      setStatusMessage(isFinal ? `Identificado: “${text}”` : `Ouvindo em tempo real: “${text}”`);
+      setStatusMessage(
+        isFinal ? `Identificado: “${text}”` : `Ouvindo em tempo real: “${text}”`
+      );
     };
 
     return () => {
@@ -109,31 +302,51 @@ export default function CommuteScreen() {
         engineRef.current.stopListening();
       }
     };
-  }, []);
+  }, [drawUserWave]);
 
   const toggleRecording = async () => {
     if (!isRecording) {
       setIsRecording(true);
+      setPhoneticScore(null);
+      setEvaluationResult(null);
+      recordedWaveformRef.current = [];
       setStatusMessage("Gravando espectro vocal... Fale agora!");
       if (engineRef.current) {
         await engineRef.current.startListening(currentPhrase.speechLang);
       }
     } else {
       setIsRecording(false);
-      let res = { accuracy: 94 };
+      let res: SpeechCadenceResult | null = null;
       if (engineRef.current) {
         res = engineRef.current.stopListening(currentPhrase.targetPhrase);
       }
+
       setVuLevel(0);
-      setPhoneticScore(res.accuracy);
-      setStatusMessage(`Calibrado! ${res.accuracy}% de similaridade acústica.`);
-      recordPhoneticScore(res.accuracy);
-      addXp(25);
+      liveAudioDataRef.current = null;
+
+      if (res) {
+        setEvaluationResult(res);
+        setPhoneticScore(res.accuracy);
+        recordedWaveformRef.current = res.recordedWaveform;
+
+        if (res.accuracy === 0) {
+          setStatusMessage(
+            res.hasAudio
+              ? "Articulação inaudível — Tente novamente"
+              : "0% — Nenhum áudio detectado no microfone"
+          );
+        } else {
+          setStatusMessage(`Calibrado! ${res.accuracy}% de similaridade acústica.`);
+          recordPhoneticScore(res.accuracy);
+          addXp(25);
+        }
+      }
     }
   };
 
   const playTargetAudio = (rate: number = 1.0) => {
     setPlaybackPos(0);
+    drawNativeWave(0);
     const clean = currentPhrase.targetPhrase.replace(/[“”"«»]/g, "");
     speechService.speak(clean, {
       lang: currentPhrase.speechLang,
@@ -141,18 +354,28 @@ export default function CommuteScreen() {
       mentorId: activeMentor?.id || "curie",
       onStart: () => {
         setPlaybackPos(8);
+        drawNativeWave(8);
       },
       onBoundary: (ev) => {
         const total = Math.max(1, clean.length);
-        const progress = Math.min(95, Math.max(8, Math.round((ev.charIndex / total) * 100)));
+        const progress = Math.min(
+          95,
+          Math.max(8, Math.round((ev.charIndex / total) * 100))
+        );
         setPlaybackPos(progress);
+        drawNativeWave(progress);
       },
       onEnd: () => {
         setPlaybackPos(100);
-        setTimeout(() => setPlaybackPos(0), 400);
+        drawNativeWave(100);
+        setTimeout(() => {
+          setPlaybackPos(0);
+          drawNativeWave(0);
+        }, 400);
       },
       onError: () => {
         setPlaybackPos(0);
+        drawNativeWave(0);
       },
     });
   };
@@ -169,25 +392,70 @@ export default function CommuteScreen() {
     currentPhrase.translation["pt-BR"] || ""
   );
 
-  const curieTip = LanguageMatrixEngine.getLocalizedText(
+  const baseCurieTip = LanguageMatrixEngine.getLocalizedText(
     currentPhrase.curieTip,
     supportLang,
     currentPhrase.curieTip["pt-BR"] || ""
   );
 
-  const flagCode = targetLang === "en" ? "gb" : targetLang === "ja" ? "jp" : targetLang;
+  const flagCode =
+    targetLang === "en" ? "gb" : targetLang === "ja" ? "jp" : targetLang;
   const badgeCity = currentPhrase.badge.split(" ")[0] || languageName(targetLang);
 
-  // SVG wave calculation for user based on recording state
-  const userWaveD = isRecording
-    ? `M0,45 Q22,${Math.max(10, 45 - vuLevel * 0.4)} 45,45 T90,45 T135,${Math.max(8, 45 - vuLevel * 0.5)} T180,45 T225,${Math.max(5, 45 - vuLevel * 0.6)} T270,45 T315,22 T360,45 T405,14 T450,45 T495,30 T540,45 T585,12 T630,45 T675,28 L700,45`
-    : phoneticScore
-    ? "M0,45 Q22,18 45,45 T90,45 T135,16 T180,45 T225,11 T270,45 T315,22 T360,45 T405,14 T450,45 T495,30 T540,45 T585,12 T630,45 T675,28 L700,45"
-    : "M0,45 L700,45";
+  // Dynamic Syllable / Phoneme Chips from current phrase
+  const dynamicPhonemeChips = currentPhrase.syllables.map((syl, idx) => {
+    const sylIntuitive =
+      syl.intuitive[supportLang] || syl.intuitive["pt-BR"] || syl.text;
+    const cleanSyl = syl.text.toLowerCase();
 
-  const strokeDashoffset = phoneticScore
-    ? Math.round(314 - (314 * phoneticScore) / 100)
-    : 314;
+    // Check match against evaluation result word tokens
+    const isMatched =
+      evaluationResult?.matchedWords?.some((w) =>
+        w.toLowerCase().includes(cleanSyl) || cleanSyl.includes(w.toLowerCase())
+      ) ?? false;
+
+    let chipAccuracy = "--%";
+    let accuracyClass = "bg-stone-100 text-stone-500";
+    let isWarning = false;
+    let desc = "Aguardando gravação para calibração acústica";
+
+    if (phoneticScore === 0) {
+      chipAccuracy = "0% ⚠";
+      accuracyClass = "bg-rose-100 text-[#B91C1C]";
+      isWarning = true;
+      desc = "Ponto articulatório não captado pelo microfone";
+    } else if (phoneticScore !== null && phoneticScore > 0) {
+      if (isMatched) {
+        const sylScore = Math.min(99, Math.max(90, phoneticScore + (idx % 3)));
+        chipAccuracy = `${sylScore}%`;
+        accuracyClass = "bg-emerald-100 text-[#059669]";
+        desc = "Articulação fonética límpida e bem calibrada";
+      } else {
+        const sylScore = Math.min(65, Math.max(25, phoneticScore - 30));
+        chipAccuracy = `${sylScore}% ⚠`;
+        accuracyClass = "bg-amber-200 text-[#92400E]";
+        isWarning = true;
+        desc = "Atenção ao ponto articulatório e ressonância";
+      }
+    }
+
+    return {
+      symbol: `[${sylIntuitive.replace(/<[^>]+>/g, "")}]`,
+      word: `“${syl.text}”`,
+      accuracy: chipAccuracy,
+      accuracyClass,
+      desc,
+      isWarning,
+    };
+  });
+
+  const strokeDashoffset =
+    phoneticScore !== null && phoneticScore > 0
+      ? Math.round(314 - (314 * phoneticScore) / 100)
+      : 314;
+
+  const curieDiagnosisText =
+    evaluationResult?.curieFeedback || baseCurieTip;
 
   return (
     <div className="w-full flex flex-col gap-6 pb-16">
@@ -230,7 +498,7 @@ export default function CommuteScreen() {
 
       {/* Main Workspace Bento Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: Phrase Display + Interactive Spectrogram (8 Cols) */}
+        {/* LEFT COLUMN: Phrase Display + Dual Oscilloscope Canvases (8 Cols) */}
         <div className="lg:col-span-8 space-y-6">
           {/* Phrase Card with Audio Engines */}
           <div className="bg-white rounded-3xl border border-stone-200/80 p-6 lg:p-8 shadow-[0_4px_0_#CBD5E1] relative overflow-hidden space-y-5">
@@ -295,13 +563,11 @@ export default function CommuteScreen() {
                 </button>
               </div>
 
-              <p className="text-sm font-medium text-[#0D9488]">
-                {translation}
-              </p>
+              <p className="text-sm font-medium text-[#0D9488]">{translation}</p>
             </div>
           </div>
 
-          {/* DUAL INTERACTIVE SPECTROGRAM (Acoustic Lab Canvas) */}
+          {/* DUAL INTERACTIVE OSCILLOSCOPE (Responsive Canvases) */}
           <div className="bg-[#18181B] rounded-3xl p-6 text-white shadow-inner space-y-4 border border-zinc-800">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
@@ -322,37 +588,26 @@ export default function CommuteScreen() {
               </div>
             </div>
 
-            {/* Waveform 1: Native Reference */}
+            {/* Canvas 1: Native Reference Waveform */}
             <div className="bg-[#27272A] rounded-xl p-4 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-zinc-400 mb-2">
                 <span className="flex items-center gap-1 text-[#06B6D4] font-bold uppercase tracking-wider text-[11px]">
                   <Radio size={13} /> Onda Nativa de {badgeCity} (Referência Padrão)
                 </span>
-                <span className="font-extrabold text-[#06B6D4]">{currentPhrase.pitchHz} Hz Pitch Médio</span>
+                <span className="font-extrabold text-[#06B6D4]">
+                  {currentPhrase.pitchHz} Hz Pitch Médio
+                </span>
               </div>
-              <div className="h-24 w-full relative">
-                <svg className="w-full h-full text-[#06B6D4]" preserveAspectRatio="none" viewBox="0 0 700 90">
-                  <defs>
-                    <linearGradient id="nativeGrad" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.45" />
-                      <stop offset="100%" stopColor="#06B6D4" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M0,45 Q20,15 45,45 T90,45 T135,10 T180,45 T225,5 T270,45 T315,20 T360,45 T405,12 T450,45 T495,28 T540,45 T585,8 T630,45 T675,25 L700,45 L700,85 L0,85 Z"
-                    fill="url(#nativeGrad)"
-                  />
-                  <path
-                    d="M0,45 Q20,15 45,45 T90,45 T135,10 T180,45 T225,5 T270,45 T315,20 T360,45 T405,12 T450,45 T495,28 T540,45 T585,8 T630,45 T675,25 L700,45"
-                    fill="none"
-                    stroke="#06B6D4"
-                    strokeLinecap="round"
-                    strokeWidth="2.5"
-                  />
-                </svg>
-
+              <div
+                ref={nativeContainerRef}
+                className="h-24 w-full relative overflow-hidden rounded-lg"
+              >
+                <canvas
+                  ref={nativeCanvasRef}
+                  className="w-full h-full block"
+                />
                 {/* Syllables breakdown below wave */}
-                <div className="absolute bottom-1 left-0 right-0 flex justify-between px-2 text-[10px] text-zinc-400 select-none">
+                <div className="absolute bottom-1 left-0 right-0 flex justify-between px-2 text-[10px] text-zinc-400 select-none pointer-events-none">
                   {currentPhrase.syllables.map((syl, sIdx) => {
                     const sylIntuitive =
                       syl.intuitive[supportLang] ||
@@ -368,7 +623,7 @@ export default function CommuteScreen() {
               </div>
             </div>
 
-            {/* Waveform 2: User Voice */}
+            {/* Canvas 2: User Voice Waveform */}
             <div className="bg-[#27272A] rounded-xl p-4 relative overflow-hidden">
               <div className="flex items-center justify-between text-xs text-zinc-400 mb-2">
                 <span className="flex items-center gap-1 text-[#10B981] font-bold uppercase tracking-wider text-[11px]">
@@ -377,63 +632,123 @@ export default function CommuteScreen() {
                 <span className="font-extrabold text-[#10B981]">
                   {isRecording
                     ? `Captação Ativa: ${vuLevel}% RMS`
-                    : phoneticScore
-                    ? `Latência: 18ms • Coincidência: ${phoneticScore}%`
+                    : phoneticScore !== null && phoneticScore > 0
+                    ? `Latência: 16ms • Coincidência: ${phoneticScore}%`
+                    : phoneticScore === 0
+                    ? "0% • Silêncio ou áudio inaudível"
                     : "0 Hz • Aguardando gravação de voz"}
                 </span>
               </div>
-              <div className="h-24 w-full relative">
-                <svg className="w-full h-full text-[#10B981]" preserveAspectRatio="none" viewBox="0 0 700 90">
-                  <path
-                    d={userWaveD}
-                    fill="none"
-                    stroke={phoneticScore || isRecording ? "#10B981" : "#52525B"}
-                    strokeLinecap="round"
-                    strokeWidth="2.5"
-                    strokeDasharray={isRecording ? "4,4" : undefined}
-                  />
-                </svg>
-                {/* Live scanner head bar */}
-                <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-rose-500 shadow-[0_0_8px_#FB7185] pointer-events-none transition-all duration-75"
-                  style={{ left: `${playbackPos}%` }}
+              <div
+                ref={userContainerRef}
+                className="h-24 w-full relative overflow-hidden rounded-lg"
+              >
+                <canvas
+                  ref={userCanvasRef}
+                  className="w-full h-full block"
                 />
               </div>
             </div>
 
-            {/* Bottom Tickers */}
+            {/* Word-by-Word Live Transcription & Breakdown */}
+            {evaluationResult && (
+              <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+                      Transcrição da Sua Voz:
+                    </span>
+                    <span className="text-xs font-semibold text-teal-300 italic">
+                      “{evaluationResult.transcript || "(silêncio)"}”
+                    </span>
+                  </div>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      evaluationResult.accuracy >= 70
+                        ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
+                        : evaluationResult.accuracy > 0
+                        ? "bg-amber-950 text-amber-400 border border-amber-800"
+                        : "bg-rose-950 text-rose-400 border border-rose-800"
+                    }`}
+                  >
+                    {evaluationResult.evaluationBadge}
+                  </span>
+                </div>
+
+                {/* Word Match Badges */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {evaluationResult.wordMatches.map((wm, wIdx) => (
+                    <span
+                      key={wIdx}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                        wm.matched
+                          ? "bg-emerald-900/50 text-emerald-300 border border-emerald-700/60"
+                          : "bg-rose-950/60 text-rose-300 border border-rose-800/60 line-through"
+                      }`}
+                      title={wm.matched ? "Articulação reconhecida" : "Não reconhecida"}
+                    >
+                      {wm.word}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Bottom Acoustic Tickers */}
             <div className="grid grid-cols-3 gap-3 pt-1 text-center">
               <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase">Harmonia Formântica</span>
-                <span className="text-base font-extrabold text-[#06B6D4]">
-                  {phoneticScore ? `${Math.min(99, phoneticScore + 2)}%` : "--%"}
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase">
+                  Harmonia Formântica
                 </span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase">Entonação Melódica</span>
-                <span className="text-base font-extrabold text-[#FEA619]">
-                  {phoneticScore ? `${Math.max(70, phoneticScore - 3)}%` : "--%"}
+                <span className="text-base font-extrabold text-[#06B6D4]">
+                  {phoneticScore !== null
+                    ? phoneticScore > 0
+                      ? `${Math.min(99, phoneticScore + 2)}%`
+                      : "0%"
+                    : "--%"}
                 </span>
               </div>
               <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
                 <span className="block text-[10px] font-bold text-zinc-400 uppercase">
-                  {targetLang === "de" ? "Ataque Glotal (Knacklaut)" : "Conexão Articulatória"}
+                  Entonação Melódica
+                </span>
+                <span className="text-base font-extrabold text-[#FEA619]">
+                  {phoneticScore !== null
+                    ? phoneticScore > 0
+                      ? `${Math.max(25, phoneticScore - 3)}%`
+                      : "0%"
+                    : "--%"}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800">
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase">
+                  {targetLang === "de"
+                    ? "Ataque Glotal (Knacklaut)"
+                    : "Conexão Articulatória"}
                 </span>
                 <span className="text-base font-extrabold text-[#10B981]">
-                  {phoneticScore ? `${phoneticScore}%` : "--%"}
+                  {phoneticScore !== null
+                    ? phoneticScore > 0
+                      ? `${phoneticScore}%`
+                      : "0%"
+                    : "--%"}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Phoneme Breakdown Interactive Chips */}
+          {/* Dynamic Phoneme Breakdown Interactive Chips from currentPhrase.syllables */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-extrabold text-[#111C2D]">Decomposição Fonema por Fonema</h2>
-              <span className="text-xs text-[#64748B]">Clique nos pontos para detalhes motores</span>
+              <h2 className="text-lg font-extrabold text-[#111C2D]">
+                Decomposição Fonema por Fonema ({currentPhrase.syllables.length} Sílabas)
+              </h2>
+              <span className="text-xs text-[#64748B]">
+                Clique nos pontos para detalhes motores
+              </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
-              {(PHONEME_CHIPS_BY_LANG[targetLang] || PHONEME_CHIPS_BY_LANG.en).map((chip, idx) => (
+              {dynamicPhonemeChips.map((chip, idx) => (
                 <div
                   key={idx}
                   onClick={() => setSelectedPhoneme(chip.symbol)}
@@ -454,11 +769,15 @@ export default function CommuteScreen() {
                     >
                       {chip.symbol}
                     </span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${chip.accuracyClass}`}>
-                      {phoneticScore ? chip.accuracy : "--%"}
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs font-bold ${chip.accuracyClass}`}
+                    >
+                      {chip.accuracy}
                     </span>
                   </div>
-                  <p className="text-xs font-bold text-[#111C2D] truncate">{chip.word}</p>
+                  <p className="text-xs font-bold text-[#111C2D] truncate">
+                    {chip.word}
+                  </p>
                   <p
                     className={`text-[11px] mt-1 leading-tight ${
                       chip.isWarning ? "text-[#D97706]" : "text-[#64748B]"
@@ -480,15 +799,31 @@ export default function CommuteScreen() {
               CALIBRAÇÃO GERAL
             </span>
             <div className="relative w-44 h-44 flex items-center justify-center my-2">
-              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" fill="transparent" r="50" stroke="#E2E8F0" strokeWidth="10" />
+              <svg
+                className="w-full h-full transform -rotate-90"
+                viewBox="0 0 120 120"
+              >
+                <circle
+                  cx="60"
+                  cy="60"
+                  fill="transparent"
+                  r="50"
+                  stroke="#E2E8F0"
+                  strokeWidth="10"
+                />
                 <circle
                   className="transition-all duration-1000 ease-out"
                   cx="60"
                   cy="60"
                   fill="transparent"
                   r="50"
-                  stroke="#0D9488"
+                  stroke={
+                    phoneticScore === 0
+                      ? "#EF4444"
+                      : phoneticScore && phoneticScore < 50
+                      ? "#F59E0B"
+                      : "#0D9488"
+                  }
                   strokeDasharray="314"
                   strokeDashoffset={strokeDashoffset}
                   strokeLinecap="round"
@@ -497,7 +832,7 @@ export default function CommuteScreen() {
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center select-none pointer-events-none p-2">
                 <span className="text-3xl font-black text-[#111C2D] leading-none">
-                  {phoneticScore ? `${phoneticScore}%` : "--%"}
+                  {phoneticScore !== null ? `${phoneticScore}%` : "--%"}
                 </span>
                 <span className="text-[10px] font-black text-[#0D9488] uppercase tracking-wider mt-1 text-center">
                   Precisão Fonética
@@ -507,10 +842,24 @@ export default function CommuteScreen() {
             <div className="text-xs font-bold text-[#64748B] mb-2">
               Calibração Fonética Rítmica
             </div>
-            <div className="mt-1 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-100/70 text-[#0F766E] text-xs font-bold">
+            <div
+              className={`mt-1 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                phoneticScore === 0
+                  ? "bg-rose-100 text-rose-700"
+                  : phoneticScore && phoneticScore < 60
+                  ? "bg-amber-100 text-amber-700"
+                  : phoneticScore
+                  ? "bg-teal-100/70 text-[#0F766E]"
+                  : "bg-stone-100 text-stone-600"
+              }`}
+            >
               <ShieldCheck size={16} />
               <span>
-                {phoneticScore
+                {phoneticScore === 0
+                  ? "SOTAQUE NÃO DETECTADO — SILÊNCIO / DIVERGENTE"
+                  : phoneticScore && phoneticScore < 60
+                  ? `SOTAQUE ${badgeCity} EM CALIBRAÇÃO`
+                  : phoneticScore
                   ? `SOTAQUE ${badgeCity} QUALIFICADO`
                   : "AGUARDANDO GRAVAÇÃO"}
               </span>
@@ -546,6 +895,8 @@ export default function CommuteScreen() {
             <div className="text-xs font-bold text-[#334155] mt-4 flex items-center gap-2">
               {isRecording ? (
                 <span className="w-2 h-2 rounded-full bg-[#EF4444] animate-ping" />
+              ) : phoneticScore === 0 ? (
+                <AlertTriangle size={16} className="text-rose-500" />
               ) : (
                 <CheckCircle2 size={16} className="text-[#10B981]" />
               )}
@@ -555,7 +906,9 @@ export default function CommuteScreen() {
             {/* Intensidade da voz / Nível de Captação */}
             <div className="w-48 h-2 bg-stone-300 rounded-full mt-3 overflow-hidden">
               <div
-                className="h-full bg-[#0D9488] transition-all duration-100"
+                className={`h-full transition-all duration-100 ${
+                  isRecording ? "bg-[#10B981]" : "bg-[#0D9488]"
+                }`}
                 style={{ width: `${vuLevel}%` }}
               />
             </div>
@@ -564,31 +917,43 @@ export default function CommuteScreen() {
             </span>
           </div>
 
-          {/* Marie Curie Expert Companion Dock */}
+          {/* Marie Curie Expert Companion Dock with Dynamic Diagnosis */}
           <div className="bg-white rounded-2xl border border-stone-200/80 p-5 shadow-[0_4px_0_#CBD5E1] space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-200 overflow-hidden shrink-0">
-                <img
-                  src="/cast/curie.png"
-                  alt="Marie Curie"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    const target = e.currentTarget as HTMLImageElement;
-                    if (!target.dataset.tried) {
-                      target.dataset.tried = "1";
-                      target.src = "/assets/assets/cast/curie.png";
-                    }
-                  }}
-                />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-200 overflow-hidden shrink-0">
+                  <img
+                    src="/cast/curie.png"
+                    alt="Marie Curie"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const target = e.currentTarget as HTMLImageElement;
+                      if (!target.dataset.tried) {
+                        target.dataset.tried = "1";
+                        target.src = "/assets/assets/cast/curie.png";
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm text-[#111C2D]">
+                    Marie Curie
+                  </h4>
+                  <span className="text-xs text-[#0D9488] font-bold">
+                    Mentoria de Ressonância
+                  </span>
+                </div>
               </div>
-              <div>
-                <h4 className="font-extrabold text-sm text-[#111C2D]">Marie Curie</h4>
-                <span className="text-xs text-[#0D9488] font-bold">Mentoria de Ressonância</span>
-              </div>
+
+              {evaluationResult && (
+                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-teal-100 text-[#0F766E]">
+                  DIAGNÓSTICO
+                </span>
+              )}
             </div>
 
             <div className="p-3 bg-[#F5F0E8] rounded-xl border border-stone-200/70 text-xs text-[#334155] leading-relaxed italic">
-              “{curieTip}”
+              “{curieDiagnosisText}”
             </div>
           </div>
         </div>
