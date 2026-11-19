@@ -123,7 +123,7 @@ export function AppShell({ children }: AppShellProps) {
             <ProsaLogo variant="full" href="/" />
           </div>
 
-          <nav className="flex flex-col gap-1.5 overflow-y-auto max-h-[calc(100vh-270px)] pr-1">
+          <nav className="flex flex-col gap-2 overflow-y-auto max-h-[calc(100vh-270px)] px-1.5 pt-1 pb-4">
             {navItems.map((item) => {
               const active =
                 item.href === "/"
@@ -136,7 +136,7 @@ export function AppShell({ children }: AppShellProps) {
                   key={item.href}
                   type="button"
                   onClick={() => router.push(item.href as Href)}
-                  className={`group flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer select-none ${
+                  className={`box-border group flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer select-none ${
                     active
                       ? "bg-[#0D9488] text-white shadow-[0_4px_0_#0F766E] translate-y-0"
                       : item.isSpecial

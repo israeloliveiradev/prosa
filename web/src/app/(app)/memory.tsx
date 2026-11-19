@@ -247,7 +247,7 @@ export default function MemoryScreen() {
         </div>
 
         {/* Level Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <div className="flex flex-wrap items-center gap-2.5 py-2">
           {[
             { id: "all", label: "Todos (128)" },
             { id: "A1", label: "Nível A1 (42)" },
@@ -263,10 +263,11 @@ export default function MemoryScreen() {
                   void tap("light");
                   setSelectedFilter(pill.id);
                 }}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer whitespace-nowrap ${active
+                className={`box-border px-3.5 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+                  active
                     ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
                     : "bg-[#F5F0E8] border border-stone-200/80 text-[#111C2D] shadow-[0_2px_0_#CBD5E1] hover:bg-stone-200/60"
-                  }`}
+                }`}
               >
                 {pill.label}
               </button>

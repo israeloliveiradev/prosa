@@ -429,50 +429,55 @@ export default function PersonaScreen() {
       </div>
 
       {/* Filter Bar & Status */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 pb-2">
+        <div className="flex flex-wrap items-center gap-2.5 py-2">
           <button
             onClick={() => setFilter("all")}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${filter === "all"
+            className={`box-border px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              filter === "all"
                 ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
                 : "bg-white text-[#475569] border border-stone-200 shadow-[0_3px_0_#CBD5E1] hover:bg-[#F5F0E8]"
-              }`}
+            }`}
           >
             Todos os Mentores (16)
           </button>
           <button
             onClick={() => setFilter("logic")}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${filter === "logic"
+            className={`box-border px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              filter === "logic"
                 ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
                 : "bg-white text-[#475569] border border-stone-200 shadow-[0_3px_0_#CBD5E1] hover:bg-[#F5F0E8]"
-              }`}
+            }`}
           >
-            Ciências Exatas &amp; Lógica
+            Ciências Exatas & Lógica
           </button>
           <button
             onClick={() => setFilter("linguistics")}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${filter === "linguistics"
+            className={`box-border px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              filter === "linguistics"
                 ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
                 : "bg-white text-[#475569] border border-stone-200 shadow-[0_3px_0_#CBD5E1] hover:bg-[#F5F0E8]"
-              }`}
+            }`}
           >
-            Linguística &amp; Fonética
+            Linguística & Fonética
           </button>
           <button
             onClick={() => setFilter("literature")}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${filter === "literature"
+            className={`box-border px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              filter === "literature"
                 ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
                 : "bg-white text-[#475569] border border-stone-200 shadow-[0_3px_0_#CBD5E1] hover:bg-[#F5F0E8]"
-              }`}
+            }`}
           >
-            Literatura &amp; Filosofia
+            Literatura & Filosofia
           </button>
           <button
             onClick={() => setFilter("active")}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${filter === "active"
+            className={`box-border px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              filter === "active"
                 ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
                 : "bg-white text-[#475569] border border-stone-200 shadow-[0_3px_0_#CBD5E1] hover:bg-[#F5F0E8]"
-              }`}
+            }`}
           >
             <span className="w-2 h-2 rounded-full bg-[#10B981] inline-block" />
             Ativo Atualmente

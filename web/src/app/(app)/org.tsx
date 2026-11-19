@@ -401,14 +401,14 @@ export default function ShopScreen() {
       </div>
 
       {/* Filter Navigation Bar */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+      <div className="flex flex-wrap items-center gap-2.5 py-2">
         <button
           onClick={() => setFilter("all")}
           style={{ backgroundColor: filter === "all" ? "#0D9488" : "#FFFFFF" }}
-          className={`px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 ${
+          className={`box-border px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 ${
             filter === "all"
               ? "text-white shadow-[0_3px_0_#0F766E]"
-              : "text-stone-600 hover:bg-stone-50 border border-stone-200/80 shadow-sm"
+              : "text-stone-600 hover:bg-stone-50 border border-stone-200/80 shadow-[0_2px_0_#CBD5E1]"
           }`}
         >
           <span className="material-symbols-outlined text-[17px]">apps</span>
@@ -417,10 +417,10 @@ export default function ShopScreen() {
         <button
           onClick={() => setFilter("streak")}
           style={{ backgroundColor: filter === "streak" ? "#0D9488" : "#FFFFFF" }}
-          className={`px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 ${
+          className={`box-border px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 ${
             filter === "streak"
               ? "text-white shadow-[0_3px_0_#0F766E]"
-              : "text-stone-600 hover:bg-stone-50 border border-stone-200/80 shadow-sm"
+              : "text-stone-600 hover:bg-stone-50 border border-stone-200/80 shadow-[0_2px_0_#CBD5E1]"
           }`}
         >
           <span className="material-symbols-outlined text-[17px] text-[#FF5722]">local_fire_department</span>

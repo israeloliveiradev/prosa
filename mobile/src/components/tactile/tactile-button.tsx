@@ -105,10 +105,11 @@ export function TactileButton({
         whileHover={disabled ? undefined : { y: -1 }}
         whileTap={disabled ? undefined : { y: 3, boxShadow: v.activeShadow }}
         transition={{ duration: 0.08, ease: "easeInOut" }}
-        className={`flex items-center justify-center font-bold tracking-tight select-none cursor-pointer ${
+        className={`box-border flex items-center justify-center font-bold tracking-tight select-none cursor-pointer ${
           disabled ? "opacity-50 cursor-not-allowed" : ""
         } ${fullWidth ? "w-full" : ""} ${className}`}
         style={{
+          boxSizing: "border-box",
           backgroundColor: v.bg,
           boxShadow: v.shadow,
           border: v.border ? `1.5px solid ${v.border}` : "none",

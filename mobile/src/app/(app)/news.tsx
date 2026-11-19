@@ -364,7 +364,7 @@ export default function NewsScreen() {
       </header>
 
       {/* Themed Article Tabs (Classic Literature & Themed Topics) */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+      <div className="flex flex-wrap items-center gap-2.5 py-2">
         {availableArticles.map((art) => {
           const isSelected = art.id === activeArticle.id;
           return (
@@ -376,7 +376,7 @@ export default function NewsScreen() {
                 setShowTooltip(false);
                 setSavedVocab(art.savedWordsInitial.length);
               }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+              className={`box-border px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
                 isSelected
                   ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
                   : "bg-white text-stone-700 border border-stone-200 shadow-[0_2px_0_#CBD5E1] hover:bg-stone-50"
