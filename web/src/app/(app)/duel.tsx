@@ -27,6 +27,7 @@ import {
   LanguageMatrixEngine,
   type DuelQuestion,
 } from "@/services/contentService";
+import { speechService } from "@/services/speechService";
 import { languageName } from "@/lib/languages";
 
 const ELENA_AVATAR = "/cast/clara.png";
@@ -34,7 +35,7 @@ const FEYNMAN_AVATAR = "/cast/feynman.png";
 
 export default function DuelScreen() {
   const session = useSession();
-  const { addXp, userName, targetLang, supportLang, uiLang } = useProsa();
+  const { addXp, userName, targetLang, supportLang, uiLang, activeMentor } = useProsa();
 
   const questions = LanguageMatrixEngine.getDuelQuestions(targetLang);
   const speechLang = LanguageMatrixEngine.getBCP47(targetLang);
@@ -121,13 +122,12 @@ export default function DuelScreen() {
 
   const handlePronounce = () => {
     void tap("light");
-    if (Platform.OS === "web" && typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(currentQ.word);
-      utterance.lang = speechLang;
-      utterance.rate = 0.85;
-      window.speechSynthesis.speak(utterance);
-    }
+    const cleanWord = currentQ.word.replace(/[“”"«»]/g, "");
+    speechService.speak(cleanWord, {
+      lang: speechLang,
+      speed: "0.8x",
+      mentorId: activeMentor?.id || "feynman",
+    });
   };
 
   const handleFreeze = () => {

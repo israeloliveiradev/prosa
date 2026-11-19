@@ -10,6 +10,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { useProsa, type Mentor } from "@/context/prosa-context";
+import { speechService } from "@/services/speechService";
 
 interface PolymathData {
   id: string;
@@ -315,13 +316,11 @@ export default function PersonaScreen() {
   };
 
   const handlePlayVoice = (polymath: PolymathData) => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(polymath.voiceSample);
-      utterance.lang = "pt-BR";
-      utterance.rate = 0.95;
-      window.speechSynthesis.speak(utterance);
-    }
+    speechService.speak(polymath.voiceSample, {
+      lang: "pt-BR",
+      speed: "1.0x",
+      mentorId: polymath.id,
+    });
     setToastMessage(`Reproduzindo voz sintética de ${polymath.name}...`);
     setTimeout(() => setToastMessage(null), 3000);
   };
@@ -408,12 +407,11 @@ export default function PersonaScreen() {
             </div>
             <button
               onClick={() => {
-                if (typeof window !== "undefined" && "speechSynthesis" in window) {
-                  window.speechSynthesis.cancel();
-                  const utterance = new SpeechSynthesisUtterance(activeMentor.quote);
-                  utterance.lang = "pt-BR";
-                  window.speechSynthesis.speak(utterance);
-                }
+                speechService.speak(activeMentor.quote, {
+                  lang: "pt-BR",
+                  speed: "1.0x",
+                  mentorId: activeMentor.id,
+                });
                 setToastMessage(`Ouvindo reflexão diária de ${activeMentor.name}...`);
                 setTimeout(() => setToastMessage(null), 3000);
               }}

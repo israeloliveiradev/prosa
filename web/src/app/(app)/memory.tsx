@@ -5,6 +5,8 @@ import { TactileCard } from "@/components/tactile/tactile-card";
 import { TactileButton } from "@/components/tactile/tactile-button";
 import { useProsa } from "@/context/prosa-context";
 import { tap } from "@/lib/haptics";
+import { speechService } from "@/services/speechService";
+import { LanguageMatrixEngine } from "@/services/contentService";
 import {
   Brain,
   Sparkles,
@@ -179,7 +181,7 @@ const CRITICAL_MNEMONICS: Record<string, MnemonicCard[]> = {
 };
 
 export default function MemoryScreen() {
-  const { addXp, targetLang } = useProsa();
+  const { addXp, targetLang, activeMentor } = useProsa();
   const [selectedFilter, setSelectedFilter] = useState("TODOS");
   const [searchTerm, setSearchTerm] = useState("");
   const [exportNotification, setExportNotification] = useState<string | null>(null);
@@ -190,13 +192,12 @@ export default function MemoryScreen() {
 
   const handlePronounce = (word: string) => {
     void tap("light");
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(word);
-      utterance.lang = langKey === "de" ? "de-DE" : "en-US";
-      utterance.rate = 0.85;
-      window.speechSynthesis.speak(utterance);
-    }
+    const speechLang = LanguageMatrixEngine.getBCP47(targetLang);
+    speechService.speak(word, {
+      lang: speechLang,
+      speed: "0.8x",
+      mentorId: activeMentor?.id || "curie",
+    });
   };
 
   const handleExportDeck = () => {

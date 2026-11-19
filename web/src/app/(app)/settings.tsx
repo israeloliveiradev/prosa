@@ -1,13 +1,18 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "expo-router";
 import { useProsa } from "@/context/prosa-context";
 import { signOut } from "@/lib/session";
 import { resetJourney } from "@/lib/journey";
+import {
+  speechService,
+  type VoiceEngineStatus,
+  type VoiceEngineMode,
+} from "@/services/speechService";
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { isPro, setIsPro, resetProgress } = useProsa();
+  const { isPro, setIsPro, resetProgress, targetLang, activeMentor } = useProsa();
   const [activeTab, setActiveTab] = useState<"audio" | "rhythm" | "subscription" | "data">("audio");
 
   // Audio calibration states
@@ -17,6 +22,80 @@ export default function SettingsScreen() {
   const [liveAudioLevel, setLiveAudioLevel] = useState(0);
   const [speechSpeed, setSpeechSpeed] = useState<"0.8x" | "1.0x" | "1.2x">("1.0x");
   const [voiceEngine, setVoiceEngine] = useState("Hamburgo Neural Ultra-HD (128kbps)");
+
+  // Hybrid Multi-Engine Speech State
+  const [voiceEngineStatus, setVoiceEngineStatus] = useState<VoiceEngineStatus>(() =>
+    speechService.getStatus()
+  );
+  const [isDownloadingModels, setIsDownloadingModels] = useState(false);
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
+
+  useEffect(() => {
+    const unsub = speechService.subscribe((status) => {
+      setVoiceEngineStatus(status);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleSelectEngineMode = (mode: VoiceEngineMode) => {
+    speechService.setEngineMode(mode);
+    triggerToast(
+      mode === "hybrid"
+        ? "Estúdio IA Híbrido ativado (Kokoro-82M + Piper TTS Local)"
+        : "Nativo Rápido ativado (Web Speech Neural — 0 MB)"
+    );
+  };
+
+  const handleDownloadModels = async () => {
+    setIsDownloadingModels(true);
+    try {
+      await speechService.downloadModels();
+      triggerToast("Modelos Neurais baixados com sucesso (70 MB em cache local)!");
+    } catch {
+      triggerToast("Erro ao baixar modelos neurais.");
+    } finally {
+      setIsDownloadingModels(false);
+    }
+  };
+
+  const handleClearVoiceCache = () => {
+    speechService.clearCache();
+    triggerToast("Cache de modelos locais foi limpo (0 MB).");
+  };
+
+  const handleTestVoiceSynthesis = async () => {
+    setIsTestingVoice(true);
+    const samplePhrases: Record<string, string> = {
+      de: "Die Gedanken sind frei und fliegen wie der Wind.",
+      en: "Knowledge speaks, but wisdom listens attentively.",
+      fr: "Le temps est un grand maître, il règle bien des choses.",
+      es: "El camino se hace al andar con paciencia y constancia.",
+      it: "Chi va piano va sano e va lontano nel tempo.",
+      ja: "千里の道も一歩から始まります。",
+      pt: "A persistência realiza o impossível em cada jornada.",
+    };
+
+    const speechLangMap: Record<string, string> = {
+      de: "de-DE",
+      en: "en-US",
+      fr: "fr-FR",
+      es: "es-ES",
+      it: "it-IT",
+      ja: "ja-JP",
+      pt: "pt-BR",
+    };
+
+    const phrase = samplePhrases[targetLang] || samplePhrases.en;
+    const lang = speechLangMap[targetLang] || "en-US";
+
+    await speechService.speak(phrase, {
+      lang,
+      speed: speechSpeed,
+      mentorId: activeMentor?.id || "einstein",
+      onEnd: () => setIsTestingVoice(false),
+      onError: () => setIsTestingVoice(false),
+    });
+  };
 
   // Daily goal state
   const [dailyGoal, setDailyGoal] = useState<10 | 20 | 30>(20);
@@ -251,6 +330,7 @@ export default function SettingsScreen() {
 
       {/* SECTION 1: Calibração de Áudio & Reconhecimento de Voz */}
       {activeTab === "audio" && (
+      <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-stone-200/80 p-6 md:p-8 shadow-sm space-y-6">
         <div className="flex items-center justify-between pb-2 border-b border-stone-100">
           <div className="flex items-center gap-3">
@@ -381,31 +461,198 @@ export default function SettingsScreen() {
             </div>
 
             <div className="space-y-1.5 pt-2">
-              <label className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-base text-purple-700">neurology</span>
-                Motor de Síntese de Voz &amp; Timbre
+              <label className="text-xs font-bold text-stone-900 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-base text-purple-700">neurology</span>
+                  Perfil Acústico do Mentor Ativo
+                </span>
+                <span className="text-[10px] font-bold text-purple-700 uppercase">{activeMentor?.name || "Einstein"}</span>
               </label>
-              <div className="relative">
-                <select
-                  value={voiceEngine}
-                  onChange={(e) => {
-                    setVoiceEngine(e.target.value);
-                    triggerToast("Motor de síntese atualizado");
-                  }}
-                  className="w-full bg-[#F5F0E8] text-stone-800 text-xs font-medium py-3 px-4 pr-10 rounded-xl border border-stone-200 appearance-none focus:outline-none focus:ring-2 focus:ring-teal-600 cursor-pointer"
-                >
-                  <option>Hamburgo Neural Ultra-HD (128kbps)</option>
-                  <option>Berlim Dialeto Standard (96kbps - Baixa Latência)</option>
-                  <option>Munique Clássico Goethe (Modelagem Histórica)</option>
-                  <option>Viena Studio Acústico (Alta Fidelidade)</option>
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                  <span className="material-symbols-outlined text-lg">expand_more</span>
+              <div className="p-3 bg-[#F5F0E8] rounded-xl border border-stone-200 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-bold text-stone-900 block">{activeMentor?.name || "Albert Einstein"}</span>
+                  <span className="text-[11px] text-stone-500">
+                    {activeMentor?.id === "feynman"
+                      ? "Cadência viva, enérgica e assertiva"
+                      : activeMentor?.id === "curie"
+                      ? "Articulação límpida, ressonância e precisão"
+                      : "Cadência reflexiva, pausas didáticas e tom ponderado"}
+                  </span>
                 </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-white text-stone-700 border border-stone-200">
+                  {voiceEngineStatus.mode === "hybrid" ? "Kokoro 82M" : "Web Neural"}
+                </span>
               </div>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* SECTION 1.2: Motor de Voz & Síntese Neural */}
+      <div className="bg-white rounded-2xl border border-stone-200/80 p-6 md:p-8 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-stone-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100">
+              <span className="material-symbols-outlined text-2xl">neurology</span>
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-stone-900">
+                Motor de Voz &amp; Síntese Neural
+              </h3>
+              <p className="text-xs text-stone-500">
+                Escolha a arquitetura de síntese para a leitura, análise de ritmo e ditados dos mentores
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="px-3 py-1 bg-emerald-50 text-emerald-800 font-bold text-xs rounded-full border border-emerald-200 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Zero Custo de Servidor (100% Local)
+            </span>
+          </div>
+        </div>
+
+        {/* Engine Selection Radios / Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Engine Option 1: Nativo Rápido */}
+          <div
+            onClick={() => handleSelectEngineMode("instant")}
+            className={`p-5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+              voiceEngineStatus.mode === "instant"
+                ? "bg-teal-50/60 border-teal-500 shadow-[0_4px_0_#0F766E] ring-1 ring-teal-500"
+                : "bg-[#FDFBF7] border-stone-200 hover:border-stone-300 shadow-sm"
+            }`}
+          >
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-teal-700 text-xl">bolt</span>
+                  <h4 className="text-sm font-bold text-stone-900">Nativo Rápido</h4>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-stone-100 text-stone-600 border border-stone-200">
+                  Web Speech Neural • 0 MB
+                </span>
+              </div>
+              <p className="text-xs text-stone-600 leading-relaxed">
+                Web Speech API neural de ultrabaixa latência integrada ao navegador. Resposta instantânea sem download de modelos adicionais.
+              </p>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-stone-200/60 flex items-center justify-between text-xs">
+              <span className="text-[11px] font-semibold text-teal-800">
+                {voiceEngineStatus.mode === "instant" ? "● Modo Ativo Padrão" : "Selecionar"}
+              </span>
+              <span className="text-[10px] text-stone-500 font-mono">0 MB Download</span>
+            </div>
+          </div>
+
+          {/* Engine Option 2: Estúdio IA Híbrido */}
+          <div
+            onClick={() => handleSelectEngineMode("hybrid")}
+            className={`p-5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+              voiceEngineStatus.mode === "hybrid"
+                ? "bg-purple-50/60 border-purple-500 shadow-[0_4px_0_#6B21A8] ring-1 ring-purple-500"
+                : "bg-[#FDFBF7] border-stone-200 hover:border-stone-300 shadow-sm"
+            }`}
+          >
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-purple-700 text-xl">psychology</span>
+                  <h4 className="text-sm font-bold text-stone-900">Estúdio IA Híbrido</h4>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                  Kokoro-82M + Piper ONNX
+                </span>
+              </div>
+              <p className="text-xs text-stone-600 leading-relaxed">
+                Modelos neurais de 82M parâmetros executados no dispositivo via WebGPU/WASM. Fidelidade de estúdio com fallback transparente.
+              </p>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-stone-200/60 flex items-center justify-between text-xs">
+              <span className="text-[11px] font-semibold text-purple-800">
+                {voiceEngineStatus.mode === "hybrid" ? "● Modo Ativo" : "Selecionar"}
+              </span>
+              <span className="text-[10px] text-stone-500 font-mono">
+                {voiceEngineStatus.isKokoroReady ? "70 MB em Cache" : "Download Opcional"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Model Cache, Progress & Test Bar */}
+        <div className="bg-[#F8F6F0] rounded-xl border border-stone-200 p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base text-stone-700">inventory_2</span>
+                Status dos Modelos Neurais Locais
+              </span>
+              <p className="text-[11px] text-stone-500 mt-0.5">{voiceEngineStatus.downloadStatus}</p>
+            </div>
+            <span className="text-xs font-bold font-mono text-stone-700">
+              {voiceEngineStatus.downloadProgress}%
+            </span>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full bg-stone-200 h-2.5 rounded-full overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-teal-600 via-purple-600 to-emerald-500 h-full transition-all duration-300"
+              style={{ width: `${voiceEngineStatus.downloadProgress}%` }}
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={handleDownloadModels}
+              disabled={isDownloadingModels}
+              className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-[0_2px_0_#0F766E] disabled:opacity-50 flex items-center gap-2 cursor-pointer transition-all"
+            >
+              <span className="material-symbols-outlined text-sm">
+                {isDownloadingModels ? "hourglass_top" : "download_for_offline"}
+              </span>
+              <span>
+                {isDownloadingModels
+                  ? "Baixando Modelos..."
+                  : voiceEngineStatus.isKokoroReady
+                  ? "Atualizar Modelos (70 MB)"
+                  : "Pré-baixar Modelos de Voz (70 MB)"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClearVoiceCache}
+              className="px-4 py-2 rounded-xl bg-white border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+            >
+              <span className="material-symbols-outlined text-sm text-stone-500">delete_outline</span>
+              <span>Limpar Cache de Vozes</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleTestVoiceSynthesis}
+              disabled={isTestingVoice}
+              className={`ml-auto px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
+                isTestingVoice
+                  ? "bg-[#FF5722] text-white shadow-sm animate-pulse"
+                  : "bg-[#0D9488] text-white hover:opacity-95 shadow-[0_2px_0_#0F766E]"
+              }`}
+            >
+              <span className="material-symbols-outlined text-sm">
+                {isTestingVoice ? "graphic_eq" : "volume_up"}
+              </span>
+              <span>
+                {isTestingVoice ? "Sintetizando Voz..." : `Ouvir Teste (${activeMentor?.name || "Einstein"})`}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
       </div>
       )}
 

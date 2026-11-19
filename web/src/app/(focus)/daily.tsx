@@ -39,6 +39,7 @@ import {
   LanguageMatrixEngine,
   type CardItem,
 } from "@/services/contentService";
+import { speechService } from "@/services/speechService";
 
 export default function DailyRoute() {
   const router = useRouter();
@@ -148,20 +149,21 @@ export default function DailyRoute() {
       void tap("medium");
       setIsPlayingAudio(true);
       setHasPlayedAudio(true);
-      if (Platform.OS === "web" && typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-        const cleanText = currentCard.targetPhrase.replace(/[“”"]/g, "");
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.lang = speechLang;
-        const speedRate =
-          customSpeed ||
-          (audioSpeed === "0.8x" ? 0.75 : audioSpeed === "1.2x" ? 1.15 : 0.95);
-        utterance.rate = speedRate;
-        window.speechSynthesis.speak(utterance);
-      }
-      setTimeout(() => setIsPlayingAudio(false), 2400);
+
+      const speedRate =
+        customSpeed ||
+        (audioSpeed === "0.8x" ? 0.75 : audioSpeed === "1.2x" ? 1.15 : 1.0);
+
+      speechService.speak(currentCard.targetPhrase, {
+        lang: speechLang,
+        speed: speedRate,
+        mentorId: activeMentor?.id || "einstein",
+        onStart: () => setIsPlayingAudio(true),
+        onEnd: () => setIsPlayingAudio(false),
+        onError: () => setIsPlayingAudio(false),
+      });
     },
-    [currentCard.targetPhrase, audioSpeed, speechLang]
+    [currentCard.targetPhrase, audioSpeed, speechLang, activeMentor?.id]
   );
 
   const triggerToast = (text: string, xpGain = 10) => {

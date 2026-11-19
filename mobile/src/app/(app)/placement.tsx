@@ -5,6 +5,8 @@ import { TactileCard } from "@/components/tactile/tactile-card";
 import { TactileButton } from "@/components/tactile/tactile-button";
 import { useProsa } from "@/context/prosa-context";
 import { tap } from "@/lib/haptics";
+import { speechService } from "@/services/speechService";
+import { LanguageMatrixEngine } from "@/services/contentService";
 import {
   ArrowLeft,
   Volume2,
@@ -93,7 +95,7 @@ const PLACEMENT_BY_LANG: Record<string, PlacementConfig> = {
 };
 
 export default function PlacementScreen() {
-  const { addXp, targetLang } = useProsa();
+  const { addXp, targetLang, activeMentor } = useProsa();
   const config = PLACEMENT_BY_LANG[targetLang && targetLang in PLACEMENT_BY_LANG ? targetLang : "en"];
   const [bankTokens, setBankTokens] = useState<WordToken[]>(config.tokens);
   const [selectedTokens, setSelectedTokens] = useState<WordToken[]>([]);
@@ -132,13 +134,16 @@ export default function PlacementScreen() {
   const handlePlayAudio = () => {
     void tap("light");
     setIsPlayingAudio(true);
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(config.leadAnchor + " " + config.expectedSentence);
-      utter.lang = targetLang === "de" ? "de-DE" : targetLang === "es" ? "es-ES" : "en-US";
-      window.speechSynthesis.speak(utter);
-    }
-    setTimeout(() => setIsPlayingAudio(false), 2400);
+    const speechLang = LanguageMatrixEngine.getBCP47(targetLang);
+    const fullPhrase = `${config.leadAnchor} ${config.expectedSentence}`.replace(/[“”"«»]/g, "");
+
+    speechService.speak(fullPhrase, {
+      lang: speechLang,
+      speed: "1.0x",
+      mentorId: activeMentor?.id || "davinci",
+      onEnd: () => setIsPlayingAudio(false),
+      onError: () => setIsPlayingAudio(false),
+    });
   };
 
   const handleVerify = () => {

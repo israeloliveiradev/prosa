@@ -19,6 +19,7 @@ import {
   LanguageMatrixEngine,
   type CommuteItem,
 } from "@/services/contentService";
+import { speechService } from "@/services/speechService";
 import { languageName } from "@/lib/languages";
 
 interface PhonemeDetail {
@@ -73,12 +74,12 @@ const PHONEME_CHIPS_BY_LANG: Record<string, PhonemeDetail[]> = {
 };
 
 export default function CommuteScreen() {
-  const { addXp, targetLang, supportLang, recordPhoneticScore } = useProsa();
+  const { addXp, targetLang, supportLang, recordPhoneticScore, activeMentor } = useProsa();
   const currentPhrase = LanguageMatrixEngine.getCommutePhrase(targetLang);
 
   const [isRecording, setIsRecording] = useState(false);
   const [vuLevel, setVuLevel] = useState(0);
-  const [playbackPos, setPlaybackPos] = useState(68);
+  const [playbackPos, setPlaybackPos] = useState(0);
   const [statusMessage, setStatusMessage] = useState("Pressione o microfone e fale a frase acima.");
   const [selectedPhoneme, setSelectedPhoneme] = useState<string | null>(null);
   const [phoneticScore, setPhoneticScore] = useState<number | null>(null);
@@ -91,13 +92,10 @@ export default function CommuteScreen() {
     setVuLevel(0);
     setStatusMessage("Pressione o microfone e fale a frase acima.");
     setSelectedPhoneme(null);
+    setPlaybackPos(0);
   }, [targetLang]);
 
   useEffect(() => {
-    const headTimer = setInterval(() => {
-      setPlaybackPos((prev) => (prev + 0.8) % 100);
-    }, 60);
-
     engineRef.current = new SpeechCadenceEngine();
     engineRef.current.onRmsUpdate = (rms) => {
       setVuLevel(rms);
@@ -107,7 +105,6 @@ export default function CommuteScreen() {
     };
 
     return () => {
-      clearInterval(headTimer);
       if (engineRef.current) {
         engineRef.current.stopListening();
       }
@@ -136,13 +133,28 @@ export default function CommuteScreen() {
   };
 
   const playTargetAudio = (rate: number = 1.0) => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(currentPhrase.targetPhrase);
-      utterance.lang = currentPhrase.speechLang;
-      utterance.rate = rate;
-      window.speechSynthesis.speak(utterance);
-    }
+    setPlaybackPos(0);
+    const clean = currentPhrase.targetPhrase.replace(/[“”"«»]/g, "");
+    speechService.speak(clean, {
+      lang: currentPhrase.speechLang,
+      speed: rate === 0.75 ? "0.75x" : "1.0x",
+      mentorId: activeMentor?.id || "curie",
+      onStart: () => {
+        setPlaybackPos(8);
+      },
+      onBoundary: (ev) => {
+        const total = Math.max(1, clean.length);
+        const progress = Math.min(95, Math.max(8, Math.round((ev.charIndex / total) * 100)));
+        setPlaybackPos(progress);
+      },
+      onEnd: () => {
+        setPlaybackPos(100);
+        setTimeout(() => setPlaybackPos(0), 400);
+      },
+      onError: () => {
+        setPlaybackPos(0);
+      },
+    });
   };
 
   const intuitive =

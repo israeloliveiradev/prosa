@@ -17,6 +17,7 @@ import {
   Telescope,
 } from "lucide-react";
 import { useProsa } from "@/context/prosa-context";
+import { speechService } from "@/services/speechService";
 
 interface WordAnnotation {
   word: string;
@@ -237,7 +238,7 @@ const ARTICLES_BY_LANG: Record<string, ArticleTrack[]> = {
 };
 
 export default function NewsScreen() {
-  const { addXp, targetLang } = useProsa();
+  const { addXp, targetLang, activeMentor } = useProsa();
   const availableArticles =
     ARTICLES_BY_LANG[targetLang && targetLang in ARTICLES_BY_LANG ? targetLang : "en"] ||
     ARTICLES_BY_LANG.en;
@@ -267,31 +268,32 @@ export default function NewsScreen() {
   };
 
   const handlePlayNarrator = () => {
-    setIsPlayingAudio(!isPlayingAudio);
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      if (!isPlayingAudio) {
-        window.speechSynthesis.cancel();
-        const fullText = activeArticle.paragraphs
-          .map((p) => `${p.dropCap || ""}${p.textBefore}${p.interactiveWord?.word || ""}${p.textAfter}`)
-          .join(" ");
-        const utterance = new SpeechSynthesisUtterance(fullText.slice(0, 300));
-        utterance.lang = activeArticle.audioLang;
-        utterance.rate = 0.95;
-        utterance.onend = () => setIsPlayingAudio(false);
-        window.speechSynthesis.speak(utterance);
-      } else {
-        window.speechSynthesis.cancel();
-      }
+    if (isPlayingAudio) {
+      speechService.stop();
+      setIsPlayingAudio(false);
+      return;
     }
+
+    setIsPlayingAudio(true);
+    const fullText = activeArticle.paragraphs
+      .map((p) => `${p.dropCap || ""}${p.textBefore}${p.interactiveWord?.word || ""}${p.textAfter}`)
+      .join(" ");
+
+    speechService.speak(fullText.slice(0, 300), {
+      lang: activeArticle.audioLang,
+      speed: "1.0x",
+      mentorId: activeMentor?.id || "einstein",
+      onEnd: () => setIsPlayingAudio(false),
+      onError: () => setIsPlayingAudio(false),
+    });
   };
 
   const playWordVoice = (word: string) => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(word);
-      utterance.lang = activeArticle.audioLang;
-      window.speechSynthesis.speak(utterance);
-    }
+    speechService.speak(word, {
+      lang: activeArticle.audioLang,
+      speed: "0.8x",
+      mentorId: activeMentor?.id || "einstein",
+    });
   };
 
   return (
