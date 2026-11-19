@@ -80,10 +80,10 @@ export function DossierScreen() {
       prev.map((c) =>
         c.id === id
           ? {
-              ...c,
-              done: !c.done,
-              dueOn: !c.done ? "Concluído" : "Pendente",
-            }
+            ...c,
+            done: !c.done,
+            dueOn: !c.done ? "Concluído" : "Pendente",
+          }
           : c
       )
     );
@@ -286,12 +286,12 @@ export function DossierScreen() {
                   {activeCourse.level === "A1"
                     ? "Iniciante Elemental no padrão europeu."
                     : activeCourse.level === "A2"
-                    ? "Básico Autônomo com estruturas cotidianas."
-                    : activeCourse.level === "B1"
-                    ? "Intermediário Prático com independência."
-                    : activeCourse.level === "B2"
-                    ? "Pronto para debates complexos e leitura canônica."
-                    : "Mestre Fluente com domínio acadêmico."}
+                      ? "Básico Autônomo com estruturas cotidianas."
+                      : activeCourse.level === "B1"
+                        ? "Intermediário Prático com independência."
+                        : activeCourse.level === "B2"
+                          ? "Pronto para debates complexos e leitura canônica."
+                          : "Mestre Fluente com domínio acadêmico."}
                 </span>
               </div>
               <div className="w-16 h-16 rounded-2xl bg-teal-600 text-white flex flex-col items-center justify-center shadow-[0_3px_0_#0F766E]">
@@ -408,11 +408,10 @@ export function DossierScreen() {
                 <div
                   key={chk.id}
                   onClick={() => toggleCheckpoint(chk.id)}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 select-none ${
-                    chk.done
-                      ? "bg-emerald-50/70 border-emerald-300 shadow-sm"
-                      : "bg-[#F5F0E8] border-stone-200/80 hover:bg-stone-200/50"
-                  }`}
+                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 select-none ${chk.done
+                    ? "bg-emerald-50/70 border-emerald-300 shadow-sm"
+                    : "bg-[#F5F0E8] border-stone-200/80 hover:bg-stone-200/50"
+                    }`}
                 >
                   <div className="pt-0.5">
                     {chk.done ? (
@@ -424,18 +423,16 @@ export function DossierScreen() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span
-                        className={`font-extrabold text-sm ${
-                          chk.done ? "line-through text-stone-500" : "text-stone-900"
-                        }`}
+                        className={`font-extrabold text-sm ${chk.done ? "line-through text-stone-500" : "text-stone-900"
+                          }`}
                       >
                         {chk.focus}
                       </span>
                       <span
-                        className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
-                          chk.done
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-white text-stone-600 border border-stone-300"
-                        }`}
+                        className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${chk.done
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-white text-stone-600 border border-stone-300"
+                          }`}
                       >
                         {chk.dueOn}
                       </span>
