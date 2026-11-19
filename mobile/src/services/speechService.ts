@@ -297,12 +297,14 @@ class SpeechService {
     mentorName: "Albert Einstein",
     lang: "en-US",
   };
+  private cachedVoices: SpeechSynthesisVoice[] = [];
 
   constructor() {
     this.initFromStorage();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      this.cachedVoices = window.speechSynthesis.getVoices() || [];
       window.speechSynthesis.onvoiceschanged = () => {
-        // Cached in browser
+        this.cachedVoices = window.speechSynthesis.getVoices() || [];
       };
     }
   }
@@ -590,7 +592,9 @@ class SpeechService {
     // 1. Kokoro-82M ONNX Runtime Execution
     if (["en", "fr", "es", "it", "ja"].includes(shortLang)) {
       try {
-        const KokoroModule = await dynamicImport("kokoro-js").catch(() => null);
+        const KokoroModule = await dynamicImport("kokoro-js")
+          .catch(() => dynamicImport("https://esm.sh/kokoro-js@1.2.1"))
+          .catch(() => null);
         if (KokoroModule && KokoroModule.KokoroTTS) {
           const voiceToken = mentorProfile.kokoroVoice[shortLang] || "am_adam";
           const tts = await KokoroModule.KokoroTTS.from_pretrained(
@@ -620,8 +624,8 @@ class SpeechService {
     } else {
       // 2. Piper TTS ONNX Runtime Execution for de-DE / pt-BR
       try {
-        const PiperModule: any = await dynamicImport("@mintplex-labs/piper-tts-web")
-          .catch(() => dynamicImport("piper-tts-web"))
+        const PiperModule: any = await dynamicImport("piper-tts-web")
+          .catch(() => dynamicImport("https://esm.sh/piper-tts-web@1.1.2"))
           .catch(() => null);
 
         if (PiperModule && (PiperModule.PiperWebEngine || PiperModule.default)) {
@@ -749,30 +753,42 @@ class SpeechService {
       let effectiveRate = speedRate * mentorProfile.rateMultiplier;
 
       if (mentorProfile.gender === "female") {
-        effectivePitch = 1.12;
+        effectivePitch = 1.18;
         effectiveRate = 0.94 * speedRate;
       } else if (mentorProfile.gender === "male_paused") {
-        effectivePitch = 0.82;
-        effectiveRate = 0.88 * speedRate;
+        effectivePitch = 0.70; // Grave profundo, solene e didático (Einstein, Goethe, Marco Aurélio)
+        effectiveRate = 0.80 * speedRate;
       } else if (mentorProfile.gender === "male_expressive") {
-        effectivePitch = 1.04;
-        effectiveRate = 1.06 * speedRate;
+        effectivePitch = 1.15; // Ágil, vivo, mais agudo e entusiasmado (Feynman, Da Vinci)
+        effectiveRate = 1.20 * speedRate;
       }
 
       utterance.pitch = Math.max(0.5, Math.min(1.8, effectivePitch));
       utterance.rate = Math.max(0.6, Math.min(1.6, effectiveRate));
 
       // 2. Intelligent Voice Segregation (Male vs Female based on mentor gender)
-      const voices = window.speechSynthesis.getVoices();
+      const rawVoices =
+        this.cachedVoices && this.cachedVoices.length > 0
+          ? this.cachedVoices
+          : (typeof window !== "undefined" && "speechSynthesis" in window
+              ? window.speechSynthesis.getVoices()
+              : []);
       let chosenVoiceName = "Voz Neural Padrão";
 
-      if (voices && voices.length > 0) {
+      if (rawVoices && rawVoices.length > 0) {
         const langPrefix = lang.split("-")[0].toLowerCase();
-        const candidateVoices = voices.filter((v) =>
+        let candidateVoices = rawVoices.filter((v) =>
           v.lang.toLowerCase().startsWith(langPrefix)
         );
 
-        const pool = candidateVoices.length > 0 ? candidateVoices : voices;
+        // If no voices exist for target language in Windows/browser, check for multilingual/English voices
+        if (candidateVoices.length === 0) {
+          candidateVoices = rawVoices.filter((v) =>
+            /(google|natural|neural|online|multilingual)/i.test(v.name)
+          );
+        }
+
+        const pool = candidateVoices.length > 0 ? candidateVoices : rawVoices;
 
         const femaleVoices = pool.filter((v) => {
           const lowerName = v.name.toLowerCase();
@@ -790,18 +806,19 @@ class SpeechService {
           selectedVoice =
             femaleVoices.find((v) =>
               /(natural|neural|online|google|premium)/i.test(v.name)
-            ) || femaleVoices[0];
+            ) || femaleVoices[0] || pool[0];
         } else if (mentorProfile.gender === "male_expressive") {
+          // Feynman: try 2nd male voice if available, else 1st male voice
           selectedVoice =
             maleVoices.length > 1
               ? maleVoices[1]
-              : maleVoices[0];
+              : maleVoices[0] || pool[0];
         } else {
-          // male_paused
+          // Einstein: prefer 1st male voice or natural
           selectedVoice =
             maleVoices.find((v) =>
               /(natural|neural|online|google|premium)/i.test(v.name)
-            ) || maleVoices[0];
+            ) || maleVoices[0] || pool[0];
         }
 
         // Fallback to pool if specific gender voice not named explicitly
