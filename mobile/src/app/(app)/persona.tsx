@@ -26,6 +26,8 @@ interface PolymathData {
   bonusColor: string;
   avatar: string;
   voiceSample: string;
+  voiceSampleEn?: string;
+  voiceSampleDe?: string;
 }
 
 const AVATAR_MAP: Record<string, string> = {
@@ -62,6 +64,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-emerald-50 text-[#0F766E] border border-emerald-200",
     avatar: "/cast/curie.png",
     voiceSample: "Nada na vida deve ser temido, apenas compreendido.",
+    voiceSampleEn: "Nothing in life is to be feared, it is only to be understood.",
+    voiceSampleDe: "Man muss nichts im Leben fürchten, man muss nur alles verstehen.",
   },
   {
     id: "davinci",
@@ -77,6 +81,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-amber-50 text-[#B45309] border border-amber-200",
     avatar: "/cast/davinci.png",
     voiceSample: "A simplicidade é o grau máximo de sofisticação.",
+    voiceSampleEn: "Simplicity is the ultimate sophistication.",
+    voiceSampleDe: "Einfachheit ist die höchste Stufe der Vollendung.",
   },
   {
     id: "einstein",
@@ -92,6 +98,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-cyan-50 text-[#0E7490] border border-cyan-200",
     avatar: "/cast/einstein.png",
     voiceSample: "A mente que se abre a uma nova língua jamais voltará ao seu tamanho original.",
+    voiceSampleEn: "Imagination is more important than knowledge, for knowledge is limited.",
+    voiceSampleDe: "Die Phantasie ist wichtiger als das Wissen, denn das Wissen ist begrenzt.",
   },
   {
     id: "feynman",
@@ -107,6 +115,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-rose-50 text-[#BE123C] border border-rose-200",
     avatar: "/cast/feynman.png",
     voiceSample: "O que eu não posso criar, eu não compreendo.",
+    voiceSampleEn: "What I cannot create, I do not understand.",
+    voiceSampleDe: "Was ich nicht schaffen kann, das verstehe ich nicht.",
   },
   {
     id: "lovelace",
@@ -122,6 +132,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-purple-50 text-[#7E22CE] border border-purple-200",
     avatar: "/cast/lovelace.png",
     voiceSample: "Pense na sintaxe como um algoritmo sagrado.",
+    voiceSampleEn: "The Analytical Engine weaves algebraical patterns just as the Jacquard loom weaves flowers.",
+    voiceSampleDe: "Die Sprache webt poetische Muster so wie der Webstuhl Blumen webt.",
   },
   {
     id: "aurelius",
@@ -137,6 +149,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-amber-50 text-[#92400E] border border-amber-200",
     avatar: "/cast/aurelius.png",
     voiceSample: "Você tem poder sobre sua mente, não sobre eventos externos.",
+    voiceSampleEn: "You have power over your mind, not outside events. Realize this, and you will find strength.",
+    voiceSampleDe: "Du hast die Macht über deinen Geist, nicht über äußere Ereignisse.",
   },
   {
     id: "goethe",
@@ -152,6 +166,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-emerald-50 text-[#0F766E] border border-emerald-200",
     avatar: "/cast/aristotle.png",
     voiceSample: "Seja corajoso e grandes forças virão em sua ajuda.",
+    voiceSampleEn: "Those who know nothing of foreign languages know nothing of their own.",
+    voiceSampleDe: "Wer fremde Sprachen nicht kennt, weiß nichts von seiner eigenen.",
   },
   {
     id: "bingen",
@@ -167,6 +183,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-teal-50 text-[#0F766E] border border-teal-200",
     avatar: "/cast/clara.png",
     voiceSample: "Escute a ressonância sagrada da respiração fonética.",
+    voiceSampleEn: "Listen to the sacred symphony of breath and phonetics.",
+    voiceSampleDe: "Höre auf die heilige Symphonie der menschlichen Stimme.",
   },
   {
     id: "machado",
@@ -182,6 +200,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-stone-100 text-[#44403C] border border-stone-200",
     avatar: "/cast/confucius.png",
     voiceSample: "A clareza do estilo é a cortesia do escritor.",
+    voiceSampleEn: "Clarity of style is the politeness of the author.",
+    voiceSampleDe: "Klarheit des Stils ist die Höflichkeit des Autors.",
   },
   {
     id: "tesla",
@@ -197,6 +217,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-cyan-50 text-[#0891B2] border border-cyan-200",
     avatar: "/cast/tesla.png",
     voiceSample: "O presente é deles; o futuro, pelo qual realmente trabalhei, é meu.",
+    voiceSampleEn: "If you want to find the secrets of language, think in terms of energy, frequency and vibration.",
+    voiceSampleDe: "Wenn du die Geheimnisse des Universums finden willst, denke in Begriffen von Energie und Frequenz.",
   },
   {
     id: "hypatia",
@@ -212,6 +234,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-amber-50 text-[#B45309] border border-amber-200",
     avatar: "/cast/hypatia.png",
     voiceSample: "A verdade geométrica subsiste independente das opiniões humanas.",
+    voiceSampleEn: "Reserve your right to think, for even to think wrongly is better than not to think at all.",
+    voiceSampleDe: "Behalte dein Recht zu denken, denn selbst fehlerhaftes Denken ist besser als gar kein Denken.",
   },
   {
     id: "humboldt",
@@ -227,6 +251,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-emerald-50 text-[#047857] border border-emerald-200",
     avatar: "/cast/darwin.png",
     voiceSample: "O perigo mais temível para a visão do mundo é a de quem nunca viajou.",
+    voiceSampleEn: "Nature is a linked realm of cause and effect, as is every tongue spoken by man.",
+    voiceSampleDe: "Alles ist Wechselwirkung in der Natur und in der menschlichen Sprache.",
   },
   {
     id: "spinoza",
@@ -242,6 +268,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-amber-50 text-[#92400E] border border-amber-200",
     avatar: "/cast/socrates.png",
     voiceSample: "A paz não é a ausência de guerra; é uma virtude nascida da força da mente.",
+    voiceSampleEn: "Peace is not an absence of war, it is a virtue, a state of mind.",
+    voiceSampleDe: "Friede ist nicht Abwesenheit von Krieg, er ist eine Tugend aus der Kraft des Gemüts.",
   },
   {
     id: "descartes",
@@ -257,6 +285,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-teal-50 text-[#0F766E] border border-teal-200",
     avatar: "/cast/galileo.png",
     voiceSample: "Penso, logo existo. Falo com precisão, logo me faço compreender.",
+    voiceSampleEn: "I think, therefore I am. Clear and distinct ideas guide every sentence.",
+    voiceSampleDe: "Ich denke, also bin ich. Klare und distinkte Ideen leiten jedes Wort.",
   },
   {
     id: "galilei",
@@ -272,6 +302,8 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-amber-50 text-[#B45309] border border-amber-200",
     avatar: "/cast/galileo.png",
     voiceSample: "Todas as verdades são fáceis de entender uma vez descobertas.",
+    voiceSampleEn: "Measure what is measurable, and make measurable what is not so.",
+    voiceSampleDe: "Messen, was messbar ist, und messbar machen, was es noch nicht ist.",
   },
   {
     id: "leibniz",
@@ -287,11 +319,13 @@ const POLYMATHS: PolymathData[] = [
     bonusColor: "bg-purple-50 text-[#6B21A8] border border-purple-200",
     avatar: "/cast/newton.png",
     voiceSample: "A música é o prazer que a mente humana experimenta ao contar sem saber que está contando.",
+    voiceSampleEn: "Music is the hidden arithmetic of the soul, just as grammar is the harmony of thought.",
+    voiceSampleDe: "Die Musik ist eine unbewusste Arithmetik der Seele.",
   },
 ];
 
 export default function PersonaScreen() {
-  const { activeMentor, setActiveMentor } = useProsa();
+  const { activeMentor, setActiveMentor, targetLang } = useProsa();
   const [filter, setFilter] = useState<"all" | "logic" | "linguistics" | "literature" | "active">("all");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [playbackInfo, setPlaybackInfo] = useState<ActivePlaybackInfo>(() =>
@@ -328,12 +362,21 @@ export default function PersonaScreen() {
   };
 
   const handlePlayVoice = (polymath: PolymathData) => {
-    speechService.speak(polymath.voiceSample, {
-      lang: "pt-BR",
+    const isGerman = targetLang === "de";
+    const isPortuguese = targetLang === "pt-BR";
+    const lang = isGerman ? "de-DE" : isPortuguese ? "pt-BR" : "en-US";
+    const sampleText = isGerman
+      ? (polymath.voiceSampleDe || polymath.quote)
+      : isPortuguese
+      ? polymath.voiceSample
+      : (polymath.voiceSampleEn || polymath.quote);
+
+    speechService.speak(sampleText, {
+      lang,
       speed: "1.0x",
       mentorId: polymath.id,
     });
-    setToastMessage(`Reproduzindo voz sintética de ${polymath.name}...`);
+    setToastMessage(`Reproduzindo voz neural de ${polymath.name} (${lang})...`);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
@@ -437,8 +480,11 @@ export default function PersonaScreen() {
             </div>
             <button
               onClick={() => {
+                const isGerman = targetLang === "de";
+                const isPortuguese = targetLang === "pt-BR";
+                const lang = isGerman ? "de-DE" : isPortuguese ? "pt-BR" : "en-US";
                 speechService.speak(activeMentor.quote, {
-                  lang: "pt-BR",
+                  lang,
                   speed: "1.0x",
                   mentorId: activeMentor.id,
                 });

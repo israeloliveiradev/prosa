@@ -111,34 +111,43 @@ export default function SettingsScreen() {
   const handleCompareVoices = async () => {
     if (isComparingVoices) return;
     setIsComparingVoices(true);
-    triggerToast("Reproduzindo Albert Einstein (Masculino grave, pausado, pitch 0.82)...");
+
+    const isGerman = targetLang === "de";
+    const isPortuguese = targetLang === "pt-BR";
+    const lang = isGerman ? "de-DE" : isPortuguese ? "pt-BR" : "en-US";
+
+    triggerToast(`Reproduzindo Albert Einstein (${isGerman ? "Alemão Thorsten" : isPortuguese ? "Português Faber" : "Inglês George - Kokoro"})...`);
 
     const einsteinPhrase =
-      targetLang === "de"
+      isGerman
         ? "Die Phantasie ist wichtiger als das Wissen, denn das Wissen ist begrenzt."
-        : "A imaginação é mais importante que o conhecimento, pois o conhecimento é limitado.";
+        : isPortuguese
+        ? "A imaginação é mais importante que o conhecimento, pois o conhecimento é limitado."
+        : "Imagination is more important than knowledge, for knowledge is limited.";
 
     await speechService.speak(einsteinPhrase, {
-      lang: targetLang === "de" ? "de-DE" : "pt-BR",
+      lang,
       mentorId: "einstein",
       speed: "0.9x",
     });
 
     setTimeout(async () => {
-      triggerToast("Reproduzindo Marie Curie (Feminino cristalino, precisa, pitch 1.12)...");
+      triggerToast(`Reproduzindo Marie Curie (${isGerman ? "Alemão Kerstin" : isPortuguese ? "Português Edresson" : "Inglês Emma - Kokoro"})...`);
       const curiePhrase =
-        targetLang === "de"
+        isGerman
           ? "Man muss nichts im Leben fürchten, man muss nur alles verstehen."
-          : "Na vida, nada deve ser temido, somente compreendido para termos menos medo.";
+          : isPortuguese
+          ? "Na vida, nada deve ser temido, somente compreendido para termos menos medo."
+          : "Nothing in life is to be feared, it is only to be understood.";
 
       await speechService.speak(curiePhrase, {
-        lang: targetLang === "de" ? "de-DE" : "pt-BR",
+        lang,
         mentorId: "curie",
         speed: "1.0x",
         onEnd: () => setIsComparingVoices(false),
         onError: () => setIsComparingVoices(false),
       });
-    }, 3800);
+    }, 4200);
   };
 
   // Daily goal state
