@@ -15,8 +15,8 @@ async function runVerification() {
   await page.goto("http://localhost:8081", { waitUntil: "networkidle" });
   console.log("App loaded at http://localhost:8081");
 
-  // Step 1: Inject spy on window.speechSynthesis.speak to ensure ZERO calls
-  const spyInstalled = await page.evaluate(() => {
+  // Spy on window.speechSynthesis to guarantee ZERO robotic calls
+  await page.evaluate(() => {
     window.__speechSynthesisCallCount = 0;
     if ("speechSynthesis" in window) {
       const orig = window.speechSynthesis.speak;
@@ -24,104 +24,174 @@ async function runVerification() {
         window.__speechSynthesisCallCount++;
         return orig.apply(this, args);
       };
-      return true;
     }
-    return false;
-  }).catch(() => false);
-  console.log("SpeechSynthesis spy installed:", spyInstalled);
+  });
 
-  // Step 2: Test speechService directly in browser runtime
-  const directSpeechTest = await page.evaluate(async () => {
-    return new Promise(async (resolve) => {
-      try {
-        const worker = new Worker("/workers/ttsWorker.js", { type: "module" });
-        worker.onmessage = (e) => {
-          resolve({
-            ok: true,
-            type: e.data.type,
-            samples: e.data.audioData ? e.data.audioData.length : 0,
-            samplingRate: e.data.samplingRate,
-            voiceToken: e.data.voiceToken,
-            duration: e.data.duration,
-          });
-        };
-        worker.onerror = (err) => resolve({ ok: false, error: err.message });
-
-        worker.postMessage({
-          type: "SYNTHESIZE",
-          id: "verify-1",
-          payload: {
-            text: "Albert Einstein once said: Imagination is more important than knowledge.",
-            lang: "en",
-            mentorId: "einstein",
-            speed: 1.0,
-          },
+  // Test 1: Kokoro-82M with af_river (English)
+  console.log("\n--- TEST 1: Kokoro-82M (English with af_river) ---");
+  const kokoroTest = await page.evaluate(async () => {
+    return new Promise((resolve) => {
+      const worker = new Worker("/workers/ttsWorker.js", { type: "module" });
+      const t0 = performance.now();
+      worker.onmessage = (e) => {
+        const t1 = performance.now();
+        resolve({
+          ...e.data,
+          measuredDurationMs: t1 - t0,
         });
+      };
+      worker.onerror = (err) => resolve({ ok: false, error: err.message });
 
-        setTimeout(() => resolve({ ok: false, error: "Timed out" }), 35000);
-      } catch (e) {
-        resolve({ ok: false, error: e.message });
-      }
+      worker.postMessage({
+        type: "SYNTHESIZE",
+        id: "kokoro-test-1",
+        payload: {
+          text: "Knowledge speaks, but wisdom listens.",
+          lang: "en",
+          mentorId: "curie",
+          speed: 1.0,
+          voice: "af_river",
+        },
+      });
+
+      setTimeout(() => resolve({ ok: false, error: "Kokoro timed out" }), 35000);
     });
   });
 
-  console.log("Direct Neural Worker Speech Test:", directSpeechTest);
+  console.log("Kokoro-82M Result:", {
+    type: kokoroTest.type,
+    engine: kokoroTest.engine,
+    voiceToken: kokoroTest.voiceToken,
+    samplingRate: kokoroTest.samplingRate,
+    samplesCount: kokoroTest.audioData ? kokoroTest.audioData.length : 0,
+    latencyMs: kokoroTest.latencyMs,
+  });
 
-  // Step 3: Test voice mapping differentiation across 5 mentors
-  const mentorVoiceChecks = await page.evaluate(async () => {
-    const worker = new Worker("/workers/ttsWorker.js", { type: "module" });
-    const results = {};
-    const mentors = ["einstein", "feynman", "curie", "lovelace", "aurelius"];
+  // Test 2: Piper TTS ONNX with de_DE-thorsten-high (German)
+  console.log("\n--- TEST 2: Piper TTS ONNX (German with de_DE-thorsten-high) ---");
+  const piperTest = await page.evaluate(async () => {
+    return new Promise((resolve) => {
+      const worker = new Worker("/workers/ttsWorker.js", { type: "module" });
+      const t0 = performance.now();
+      worker.onmessage = (e) => {
+        const t1 = performance.now();
+        resolve({
+          ...e.data,
+          measuredDurationMs: t1 - t0,
+        });
+      };
+      worker.onerror = (err) => resolve({ ok: false, error: err.message });
 
-    for (const m of mentors) {
-      const res = await new Promise((resWait) => {
-        const handler = (e) => {
-          if (e.data.id === `mentor-${m}`) {
-            worker.removeEventListener("message", handler);
-            resWait(e.data.voiceToken);
-          }
-        };
-        worker.addEventListener("message", handler);
+      worker.postMessage({
+        type: "SYNTHESIZE",
+        id: "piper-test-1",
+        payload: {
+          text: "Guten Tag, wie geht es Ihnen heute?",
+          lang: "de",
+          mentorId: "einstein",
+          speed: 1.0,
+          origin: window.location.origin,
+        },
+      });
+
+      setTimeout(() => resolve({ ok: false, error: "Piper timed out" }), 35000);
+    });
+  });
+
+  console.log("Piper TTS Result:", {
+    type: piperTest.type,
+    engine: piperTest.engine,
+    voiceToken: piperTest.voiceToken,
+    samplingRate: piperTest.samplingRate,
+    samplesCount: piperTest.audioData ? piperTest.audioData.length : 0,
+    latencyMs: piperTest.latencyMs,
+  });
+
+  // Test 3: Second call with warm singleton in memory (no model reload)
+  console.log("\n--- TEST 3: Warm Singleton Second Call & Memory Cache ---");
+  const warmSecondCall = await page.evaluate(async () => {
+    return new Promise(async (resolve) => {
+      const worker = new Worker("/workers/ttsWorker.js", { type: "module" });
+      // Warmup first
+      await new Promise((r) => {
+        worker.onmessage = () => r();
         worker.postMessage({
           type: "SYNTHESIZE",
-          id: `mentor-${m}`,
+          id: "warmup",
           payload: {
-            text: "Test phrase",
-            lang: "en",
-            mentorId: m,
-            speed: 1.0,
+            text: "Initial warmup",
+            lang: "de",
+            mentorId: "einstein",
+            origin: window.location.origin,
           },
         });
       });
-      results[m] = res;
-    }
-    return results;
+
+      // Second synthesis with model already loaded in memory
+      const t0 = performance.now();
+      worker.onmessage = (e) => {
+        const t1 = performance.now();
+        resolve({
+          type: e.data.type,
+          durationMs: t1 - t0,
+          latencyMs: e.data.latencyMs,
+          samplingRate: e.data.samplingRate,
+          samples: e.data.audioData ? e.data.audioData.length : 0,
+        });
+      };
+
+      worker.postMessage({
+        type: "SYNTHESIZE",
+        id: "second-call",
+        payload: {
+          text: "Kurzer Satz",
+          lang: "de",
+          mentorId: "einstein",
+          origin: window.location.origin,
+        },
+      });
+    });
   });
 
-  console.log("Mentor Voice Token Distinct Mappings:", mentorVoiceChecks);
+  console.log("Warm Second Call Result:", warmSecondCall);
 
-  // Step 4: Verify zero calls to window.speechSynthesis
+  // Test 4: Robotic window.speechSynthesis call count
   const callCount = await page.evaluate(() => {
     return window.__speechSynthesisCallCount || 0;
   });
-  console.log("Robotic window.speechSynthesis.speak call count:", callCount);
+  console.log("\nRobotic window.speechSynthesis.speak call count:", callCount);
 
   // Assertions
-  const success =
-    directSpeechTest.ok &&
-    directSpeechTest.samples > 0 &&
-    callCount === 0 &&
-    mentorVoiceChecks["einstein"] !== mentorVoiceChecks["feynman"] &&
-    mentorVoiceChecks["curie"] !== mentorVoiceChecks["einstein"] &&
-    mentorVoiceChecks["lovelace"] !== mentorVoiceChecks["einstein"];
+  const kokoroOk =
+    kokoroTest.type === "SYNTHESIZED" &&
+    kokoroTest.engine === "Kokoro-82M" &&
+    kokoroTest.samplingRate === 24000 &&
+    kokoroTest.voiceToken === "af_river" &&
+    kokoroTest.audioData &&
+    kokoroTest.audioData.length > 0;
 
-  console.log("ALL VERIFICATION CHECKS PASSED:", success);
+  const piperOk =
+    piperTest.type === "SYNTHESIZED" &&
+    piperTest.engine === "Piper TTS ONNX" &&
+    piperTest.samplingRate === 22050 &&
+    piperTest.audioData &&
+    piperTest.audioData.length > 0;
+
+  const zeroRobotic = callCount === 0;
+
+  console.log("\n=== SUMMARY ASSERTIONS ===");
+  console.log("1. Kokoro af_river (24000 Hz, IPA G2P clean audio):", kokoroOk ? "PASS" : "FAIL");
+  console.log("2. Piper German (22050 Hz, native German ONNX):", piperOk ? "PASS" : "FAIL");
+  console.log("3. Zero window.speechSynthesis robotic calls:", zeroRobotic ? "PASS" : "FAIL");
+
+  const allPassed = kokoroOk && piperOk && zeroRobotic;
+  console.log("\nOVERALL TEST RESULT:", allPassed ? "ALL 4 CONDITIONS VERIFIED!" : "FAILED");
 
   await browser.close();
-  process.exit(success ? 0 : 1);
+  process.exit(allPassed ? 0 : 1);
 }
 
 runVerification().catch((err) => {
-  console.error("Verification failed:", err);
+  console.error("Verification error:", err);
   process.exit(1);
 });

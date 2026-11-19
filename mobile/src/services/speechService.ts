@@ -1,11 +1,11 @@
 // Prosa Neural Speech Synthesis Service
-// 100% Automatic, Silent, Frictionless Kokoro-82M Neural Audio Engine.
+// 100% Automatic, Silent, Frictionless Kokoro-82M & Piper TTS Neural Audio Engine.
 // Operates exclusively in a dedicated Web Worker (ttsWorker.js) to guarantee 60 FPS on the UI.
 // Lookahead Cache (Map<string, AudioBuffer>) for instant zero-latency playback.
 // ZERO robotic window.speechSynthesis fallback - pure neural AudioBuffer playback.
 
 import { Platform } from "react-native";
-import { MENTOR_VOICE_MAP } from "@/workers/ttsWorker";
+import { KOKORO_MENTOR_VOICES, PIPER_MENTOR_VOICES } from "@/workers/ttsWorker";
 
 export type VoiceEngineMode = "instant" | "hybrid";
 
@@ -38,6 +38,7 @@ export interface ActivePlaybackInfo {
   voice: string;
   mentorName: string;
   lang: string;
+  samplingRate?: number;
 }
 
 export type MentorGender = "female" | "male_paused" | "male_expressive";
@@ -48,6 +49,7 @@ export interface MentorVoiceProfile {
   pitch: number;
   rateMultiplier: number;
   kokoroVoice: Record<string, string>;
+  piperVoice: Record<string, string>;
   description: string;
 }
 
@@ -57,7 +59,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "female",
     pitch: 1.12,
     rateMultiplier: 0.94,
-    kokoroVoice: MENTOR_VOICE_MAP.curie || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.curie || {},
+    piperVoice: PIPER_MENTOR_VOICES.curie || {},
     description: "Articulação cristalina, feminina, ressonância harmônica e precisão.",
   },
   lovelace: {
@@ -65,7 +68,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "female",
     pitch: 1.14,
     rateMultiplier: 0.96,
-    kokoroVoice: MENTOR_VOICE_MAP.lovelace || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.lovelace || {},
+    piperVoice: PIPER_MENTOR_VOICES.lovelace || {},
     description: "Tom analítico, feminino, cadência poética e estruturada.",
   },
   hypatia: {
@@ -73,7 +77,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "female",
     pitch: 1.15,
     rateMultiplier: 0.95,
-    kokoroVoice: MENTOR_VOICE_MAP.hypatia || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.hypatia || {},
+    piperVoice: PIPER_MENTOR_VOICES.hypatia || {},
     description: "Voz clássica feminina de clareza matemática e ressonância límpida.",
   },
   bingen: {
@@ -81,7 +86,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "female",
     pitch: 1.10,
     rateMultiplier: 0.92,
-    kokoroVoice: MENTOR_VOICE_MAP.bingen || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.bingen || {},
+    piperVoice: PIPER_MENTOR_VOICES.bingen || {},
     description: "Voz polifônica, feminina, suave e contemplativa.",
   },
   hildegard: {
@@ -89,7 +95,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "female",
     pitch: 1.10,
     rateMultiplier: 0.92,
-    kokoroVoice: MENTOR_VOICE_MAP.hildegard || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.hildegard || {},
+    piperVoice: PIPER_MENTOR_VOICES.hildegard || {},
     description: "Voz polifônica, feminina, suave e contemplativa.",
   },
   einstein: {
@@ -97,7 +104,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.82,
     rateMultiplier: 0.88,
-    kokoroVoice: MENTOR_VOICE_MAP.einstein || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.einstein || {},
+    piperVoice: PIPER_MENTOR_VOICES.einstein || {},
     description: "Voz masculina grave, cadência reflexiva e pausas didáticas.",
   },
   aurelius: {
@@ -105,7 +113,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.80,
     rateMultiplier: 0.86,
-    kokoroVoice: MENTOR_VOICE_MAP.aurelius || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.aurelius || {},
+    piperVoice: PIPER_MENTOR_VOICES.aurelius || {},
     description: "Profundo, estóico, grave e pausado.",
   },
   goethe: {
@@ -113,7 +122,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.84,
     rateMultiplier: 0.88,
-    kokoroVoice: MENTOR_VOICE_MAP.goethe || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.goethe || {},
+    piperVoice: PIPER_MENTOR_VOICES.goethe || {},
     description: "Voz clássica alemã, ressonante e rica em harmônicos.",
   },
   feynman: {
@@ -121,7 +131,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_expressive",
     pitch: 1.04,
     rateMultiplier: 1.06,
-    kokoroVoice: MENTOR_VOICE_MAP.feynman || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.feynman || {},
+    piperVoice: PIPER_MENTOR_VOICES.feynman || {},
     description: "Masculino rápido, enérgico, direto e envolvente.",
   },
   davinci: {
@@ -129,7 +140,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_expressive",
     pitch: 0.98,
     rateMultiplier: 1.00,
-    kokoroVoice: MENTOR_VOICE_MAP.davinci || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.davinci || {},
+    piperVoice: PIPER_MENTOR_VOICES.davinci || {},
     description: "Tom expressivo renascentista, equilíbrio melódico.",
   },
   tesla: {
@@ -137,7 +149,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_expressive",
     pitch: 1.02,
     rateMultiplier: 1.04,
-    kokoroVoice: MENTOR_VOICE_MAP.tesla || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.tesla || {},
+    piperVoice: PIPER_MENTOR_VOICES.tesla || {},
     description: "Voz elétrica, rápida, focada e inventiva.",
   },
   cicero: {
@@ -145,7 +158,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.84,
     rateMultiplier: 0.90,
-    kokoroVoice: MENTOR_VOICE_MAP.cicero || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.cicero || {},
+    piperVoice: PIPER_MENTOR_VOICES.cicero || {},
     description: "Voz oratória majestosa, ressonância profunda e ênfase retórica.",
   },
   confucius: {
@@ -153,7 +167,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.82,
     rateMultiplier: 0.85,
-    kokoroVoice: MENTOR_VOICE_MAP.confucius || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.confucius || {},
+    piperVoice: PIPER_MENTOR_VOICES.confucius || {},
     description: "Profundo, meditativo, lento e harmonioso.",
   },
   plato: {
@@ -161,7 +176,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.85,
     rateMultiplier: 0.88,
-    kokoroVoice: MENTOR_VOICE_MAP.plato || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.plato || {},
+    piperVoice: PIPER_MENTOR_VOICES.plato || {},
     description: "Voz dialética, solene e reflexiva.",
   },
   aristotle: {
@@ -169,7 +185,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.86,
     rateMultiplier: 0.90,
-    kokoroVoice: MENTOR_VOICE_MAP.aristotle || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.aristotle || {},
+    piperVoice: PIPER_MENTOR_VOICES.aristotle || {},
     description: "Tom enciclopédico, estruturado e categórico.",
   },
   socrates: {
@@ -177,7 +194,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.88,
     rateMultiplier: 0.92,
-    kokoroVoice: MENTOR_VOICE_MAP.socrates || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.socrates || {},
+    piperVoice: PIPER_MENTOR_VOICES.socrates || {},
     description: "Voz interrogativa, provocativa e perspicaz.",
   },
   newton: {
@@ -185,7 +203,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_expressive",
     pitch: 0.94,
     rateMultiplier: 0.96,
-    kokoroVoice: MENTOR_VOICE_MAP.newton || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.newton || {},
+    piperVoice: PIPER_MENTOR_VOICES.newton || {},
     description: "Foco analítico rigoroso, geométrico e calculado.",
   },
   darwin: {
@@ -193,7 +212,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.86,
     rateMultiplier: 0.90,
-    kokoroVoice: MENTOR_VOICE_MAP.darwin || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.darwin || {},
+    piperVoice: PIPER_MENTOR_VOICES.darwin || {},
     description: "Cadência naturalista, paciente e observadora.",
   },
   galileo: {
@@ -201,7 +221,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_expressive",
     pitch: 0.96,
     rateMultiplier: 1.00,
-    kokoroVoice: MENTOR_VOICE_MAP.galileo || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.galileo || {},
+    piperVoice: PIPER_MENTOR_VOICES.galileo || {},
     description: "Tom vibrante, empírico e contestador.",
   },
   galilei: {
@@ -209,7 +230,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_expressive",
     pitch: 0.96,
     rateMultiplier: 1.00,
-    kokoroVoice: MENTOR_VOICE_MAP.galilei || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.galilei || {},
+    piperVoice: PIPER_MENTOR_VOICES.galilei || {},
     description: "Tom vibrante, empírico e contestador.",
   },
   machado: {
@@ -217,7 +239,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_expressive",
     pitch: 0.92,
     rateMultiplier: 0.94,
-    kokoroVoice: MENTOR_VOICE_MAP.machado || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.machado || {},
+    piperVoice: PIPER_MENTOR_VOICES.machado || {},
     description: "Ironia fina, elegância rítmica e prosa sutil.",
   },
   humboldt: {
@@ -225,7 +248,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.88,
     rateMultiplier: 0.92,
-    kokoroVoice: MENTOR_VOICE_MAP.humboldt || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.humboldt || {},
+    piperVoice: PIPER_MENTOR_VOICES.humboldt || {},
     description: "Voz exploratória ampla, harmoniosa e descritiva.",
   },
   spinoza: {
@@ -233,7 +257,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.84,
     rateMultiplier: 0.88,
-    kokoroVoice: MENTOR_VOICE_MAP.spinoza || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.spinoza || {},
+    piperVoice: PIPER_MENTOR_VOICES.spinoza || {},
     description: "Monismo geométrico, sereno e luminoso.",
   },
   descartes: {
@@ -241,7 +266,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.88,
     rateMultiplier: 0.92,
-    kokoroVoice: MENTOR_VOICE_MAP.descartes || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.descartes || {},
+    piperVoice: PIPER_MENTOR_VOICES.descartes || {},
     description: "Dúvida metódica, clareza e distinção cartesiana.",
   },
   leibniz: {
@@ -249,7 +275,8 @@ export const MENTOR_VOICE_PROFILES: Record<string, MentorVoiceProfile> = {
     gender: "male_paused",
     pitch: 0.86,
     rateMultiplier: 0.90,
-    kokoroVoice: MENTOR_VOICE_MAP.leibniz || {},
+    kokoroVoice: KOKORO_MENTOR_VOICES.leibniz || {},
+    piperVoice: PIPER_MENTOR_VOICES.leibniz || {},
     description: "Harmonia preestabelecida e cálculo integral.",
   },
 };
@@ -269,7 +296,7 @@ class SpeechService {
   private isPiperReady = true;
   private isWarmingUp = false;
   private downloadProgress = 100;
-  private downloadStatus = "Kokoro-82M Neural Ativo (Web Worker)";
+  private downloadStatus = "Kokoro-82M + Piper ONNX Prontos";
   private audioCtx: AudioContext | null = null;
   private currentAudioSource: AudioBufferSourceNode | null = null;
   private activeTimerId: NodeJS.Timeout | null = null;
@@ -286,10 +313,11 @@ class SpeechService {
 
   private activePlayback: ActivePlaybackInfo = {
     isPlaying: false,
-    engine: "Kokoro-82M Neural (Web Worker)",
+    engine: "Kokoro-82M",
     voice: "bm_george (Einstein)",
     mentorName: "Albert Einstein",
     lang: "en-US",
+    samplingRate: 24000,
   };
 
   constructor() {
@@ -317,14 +345,14 @@ class SpeechService {
 
   private handleWorkerMessage(data: any) {
     if (!data) return;
-    const { type, id, audioData, samplingRate, lang, mentorId, speed, text, voiceToken, error } = data;
+    const { type, id, audioData, samplingRate, lang, mentorId, speed, text, voiceToken, engine, latencyMs, error } = data;
 
     if (type === "WARMED_UP") {
       this.isKokoroReady = true;
       this.isPiperReady = true;
       this.isWarmingUp = false;
       this.downloadProgress = 100;
-      this.downloadStatus = "Kokoro-82M Neural Pronto (Web Worker)";
+      this.downloadStatus = "Kokoro-82M & Piper ONNX Prontos (Singleton)";
       this.notifyStatus();
       if (id && this.workerRequests.has(id)) {
         const req = this.workerRequests.get(id);
@@ -336,7 +364,9 @@ class SpeechService {
 
     if (type === "SYNTHESIZED" || type === "PRELOADED") {
       if (audioData) {
-        const buffer = this.createAudioBufferFromFloat32(audioData, samplingRate || 24000);
+        // Explicit sample rate passed to AudioContext (24000 for Kokoro, 22050 for Piper)
+        const rate = samplingRate || (lang?.toLowerCase().startsWith("de") || lang?.toLowerCase().startsWith("pt") ? 22050 : 24000);
+        const buffer = this.createAudioBufferFromFloat32(audioData, rate);
         if (buffer && text) {
           const cacheKey = this.getCacheKey(lang || "en", mentorId || "einstein", speed || 1.0, text);
           this.inMemoryCache.set(cacheKey, buffer);
@@ -346,7 +376,7 @@ class SpeechService {
         if (id && this.workerRequests.has(id)) {
           const req = this.workerRequests.get(id);
           this.workerRequests.delete(id);
-          req?.resolve({ buffer, voiceToken });
+          req?.resolve({ buffer, voiceToken, samplingRate: rate, engine, latencyMs });
         }
       }
       return;
@@ -361,6 +391,8 @@ class SpeechService {
     }
   }
 
+  // Explicitly passes sample rate (24000 for Kokoro, 22050 for Piper)
+  // NEVER uses the browser default 48 kHz to avoid pitch acceleration/distortion!
   private createAudioBufferFromFloat32(data: Float32Array, sampleRate: number): AudioBuffer | null {
     if (typeof window === "undefined") return null;
     const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -371,7 +403,7 @@ class SpeechService {
     }
 
     try {
-      const buffer = this.audioCtx.createBuffer(1, data.length, sampleRate);
+      const buffer = this.audioCtx.createBuffer(1, data.length, sampleRate || 24000);
       buffer.copyToChannel(data, 0);
       return buffer;
     } catch (e) {
@@ -465,7 +497,7 @@ class SpeechService {
     if (!worker) return false;
 
     this.isWarmingUp = true;
-    this.downloadStatus = "Aquecendo motor neural Kokoro-82M...";
+    this.downloadStatus = "Aquecendo motor neural (Kokoro / Piper)...";
     this.notifyStatus();
 
     const id = `warmup-${++this.requestIdCounter}`;
@@ -474,6 +506,7 @@ class SpeechService {
         resolve: () => {
           this.isWarmingUp = false;
           this.isKokoroReady = true;
+          this.isPiperReady = true;
           this.notifyStatus();
           resolve(true);
         },
@@ -489,6 +522,7 @@ class SpeechService {
         payload: {
           lang: targetLang,
           mentorId,
+          origin: typeof window !== "undefined" ? window.location.origin : "",
         },
       });
     });
@@ -522,6 +556,7 @@ class SpeechService {
         lang,
         mentorId,
         speed: speedRate,
+        origin: typeof window !== "undefined" ? window.location.origin : "",
       },
     });
   }
@@ -570,18 +605,26 @@ class SpeechService {
     const mentorProfile =
       MENTOR_VOICE_PROFILES[mentorId] || MENTOR_VOICE_PROFILES.einstein;
 
+    const shortLang = lang.toLowerCase().split("-")[0];
+    const isPiperLang = shortLang === "de" || shortLang === "pt";
+    const engineName = isPiperLang ? "Piper TTS ONNX" : "Kokoro-82M";
+    const voiceToken = isPiperLang
+      ? mentorProfile.piperVoice[shortLang] || (shortLang === "de" ? "de_DE-thorsten-high" : "pt_BR-faber-medium")
+      : mentorProfile.kokoroVoice[shortLang] || mentorProfile.kokoroVoice.en || "af_river";
+    const expectedSampleRate = isPiperLang ? 22050 : 24000;
+
     const cacheKey = this.getCacheKey(lang, mentorId, speedRate, cleanText);
 
     // 1. Instant Playback from Lookahead Cache
     const cachedBuffer = this.inMemoryCache.get(cacheKey);
     if (cachedBuffer) {
-      const voiceToken = mentorProfile.kokoroVoice[lang.toLowerCase().split("-")[0]] || "bm_george";
       this.notifyPlayback({
         isPlaying: true,
-        engine: "Kokoro-82M Neural (Web Worker)",
+        engine: engineName,
         voice: `${voiceToken} (${mentorProfile.name})`,
         mentorName: mentorProfile.name,
         lang,
+        samplingRate: expectedSampleRate,
       });
       return this.playAudioBuffer(cachedBuffer, cleanText, options);
     }
@@ -597,20 +640,31 @@ class SpeechService {
     const requestId = `synthesize-${++this.requestIdCounter}`;
 
     try {
-      const { buffer, voiceToken }: { buffer: AudioBuffer; voiceToken: string } =
-        await new Promise((resolve, reject) => {
-          this.workerRequests.set(requestId, { resolve, reject });
-          worker.postMessage({
-            type: "SYNTHESIZE",
-            id: requestId,
-            payload: {
-              text: cleanText,
-              lang,
-              mentorId,
-              speed: speedRate,
-            },
-          });
+      const {
+        buffer,
+        voiceToken: resVoice,
+        engine: resEngine,
+        samplingRate: resRate,
+      }: {
+        buffer: AudioBuffer;
+        voiceToken: string;
+        engine?: string;
+        samplingRate?: number;
+      } = await new Promise((resolve, reject) => {
+        this.workerRequests.set(requestId, { resolve, reject });
+        worker.postMessage({
+          type: "SYNTHESIZE",
+          id: requestId,
+          payload: {
+            text: cleanText,
+            lang,
+            mentorId,
+            speed: speedRate,
+            voice: voiceToken,
+            origin: typeof window !== "undefined" ? window.location.origin : "",
+          },
         });
+      });
 
       if (!buffer) {
         options.onEnd?.();
@@ -619,10 +673,11 @@ class SpeechService {
 
       this.notifyPlayback({
         isPlaying: true,
-        engine: "Kokoro-82M Neural (Web Worker)",
-        voice: `${voiceToken || "bm_george"} (${mentorProfile.name})`,
+        engine: resEngine || engineName,
+        voice: `${resVoice || voiceToken} (${mentorProfile.name})`,
         mentorName: mentorProfile.name,
         lang,
+        samplingRate: resRate || expectedSampleRate,
       });
 
       return this.playAudioBuffer(buffer, cleanText, options);
