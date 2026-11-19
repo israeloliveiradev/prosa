@@ -262,11 +262,10 @@ export default function ScoreScreen() {
                   void tap("light");
                   setActiveTab("general");
                 }}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                  activeTab === "general"
-                    ? "bg-white text-stone-900 border border-stone-200/80 shadow-sm"
-                    : "bg-[#F5F0E8] text-stone-600 hover:text-stone-900"
-                }`}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${activeTab === "general"
+                  ? "bg-white text-stone-900 border border-stone-200/80 shadow-sm"
+                  : "bg-[#F5F0E8] text-stone-600 hover:text-stone-900"
+                  }`}
               >
                 Corte de Polímatas
               </button>
@@ -275,11 +274,10 @@ export default function ScoreScreen() {
                   void tap("light");
                   setActiveTab("friends");
                 }}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                  activeTab === "friends"
-                    ? "bg-white text-stone-900 border border-stone-200/80 shadow-sm"
-                    : "bg-[#F5F0E8] text-stone-600 hover:text-stone-900"
-                }`}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer ${activeTab === "friends"
+                  ? "bg-white text-stone-900 border border-stone-200/80 shadow-sm"
+                  : "bg-[#F5F0E8] text-stone-600 hover:text-stone-900"
+                  }`}
               >
                 Amigos &amp; Círculo
               </button>
@@ -355,23 +353,21 @@ export default function ScoreScreen() {
                 return (
                   <div
                     key={item.id}
-                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl transition-colors ${
-                      isGold
-                        ? "bg-amber-50/70 border border-amber-200/80 hover:bg-amber-100/50"
-                        : "bg-[#FDFBF7] border border-stone-200/60 hover:bg-[#F5F0E8]"
-                    }`}
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl transition-colors ${isGold
+                      ? "bg-amber-50/70 border border-amber-200/80 hover:bg-amber-100/50"
+                      : "bg-[#FDFBF7] border border-stone-200/60 hover:bg-[#F5F0E8]"
+                      }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm ${
-                          isGold
-                            ? "bg-amber-500 text-white shadow-[0_2px_0_#B45309]"
-                            : isSilver
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm ${isGold
+                          ? "bg-amber-500 text-white shadow-[0_2px_0_#B45309]"
+                          : isSilver
                             ? "bg-slate-300 text-slate-800 shadow-[0_2px_0_#94A3B8]"
                             : isBronze
-                            ? "bg-amber-600/80 text-white shadow-[0_2px_0_#92400E]"
-                            : "bg-white text-stone-700 border border-stone-200"
-                        }`}
+                              ? "bg-amber-600/80 text-white shadow-[0_2px_0_#92400E]"
+                              : "bg-white text-stone-700 border border-stone-200"
+                          }`}
                       >
                         {isGold ? "🥇" : isSilver ? "🥈" : isBronze ? "🥉" : `#${item.rank}`}
                       </div>
