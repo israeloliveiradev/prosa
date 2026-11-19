@@ -3,6 +3,8 @@ import { View, Text, Pressable, Image, ScrollView } from "react-native";
 import { router } from "expo-router";
 import { tap } from "@/lib/haptics";
 import { useProsa } from "@/context/prosa-context";
+import { speechService } from "@/services/speechService";
+import { LanguageMatrixEngine } from "@/services/contentService";
 
 const DA_VINCI_PORTRAIT = "/cast/davinci.png";
 
@@ -57,6 +59,66 @@ const TOKENS_BY_LANG: Record<
       { id: "7", word: "kann", role: "distractor", colorClass: "text-[#64748B]", bgLightClass: "bg-[#F5F0E8]" },
     ],
   },
+  fr: {
+    lead: "J'apprends le français,",
+    correct: ["parce que", "je", "veux", "comprendre", "la philosophie."],
+    audioLabel: "Áudio em Francês Nativo (Parisien)",
+    transcript: "“J'apprends le français, parce que je veux comprendre la philosophie.”",
+    hint: "Em francês, a conjunção causal 'parce que' mantém a ordem direta canônica Sujeito ('je') + Verbo Modal ('veux') + Infinitivo + Complemento.",
+    tokens: [
+      { id: "1", word: "parce que", role: "conector", colorClass: "text-[#8B5CF6]", bgLightClass: "bg-[#8B5CF6]/15" },
+      { id: "2", word: "je", role: "sujeito", colorClass: "text-[#06B6D4]", bgLightClass: "bg-[#06B6D4]/15" },
+      { id: "3", word: "veux", role: "modal", colorClass: "text-[#D97706]", bgLightClass: "bg-[#D97706]/15" },
+      { id: "4", word: "comprendre", role: "infinitivo", colorClass: "text-[#059669]", bgLightClass: "bg-[#10B981]/15" },
+      { id: "5", word: "la philosophie.", role: "objeto", colorClass: "text-[#FF5722]", bgLightClass: "bg-[#FF5722]/15" },
+      { id: "6", word: "donc", role: "distractor", colorClass: "text-[#64748B]", bgLightClass: "bg-[#F5F0E8]" },
+      { id: "7", word: "peux", role: "distractor", colorClass: "text-[#64748B]", bgLightClass: "bg-[#F5F0E8]" },
+    ],
+  },
+  es: {
+    lead: "Estudio español,",
+    correct: ["porque", "quiero", "entender", "la filosofía."],
+    audioLabel: "Áudio em Espanhol Nativo (Castellano)",
+    transcript: "“Estudio español, porque quiero entender la filosofía.”",
+    hint: "Em espanhol clássico, a causal 'porque' conecta de imediato o verbo flexionado 'quiero' seguido de infinitivo e objeto.",
+    tokens: [
+      { id: "1", word: "porque", role: "conector", colorClass: "text-[#8B5CF6]", bgLightClass: "bg-[#8B5CF6]/15" },
+      { id: "2", word: "quiero", role: "modal", colorClass: "text-[#D97706]", bgLightClass: "bg-[#D97706]/15" },
+      { id: "3", word: "entender", role: "infinitivo", colorClass: "text-[#059669]", bgLightClass: "bg-[#10B981]/15" },
+      { id: "4", word: "la filosofía.", role: "objeto", colorClass: "text-[#FF5722]", bgLightClass: "bg-[#FF5722]/15" },
+      { id: "5", word: "por lo tanto", role: "distractor", colorClass: "text-[#64748B]", bgLightClass: "bg-[#F5F0E8]" },
+      { id: "6", word: "puedo", role: "distractor", colorClass: "text-[#64748B]", bgLightClass: "bg-[#F5F0E8]" },
+    ],
+  },
+  it: {
+    lead: "Studio l'italiano,",
+    correct: ["perché", "voglio", "comprendere", "la filosofia."],
+    audioLabel: "Áudio em Italiano Nativo (Fiorentino)",
+    transcript: "“Studio l'italiano, perché voglio comprendere la filosofia.”",
+    hint: "A conjunção 'perché' conecta com harmonia toscana o verbo volitivo 'voglio' ao infinitivo 'comprendere'.",
+    tokens: [
+      { id: "1", word: "perché", role: "conector", colorClass: "text-[#8B5CF6]", bgLightClass: "bg-[#8B5CF6]/15" },
+      { id: "2", word: "voglio", role: "modal", colorClass: "text-[#D97706]", bgLightClass: "bg-[#D97706]/15" },
+      { id: "3", word: "comprendere", role: "infinitivo", colorClass: "text-[#059669]", bgLightClass: "bg-[#10B981]/15" },
+      { id: "4", word: "la filosofia.", role: "objeto", colorClass: "text-[#FF5722]", bgLightClass: "bg-[#FF5722]/15" },
+      { id: "5", word: "quindi", role: "distractor", colorClass: "text-[#64748B]", bgLightClass: "bg-[#F5F0E8]" },
+      { id: "6", word: "posso", role: "distractor", colorClass: "text-[#64748B]", bgLightClass: "bg-[#F5F0E8]" },
+    ],
+  },
+  ja: {
+    lead: "日本語を勉強しています、",
+    correct: ["哲学を", "理解したい", "からです。"],
+    audioLabel: "Áudio em Japonês Nativo (Tokyo RP)",
+    transcript: "“日本語を勉強しています、哲学を理解したいからです。”",
+    hint: "Na sintaxe japonesa SOV, a partícula causal 'から' posiciona-se no encerramento da sentença, após o predicado desejativo 'たい'!",
+    tokens: [
+      { id: "1", word: "哲学を", role: "objeto", colorClass: "text-[#059669]", bgLightClass: "bg-[#10B981]/15" },
+      { id: "2", word: "理解したい", role: "infinitivo", colorClass: "text-[#D97706]", bgLightClass: "bg-[#D97706]/15" },
+      { id: "3", word: "からです。", role: "conector", colorClass: "text-[#8B5CF6]", bgLightClass: "bg-[#8B5CF6]/15" },
+      { id: "4", word: "だから", role: "distractor", colorClass: "text-[#64748B]", bgLightClass: "bg-[#F5F0E8]" },
+      { id: "5", word: "できます", role: "distractor", colorClass: "text-[#64748B]", bgLightClass: "bg-[#F5F0E8]" },
+    ],
+  },
 };
 
 export interface PlacementScreenProps {
@@ -66,7 +128,7 @@ export interface PlacementScreenProps {
 }
 
 export function PlacementScreen({ embedded = false, autoStart = false, onDone }: PlacementScreenProps = {}) {
-  const { targetLang } = useProsa();
+  const { targetLang, startCourseWithPlacement } = useProsa();
   const config = TOKENS_BY_LANG[targetLang && targetLang in TOKENS_BY_LANG ? targetLang : "en"];
   const [placedTokens, setPlacedTokens] = useState<WordToken[]>([]);
 
@@ -110,6 +172,7 @@ export function PlacementScreen({ embedded = false, autoStart = false, onDone }:
     if (isMatch) {
       setValidationResult("correct");
       void tap("success");
+      startCourseWithPlacement(targetLang, "B1");
       if (onDone) {
         setTimeout(() => onDone("B1"), 1200);
       }
@@ -122,6 +185,7 @@ export function PlacementScreen({ embedded = false, autoStart = false, onDone }:
   const handleSkip = () => {
     void tap("light");
     setValidationResult("skipped");
+    startCourseWithPlacement(targetLang, "A2");
     if (onDone) {
       setTimeout(() => onDone("A2"), 1200);
     }
@@ -130,7 +194,15 @@ export function PlacementScreen({ embedded = false, autoStart = false, onDone }:
   const handlePlayAudio = () => {
     void tap("medium");
     setAudioPlaying(true);
-    setTimeout(() => setAudioPlaying(false), 2500);
+    const speechLang = LanguageMatrixEngine.getBCP47(targetLang);
+    const phrase = config.transcript.replace(/[“”"«»]/g, "");
+    speechService.speak(phrase, {
+      lang: speechLang,
+      mentorId: "davinci",
+      speed: speeds[audioSpeedIndex].startsWith("0.8") ? "0.8x" : "1.0x",
+      onEnd: () => setAudioPlaying(false),
+      onError: () => setAudioPlaying(false),
+    });
   };
 
   return (

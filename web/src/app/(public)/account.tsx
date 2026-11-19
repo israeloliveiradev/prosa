@@ -9,7 +9,7 @@ import { rememberProfile } from "@/lib/session";
 
 export default function AccountScreen() {
   const router = useRouter();
-  const { resetProgress } = useProsa();
+  const { resetProgress, setUserName } = useProsa();
   const [screenMode, setScreenMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [authMode, setAuthMode] = useState<"password" | "otp">("password");
@@ -79,6 +79,9 @@ export default function AccountScreen() {
     e.preventDefault();
     if (screenMode === "register") {
       resetProgress();
+      if (name) {
+        setUserName(name);
+      }
       try {
         const res = await registerAccount({
           email,
@@ -99,6 +102,9 @@ export default function AccountScreen() {
       return;
     }
 
+    const derivedName = name || (email ? email.split("@")[0] : "") || "Aprendiz Polímata";
+    setUserName(derivedName);
+
     if (authMode === "otp") {
       if (!otpSent) {
         await handleSendOtp();
@@ -113,14 +119,14 @@ export default function AccountScreen() {
           }
         } catch (err) {
           console.warn("Verify notice:", err);
-          rememberProfile({ email });
+          rememberProfile({ email, display_name: derivedName });
         }
       }
       router.push("/");
       return;
     }
     // Password mode
-    rememberProfile({ email });
+    rememberProfile({ email, display_name: derivedName });
     router.push("/");
   };
 
