@@ -263,11 +263,10 @@ export default function MemoryScreen() {
                   void tap("light");
                   setSelectedFilter(pill.id);
                 }}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
-                  active
+                className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer whitespace-nowrap ${active
                     ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
                     : "bg-[#F5F0E8] border border-stone-200/80 text-[#111C2D] shadow-[0_2px_0_#CBD5E1] hover:bg-stone-200/60"
-                }`}
+                  }`}
               >
                 {pill.label}
               </button>
@@ -529,7 +528,7 @@ export default function MemoryScreen() {
                 .filter((w) =>
                   searchTerm
                     ? w.lemma.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      w.meaning.toLowerCase().includes(searchTerm.toLowerCase())
+                    w.meaning.toLowerCase().includes(searchTerm.toLowerCase())
                     : true
                 )
                 .map((w, wIdx) => (
@@ -555,13 +554,12 @@ export default function MemoryScreen() {
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`font-black ${
-                            w.status === "consolidated"
+                          className={`font-black ${w.status === "consolidated"
                               ? "text-[#10B981]"
                               : w.status === "learning"
-                              ? "text-[#D97706]"
-                              : "text-[#DC2626]"
-                          }`}
+                                ? "text-[#D97706]"
+                                : "text-[#DC2626]"
+                            }`}
                         >
                           {w.retention}
                         </span>
@@ -570,22 +568,20 @@ export default function MemoryScreen() {
                     </td>
                     <td className="py-3 px-3">
                       <span
-                        className={`inline-flex items-center gap-1.5 font-bold ${
-                          w.status === "consolidated"
+                        className={`inline-flex items-center gap-1.5 font-bold ${w.status === "consolidated"
                             ? "text-[#059669]"
                             : w.status === "learning"
-                            ? "text-[#D97706]"
-                            : "text-[#DC2626]"
-                        }`}
+                              ? "text-[#D97706]"
+                              : "text-[#DC2626]"
+                          }`}
                       >
                         <span
-                          className={`w-2 h-2 rounded-full ${
-                            w.status === "consolidated"
+                          className={`w-2 h-2 rounded-full ${w.status === "consolidated"
                               ? "bg-[#10B981]"
                               : w.status === "learning"
-                              ? "bg-[#F59E0B]"
-                              : "bg-[#EF4444]"
-                          }`}
+                                ? "bg-[#F59E0B]"
+                                : "bg-[#EF4444]"
+                            }`}
                         />
                         {w.statusLabel}
                       </span>

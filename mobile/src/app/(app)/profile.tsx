@@ -428,17 +428,17 @@ export default function ProfileScreen() {
             <div className="flex items-center gap-2">
               <Globe className="w-6 h-6 text-[#0D9488]" />
               <h2 className="text-xl sm:text-2xl font-extrabold text-[#111C2D]">
-                Central de Fluência &amp; Matriz de Idiomas
+                {t("profileTitle") || "Central de Fluência & Matriz de Idiomas"}
               </h2>
             </div>
             <p className="text-xs sm:text-sm text-[#64748B] mt-1">
-              Aprenda qualquer idioma através de outro com transferência sintática direta (Through-Language Matrix).
+              {t("profileSubtitle") || "Aprenda qualquer idioma através de outro com transferência sintática direta (Through-Language Matrix)."}
             </p>
           </div>
 
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F5F0E8] text-xs font-extrabold text-[#111C2D] shadow-[0_2px_0_#E2E8F0]">
             <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-ping" />
-            <span>Sincronização Poliglota Ativa</span>
+            <span>{uiLang === "en" ? "Polyglot Sync Active" : uiLang === "de" ? "Polyglotte Synchro Aktiv" : "Sincronização Poliglota Ativa"}</span>
           </div>
         </div>
 
@@ -452,11 +452,11 @@ export default function ProfileScreen() {
                   A
                 </span>
                 <span className="font-extrabold text-sm text-[#111C2D]">
-                  Idioma Alvo (Em Estudo)
+                  {t("sectionA") || "Idioma Alvo (Em Estudo)"}
                 </span>
               </div>
               <span className="text-[11px] text-[#64748B] font-bold uppercase">
-                {startedCoursesCount} Cursos Iniciados
+                {startedCoursesCount} {uiLang === "en" ? "Courses Started" : uiLang === "de" ? "Kurse Gestartet" : "Cursos Iniciados"}
               </span>
             </div>
 
@@ -546,16 +546,16 @@ export default function ProfileScreen() {
                     B
                   </span>
                   <span className="font-extrabold text-sm text-[#111C2D]">
-                    Idioma de Apoio (Base de Ensino)
+                    {t("sectionB") || "Idioma de Apoio (Base de Ensino)"}
                   </span>
                 </div>
                 <span className="px-2 py-0.5 rounded-md bg-[#FFDDB8] text-[#2A1700] text-[11px] font-bold">
-                  Pilar Heurístico
+                  {uiLang === "en" ? "Heuristic Pillar" : uiLang === "de" ? "Heuristische Basis" : "Pilar Heurístico"}
                 </span>
               </div>
 
               <p className="text-xs text-[#64748B]">
-                Traduções, guias fonéticos e notas dos mentores serão transmitidas neste idioma.
+                {t("sectionBSubtitle") || "Traduções, guias fonéticos e notas dos mentores serão transmitidas neste idioma."}
               </p>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
@@ -578,7 +578,7 @@ export default function ProfileScreen() {
                           {lang.name}
                         </div>
                         <div className="text-[10px] text-[#64748B]">
-                          {isActive ? "Ativo" : "Selecionar"}
+                          {isActive ? (uiLang === "en" ? "Active" : "Ativo") : (uiLang === "en" ? "Select" : "Selecionar")}
                         </div>
                       </div>
                     </button>
@@ -595,7 +595,7 @@ export default function ProfileScreen() {
                     C
                   </span>
                   <span className="font-extrabold text-sm text-[#111C2D]">
-                    Interface do Aplicativo (Menus &amp; HUD)
+                    {t("sectionC") || "Interface do Aplicativo (Menus & HUD)"}
                   </span>
                 </div>
                 <button
@@ -606,12 +606,12 @@ export default function ProfileScreen() {
                   }}
                   className="text-[10px] text-[#0D9488] font-bold hover:underline cursor-pointer"
                 >
-                  Sincronizar com Apoio
+                  {t("syncSupportWithUi") || "Sincronizar com Apoio"}
                 </button>
               </div>
 
               <p className="text-xs text-[#64748B]">
-                Menus, navegação, botões táteis e cabeçalhos serão exibidos no idioma selecionado.
+                {t("sectionCSubtitle") || "Menus, navegação, botões táteis e cabeçalhos serão exibidos no idioma selecionado."}
               </p>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">

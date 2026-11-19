@@ -95,7 +95,7 @@ const PLACEMENT_BY_LANG: Record<string, PlacementConfig> = {
 };
 
 export default function PlacementScreen() {
-  const { addXp, targetLang, activeMentor } = useProsa();
+  const { addXp, targetLang, activeMentor, startCourseWithPlacement } = useProsa();
   const config = PLACEMENT_BY_LANG[targetLang && targetLang in PLACEMENT_BY_LANG ? targetLang : "en"];
   const [bankTokens, setBankTokens] = useState<WordToken[]>(config.tokens);
   const [selectedTokens, setSelectedTokens] = useState<WordToken[]>([]);
@@ -435,7 +435,14 @@ export default function PlacementScreen() {
                 </p>
               </div>
             </div>
-            <TactileButton onClick={() => router.push("/summary")} variant="primary" size="sm">
+            <TactileButton
+              onClick={() => {
+                startCourseWithPlacement(targetLang, "B1");
+                router.push("/summary");
+              }}
+              variant="primary"
+              size="sm"
+            >
               Continuar ➔
             </TactileButton>
           </motion.div>

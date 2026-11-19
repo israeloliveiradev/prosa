@@ -8,6 +8,9 @@ export interface Mentor {
   avatar: string;
   level: number;
   quote: string;
+  affinity?: number;
+  bonus?: string;
+  field?: string;
 }
 
 export interface FSRSCardProgress {
@@ -85,49 +88,67 @@ export const DEFAULT_MENTORS_BY_LANG: Record<string, Mentor> = {
   en: {
     id: "feynman",
     name: "Richard Feynman",
-    title: "Mentor de Ritmo & Foco",
+    title: "Física & Simplificação Intuitiva",
     avatar: "/cast/feynman.png",
-    level: 1,
+    level: 7,
+    affinity: 98,
+    bonus: "+25% Combos no Duelo",
+    field: "Física Quântica",
     quote: "“Aprender inglês é descomplicar a física da fala. Menos decoreba, mais conexões reais.”",
   },
   de: {
     id: "einstein",
     name: "Albert Einstein",
-    title: "Mentor Polímata",
+    title: "Física Teórica & Causalidade",
     avatar: "/cast/einstein.png",
-    level: 1,
+    level: 7,
+    affinity: 98,
+    bonus: "+20% Velocidade em Diálogo",
+    field: "Física Teórica",
     quote: "“A língua alemã é como a relatividade: complexa à primeira vista, mas com lógica pura e perfeita.”",
   },
   fr: {
     id: "curie",
     name: "Marie Curie",
-    title: "Mentora de Fonética & Retenção",
+    title: "Mnemônica Molecular & Fonética",
     avatar: "/cast/curie.png",
-    level: 1,
+    level: 8,
+    affinity: 96,
+    bonus: "+18% Retenção FSRS",
+    field: "Física & Química",
     quote: "“Na vida e na língua francesa, nada deve ser temido, apenas compreendido.”",
   },
   es: {
     id: "cicero",
-    name: "Cícero",
-    title: "Mentor de Eloquência",
+    name: "Marco Túlio Cícero",
+    title: "Oratória & Eloquência Clássica",
     avatar: "/cast/cicero.png",
-    level: 1,
+    level: 7,
+    affinity: 95,
+    bonus: "+15% Cadência Vocálica",
+    field: "Retórica Clássica",
     quote: "“A clareza do espanhol reside no vigor do ritmo articulatório.”",
   },
   it: {
     id: "davinci",
     name: "Leonardo da Vinci",
-    title: "Mentor de Sintaxe & Estrutura",
+    title: "Sintaxe & Anatomia Estrutural",
     avatar: "/cast/davinci.png",
-    level: 1,
+    level: 9,
+    affinity: 97,
+    bonus: "+15% Precisão Nebensatz",
+    field: "Polímata Universal",
     quote: "“A simplicidade é o grau máximo de sofisticação da sintaxe italiana.”",
   },
   ja: {
     id: "confucius",
     name: "Confúcio",
-    title: "Mentor de Sabedoria Linguística",
+    title: "Sabedoria & Filosofia Linguística",
     avatar: "/cast/confucius.png",
-    level: 1,
+    level: 10,
+    affinity: 99,
+    bonus: "+20% Retenção de Kanji",
+    field: "Filosofia Oriental",
     quote: "“Uma jornada de mil milhas no japonês começa com uma única palavra bem pronunciada.”",
   },
 };
@@ -305,7 +326,36 @@ export function ProsaProvider({ children }: { children: ReactNode }) {
     return DEFAULT_COURSES;
   });
 
-  const activeMentor = DEFAULT_MENTORS_BY_LANG[targetLang] || DEFAULT_MENTORS_BY_LANG.en;
+  // User Selected Mentors per targetLang
+  const [selectedMentors, setSelectedMentors] = useState<Record<string, Mentor>>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const local = window.localStorage?.getItem("prosa_selected_mentors");
+        if (local) return JSON.parse(local);
+      }
+      const kvVal = kv.getString("prosa.selected_mentors.v1");
+      if (kvVal) return JSON.parse(kvVal);
+    } catch { }
+    return {};
+  });
+
+  const activeMentor: Mentor =
+    selectedMentors[targetLang] ||
+    DEFAULT_MENTORS_BY_LANG[targetLang] ||
+    DEFAULT_MENTORS_BY_LANG.en;
+
+  const setActiveMentor = (mentor: Mentor) => {
+    setSelectedMentors((prev) => {
+      const next = { ...prev, [targetLang]: mentor };
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage?.setItem("prosa_selected_mentors", JSON.stringify(next));
+        }
+        kv.set("prosa.selected_mentors.v1", JSON.stringify(next));
+      } catch { }
+      return next;
+    });
+  };
 
   const activeCourse = courses[targetLang] || {
     started: false,
@@ -600,7 +650,7 @@ export function ProsaProvider({ children }: { children: ReactNode }) {
         setThroughLang: setSupportLang,
         setUiLang,
         setInterfaceLang: setUiLang,
-        setActiveMentor: () => {},
+        setActiveMentor,
         setIsPro,
         addXp,
         setXp,

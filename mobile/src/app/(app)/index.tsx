@@ -120,10 +120,11 @@ const TRAIL_CONTENT: Record<
 
 export default function AdventureTrailScreen() {
   const session = useSession();
-  const { xp, gems, addGems, targetLang } = useProsa();
+  const { xp, gems, addGems, targetLang, activeMentor, activeCourse, startCourseFromScratch } = useProsa();
   const [claimedGems, setClaimedGems] = useState(false);
   const [chestOpened, setChestOpened] = useState(false);
   const currentLang = languageName(targetLang || "en");
+  const mentorFirstName = activeMentor?.name ? activeMentor.name.split(" ")[0] : "Mentor";
   const trail = TRAIL_CONTENT[targetLang && targetLang in TRAIL_CONTENT ? targetLang : "en"];
   const currentUserName = session?.user?.display_name || (session?.user?.email ? session.user.email.split("@")[0] : "Você");
 
@@ -161,74 +162,115 @@ export default function AdventureTrailScreen() {
       {/* 1. TOP HIGHLIGHTS BANNER: DAILY FOCUS & QUICK STATUS     */}
       {/* ======================================================== */}
       <section className="w-full mb-8">
-        <div className="relative overflow-hidden rounded-3xl bg-white p-6 sm:p-8 shadow-[0_4px_0_#CBD5E1] border border-stone-200/80 transition-transform">
-          {/* Decorative blurs */}
-          <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-[#0D9488]/10 pointer-events-none blur-3xl" />
-          <div className="absolute -left-12 -bottom-12 w-48 h-48 rounded-full bg-[#F59E0B]/10 pointer-events-none blur-2xl" />
-
-          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="flex items-start sm:items-center gap-5">
-              <div className="relative flex-shrink-0">
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-[#0D9488] flex items-center justify-center text-white shadow-[0_6px_0_#0F766E]">
-                  <Timer className="w-11 h-11 animate-pulse" />
-                </div>
-                <div className="absolute -top-2 -right-2 px-2.5 py-0.5 rounded-full bg-[#FF5722] text-white font-extrabold text-[11px] shadow-sm tracking-wider uppercase">
-                  Ao Vivo
-                </div>
+        {!activeCourse?.started ? (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-3xl p-6 sm:p-8 shadow-[0_4px_0_#D97706] flex flex-col lg:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-5">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center text-4xl shadow-[0_4px_0_#B45309] shrink-0">
+                🎯
               </div>
-
-              <div className="flex flex-col">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className="px-3 py-0.5 rounded-full bg-[#F5F0E8] text-[#111C2D] font-extrabold text-[11px] uppercase tracking-wider">
-                    Ritual Diário · Módulo 3
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-[#FEF3C7] text-[#B45309] font-extrabold text-[11px] flex items-center gap-1">
-                    <Zap className="w-3 h-3 fill-current" /> +120 XP
-                  </span>
-                </div>
-
-                <h2 className="text-2xl sm:text-3xl font-black text-[#111C2D] tracking-tight">
-                  Sessão de Imersão: 20 Minutos
+              <div className="space-y-1">
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 font-black text-[10px] uppercase tracking-wider">
+                  Nivelamento CEFR Requerido
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight">
+                  Calibre seu Nível em {currentLang}
                 </h2>
-                <p className="text-sm text-[#64748B] mt-0.5">
-                  <strong className="text-[#111C2D]">14:20 restante hoje</strong> • 8 de 12 micro-desafios concluídos.
+                <p className="text-xs sm:text-sm text-stone-600 max-w-xl leading-relaxed">
+                  Para calibrar a curva de repetição espaçada FSRS e desbloquear a Trilha Pedagógica, faça o diagnóstico adaptativo ou inicie desde o módulo elemental.
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#F5F0E8] text-[#111C2D] font-bold text-xs">
-                <Brain className="w-5 h-5 text-[#06B6D4]" />
-                <span>Modo Foco Ativado</span>
-              </div>
-
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto shrink-0">
               <TactileButton
-                onClick={() => router.push("/daily")}
+                onClick={() => router.push("/placement")}
                 variant="primary"
                 size="lg"
-                className="flex items-center justify-center gap-3 px-8 py-4 font-black"
+                className="w-full sm:w-auto px-6 py-3.5 flex items-center justify-center gap-2 font-black"
               >
-                <span>Continuar Sessão 🚀</span>
-                <kbd className="hidden sm:inline-block px-2 py-0.5 text-xs font-mono bg-white/20 rounded text-white">
-                  Espaço
-                </kbd>
+                <span>Fazer Nivelamento CEFR ⚡</span>
+              </TactileButton>
+
+              <TactileButton
+                onClick={() => startCourseFromScratch(targetLang)}
+                variant="secondary"
+                size="lg"
+                className="w-full sm:w-auto px-6 py-3.5 flex items-center justify-center gap-2 font-bold"
+              >
+                <span>Começar do Zero (A1)</span>
               </TactileButton>
             </div>
           </div>
+        ) : (
+          <div className="relative overflow-hidden rounded-3xl bg-white p-6 sm:p-8 shadow-[0_4px_0_#CBD5E1] border border-stone-200/80 transition-transform">
+            {/* Decorative blurs */}
+            <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-[#0D9488]/10 pointer-events-none blur-3xl" />
+            <div className="absolute -left-12 -bottom-12 w-48 h-48 rounded-full bg-[#F59E0B]/10 pointer-events-none blur-2xl" />
 
-          <div className="mt-6 pt-5 bg-[#FDFBF7] rounded-2xl p-4 border border-stone-200/60">
-            <div className="flex items-center justify-between text-xs sm:text-sm font-semibold mb-2">
-              <span className="font-extrabold text-[#111C2D]">Progresso do Ritual (68%)</span>
-              <span className="text-[#64748B]">Meta: Nível Causalidade B2</span>
+            <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+              <div className="flex items-start sm:items-center gap-5">
+                <div className="relative flex-shrink-0">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-[#0D9488] flex items-center justify-center text-white shadow-[0_6px_0_#0F766E]">
+                    <Timer className="w-11 h-11 animate-pulse" />
+                  </div>
+                  <div className="absolute -top-2 -right-2 px-2.5 py-0.5 rounded-full bg-[#FF5722] text-white font-extrabold text-[11px] shadow-sm tracking-wider uppercase">
+                    Ao Vivo
+                  </div>
+                </div>
+
+                <div className="flex flex-col">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className="px-3 py-0.5 rounded-full bg-[#F5F0E8] text-[#111C2D] font-extrabold text-[11px] uppercase tracking-wider">
+                      Ritual Diário · Módulo 3
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#FEF3C7] text-[#B45309] font-extrabold text-[11px] flex items-center gap-1">
+                      <Zap className="w-3 h-3 fill-current" /> +120 XP
+                    </span>
+                  </div>
+
+                  <h2 className="text-2xl sm:text-3xl font-black text-[#111C2D] tracking-tight">
+                    Sessão de Imersão: 20 Minutos
+                  </h2>
+                  <p className="text-sm text-[#64748B] mt-0.5">
+                    <strong className="text-[#111C2D]">14:20 restante hoje</strong> • 8 de 12 micro-desafios concluídos.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#F5F0E8] text-[#111C2D] font-bold text-xs">
+                  <Brain className="w-5 h-5 text-[#06B6D4]" />
+                  <span>Modo Foco Ativado</span>
+                </div>
+
+                <TactileButton
+                  onClick={() => router.push("/daily")}
+                  variant="primary"
+                  size="lg"
+                  className="flex items-center justify-center gap-3 px-8 py-4 font-black"
+                >
+                  <span>Continuar Sessão 🚀</span>
+                  <kbd className="hidden sm:inline-block px-2 py-0.5 text-xs font-mono bg-white/20 rounded text-white">
+                    Espaço
+                  </kbd>
+                </TactileButton>
+              </div>
             </div>
-            <div className="w-full h-3 rounded-full bg-[#E2E8F0] overflow-hidden">
-              <div
-                className="h-full bg-[#0D9488] rounded-full transition-all duration-700 ease-out"
-                style={{ width: "68%" }}
-              />
+
+            <div className="mt-6 pt-5 bg-[#FDFBF7] rounded-2xl p-4 border border-stone-200/60">
+              <div className="flex items-center justify-between text-xs sm:text-sm font-semibold mb-2">
+                <span className="font-extrabold text-[#111C2D]">Progresso do Ritual (68%)</span>
+                <span className="text-[#64748B]">Meta: Nível Causalidade B2</span>
+              </div>
+              <div className="w-full h-3 rounded-full bg-[#E2E8F0] overflow-hidden">
+                <div
+                  className="h-full bg-[#0D9488] rounded-full transition-all duration-700 ease-out"
+                  style={{ width: "68%" }}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </section>
 
       {/* ======================================================== */}
@@ -471,39 +513,39 @@ export default function AdventureTrailScreen() {
                 <h3 className="text-base font-black text-[#111C2D]">Mentor Ativo</h3>
               </div>
               <span className="px-2.5 py-1 rounded-full bg-[#FEF3C7] text-[#B45309] font-black text-[11px]">
-                Nível 7 • Físico Brincalhão
+                Nível {activeMentor?.level || 7} • {activeMentor?.field || activeMentor?.title || "Mentor Polímata"}
               </span>
             </div>
 
             <div className="flex items-center gap-4 bg-[#F5F0E8] p-3.5 rounded-2xl mb-4 border border-stone-200/80">
               <div className="relative w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 bg-white border border-[#0D9488]/30 shadow-sm">
                 <img
-                  src={EINSTEIN_AVATAR}
-                  alt="Albert Einstein"
+                  src={activeMentor?.avatar || EINSTEIN_AVATAR}
+                  alt={activeMentor?.name || "Mentor"}
                   className="w-full h-full object-cover object-top"
                 />
                 <span className="absolute bottom-0 inset-x-0 bg-stone-900/80 text-[8px] text-white text-center font-extrabold py-0.5 tracking-wider backdrop-blur-xs">
-                  98% AFINIDADE
+                  {activeMentor?.affinity || 98}% AFINIDADE
                 </span>
               </div>
-              <div className="flex flex-col">
-                <h4 className="text-sm font-black text-[#111C2D]">Albert Einstein</h4>
-                <p className="text-xs text-[#64748B]">Especialista em Causalidade ({currentLang})</p>
+              <div className="flex flex-col min-w-0">
+                <h4 className="text-sm font-black text-[#111C2D] truncate">{activeMentor?.name}</h4>
+                <p className="text-xs text-[#64748B] truncate">{activeMentor?.title} ({currentLang})</p>
                 <div className="flex items-center gap-1.5 mt-1 text-[#0D9488] font-black text-xs">
-                  <Zap className="w-3.5 h-3.5 fill-current" />
-                  <span>Bônus: +15% Retenção FSRS</span>
+                  <Zap className="w-3.5 h-3.5 fill-current shrink-0" />
+                  <span className="truncate">Bônus: {activeMentor?.bonus || "+15% Retenção FSRS"}</span>
                 </div>
               </div>
             </div>
 
             <TactileButton
-              onClick={() => router.push("/persona")}
+              onClick={() => router.push("/mentor-chat")}
               variant="secondary"
               size="md"
               className="w-full flex items-center justify-center gap-2 text-xs font-black"
             >
               <MessageSquare className="w-4 h-4 text-[#0D9488]" />
-              <span>Conversar em {currentLang} com Albert</span>
+              <span>Conversar em {currentLang} com {mentorFirstName}</span>
             </TactileButton>
           </div>
 

@@ -307,8 +307,11 @@ export default function PersonaScreen() {
       name: polymath.name,
       title: polymath.title,
       avatar: AVATAR_MAP[polymath.id] || polymath.avatar,
-      level: 12,
+      level: 8,
       quote: `“${polymath.quote}”`,
+      affinity: 98,
+      bonus: polymath.bonus,
+      field: polymath.field,
     };
     setActiveMentor(newMentor);
     setToastMessage(`Mentor ativo alterado para ${polymath.name}!`);

@@ -17,7 +17,7 @@ export function GamifiedSidebarRail() {
 
   return (
     <View className="flex-col gap-6 w-full">
-      {/* 1. Card do Mentor Ativo (Albert Einstein) */}
+      {/* 1. Card do Mentor Ativo */}
       <View className="bg-card rounded-3xl p-5 border border-line shadow-[0_4px_0_#CBD5E1]">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
@@ -26,7 +26,7 @@ export function GamifiedSidebarRail() {
           </View>
           <View className="px-2.5 py-1 rounded-full bg-[#FEF3C7] border border-[#FCD34D]">
             <Text className="font-extrabold text-[11px] text-[#B45309]">
-              Nível 7 • Físico Brincalhão
+              Nível {activeMentor?.level || 7} • {activeMentor?.field || activeMentor?.title || "Mentor Polímata"}
             </Text>
           </View>
         </View>
@@ -34,19 +34,19 @@ export function GamifiedSidebarRail() {
         <View className="flex-row items-center gap-3.5 bg-raised p-3.5 rounded-2xl mb-4 border border-line">
           <View className="relative w-14 h-14 rounded-2xl bg-[#CCFBF1] overflow-hidden items-center justify-center border border-primary/20 shadow-sm">
             <Image
-              source={require("../../../../../assets/cast/einstein.png")}
+              source={{ uri: activeMentor?.avatar || "/cast/einstein.png" }}
               style={{ width: 56, height: 56 }}
               resizeMode="cover"
             />
             <View className="absolute bottom-0 inset-x-0 bg-stone-900/80 rounded-b-xl py-0.5">
-              <Text className="text-[8px] text-center text-white font-extrabold">98% AFINIDADE</Text>
+              <Text className="text-[8px] text-center text-white font-extrabold">{activeMentor?.affinity || 98}% AFINIDADE</Text>
             </View>
           </View>
           <View className="flex-1 flex-col">
-            <Text className="font-bold text-sm text-ink">Albert Einstein</Text>
-            <Text className="text-xs text-muted">Especialista em Causalidade</Text>
+            <Text className="font-bold text-sm text-ink">{activeMentor?.name}</Text>
+            <Text className="text-xs text-muted">{activeMentor?.title} ({currentLangName})</Text>
             <View className="mt-1 flex-row items-center gap-1">
-              <Text className="text-xs text-primary font-bold">⚡ Bônus: +15% Retenção FSRS</Text>
+              <Text className="text-xs text-primary font-bold">⚡ Bônus: {activeMentor?.bonus || "+15% Retenção FSRS"}</Text>
             </View>
           </View>
         </View>
@@ -55,7 +55,7 @@ export function GamifiedSidebarRail() {
           accessibilityRole="button"
           onPress={() => {
             void tap("light");
-            router.push("/persona");
+            router.push("/mentor-chat");
           }}
           className="w-full py-2.5 px-4 rounded-xl bg-card border border-line shadow-[0_3px_0_#CBD5E1] active:translate-y-0.5 active:shadow-none flex-row items-center justify-center gap-2"
         >
