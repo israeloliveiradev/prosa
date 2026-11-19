@@ -57,6 +57,29 @@ export default function DailyRoute() {
   const speechLang = LanguageMatrixEngine.getBCP47(targetLang);
 
   const [phaseIndex, setPhaseIndex] = useState(0);
+  const [phaseStatuses, setPhaseStatuses] = useState<Array<"locked" | "active" | "completed">>([
+    "active",
+    "locked",
+    "locked",
+    "locked",
+    "locked",
+  ]);
+
+  const advancePhase = (fromIdx: number) => {
+    void tap("medium");
+    setPhaseStatuses((prev) => {
+      const next = [...prev];
+      next[fromIdx] = "completed";
+      if (fromIdx + 1 < next.length) {
+        next[fromIdx + 1] = "active";
+      }
+      return next;
+    });
+    if (fromIdx + 1 < PHASES.length) {
+      setPhaseIndex(fromIdx + 1);
+    }
+  };
+
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isCardsComplete, setIsCardsComplete] = useState(false);
   const [isRevealed, setIsRevealed] = useState(true);
@@ -328,24 +351,33 @@ export default function DailyRoute() {
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             {PHASES.map((phase) => {
               const active = phase.id === phaseIndex;
-              const isPast = phase.id < phaseIndex;
+              const status = phaseStatuses[phase.id];
+              const isLocked = status === "locked";
+              const isCompleted = status === "completed";
+
               return (
                 <button
                   key={phase.id}
                   type="button"
+                  disabled={isLocked}
                   onClick={() => {
+                    if (isLocked) return;
                     void tap("light");
                     setPhaseIndex(phase.id);
                   }}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs select-none transition-all cursor-pointer ${
-                    active
-                      ? "bg-[#0D9488] text-white shadow-[0_4px_0_#0F766E] translate-y-0"
-                      : isPast
-                      ? "bg-teal-50 text-[#0D9488] border border-teal-200"
-                      : "bg-[#F5F0E8] text-[#94A3B8] hover:text-stone-700"
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs select-none transition-all ${
+                    isLocked
+                      ? "bg-[#F1F5F9] text-[#94A3B8] opacity-60 cursor-not-allowed border border-stone-200"
+                      : active
+                      ? "bg-[#0D9488] text-white shadow-[0_4px_0_#0F766E] translate-y-0 cursor-pointer"
+                      : isCompleted
+                      ? "bg-teal-50 text-[#0D9488] border border-teal-200 cursor-pointer"
+                      : "bg-[#F5F0E8] text-stone-700 hover:text-stone-900 cursor-pointer"
                   }`}
                 >
-                  <span className="text-sm">{phase.icon}</span>
+                  <span className="text-sm">
+                    {isLocked ? "🔒" : isCompleted ? "✓" : phase.icon}
+                  </span>
                   <span>{phase.label}</span>
                   {active && (
                     <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse ml-0.5" />
@@ -422,7 +454,7 @@ export default function DailyRoute() {
                         type="button"
                         onClick={() => {
                           void tap("success");
-                          setPhaseIndex(1);
+                          advancePhase(0);
                         }}
                         className="flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-[#0D9488] text-white font-extrabold text-sm shadow-[0_4px_0_#0F766E] hover:opacity-95 active:translate-y-1 transition-all cursor-pointer"
                       >
@@ -606,6 +638,15 @@ export default function DailyRoute() {
                       <span className="font-mono">Espaço · Áudio</span>
                       <span className="font-mono">Fila Ativa: {currentIdx + 1} de {cards.length}</span>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => advancePhase(0)}
+                      className="w-full py-3 px-4 rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white font-extrabold text-xs shadow-[0_3px_0_#0F766E] active:translate-y-1 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
+                    >
+                      <span>Concluir Etapa FSRS e Avançar para Áudio (Fase 2)</span>
+                      <ArrowRight size={14} />
+                    </button>
                   </>
                 )}
               </div>
@@ -715,6 +756,50 @@ export default function DailyRoute() {
                     </div>
                   </div>
                 </TactileCard>
+
+                {/* Live Companion Dock */}
+                <TactileCard data-testid="companion-dock" className="p-5 space-y-3 bg-[#F5F0E8] border border-stone-200/80">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl border-2 border-amber-300 overflow-hidden shadow-xs shrink-0">
+                        <img
+                          src={activeMentor?.avatar || "/cast/einstein.png"}
+                          alt={activeMentor?.name || "Mentor"}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-sm text-[#111C2D]">
+                          {activeMentor?.name || "Albert Einstein"}
+                        </h4>
+                        <span className="text-[11px] font-bold text-[#0D9488] uppercase tracking-wider">
+                          {activeMentor?.title || "Mentor em Foco"}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase">
+                      Ativo
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#475569] italic leading-relaxed">
+                    {activeMentor?.quote || `“A imaginação é a chave para a linguagem; pense diretamente em ${languageName(targetLang)}.”`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const quote = activeMentor?.quote || `Mantenha o foco no estudo de ${languageName(targetLang)}.`;
+                      speechService.speak(quote, {
+                        lang: speechLang,
+                        mentorId: activeMentor?.id || "einstein",
+                        speed: "1.0x",
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-xs font-bold text-[#0D9488] hover:bg-stone-50 shadow-xs cursor-pointer"
+                  >
+                    <Volume2 size={13} />
+                    <span>Ouvir Mentor</span>
+                  </button>
+                </TactileCard>
               </div>
             </div>
           )}
@@ -789,7 +874,7 @@ export default function DailyRoute() {
                     type="button"
                     onClick={() => {
                       triggerToast("Áudio Dominado! +25 XP", 25);
-                      setPhaseIndex(2);
+                      advancePhase(1);
                     }}
                     className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#0D9488] text-white font-extrabold text-xs shadow-[0_4px_0_#0F766E] hover:opacity-95 cursor-pointer"
                   >
@@ -883,7 +968,7 @@ export default function DailyRoute() {
                     type="button"
                     onClick={() => {
                       triggerToast("Sintaxe Concluída! +30 XP", 30);
-                      setPhaseIndex(3);
+                      advancePhase(2);
                     }}
                     className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#0D9488] text-white font-extrabold text-xs shadow-[0_4px_0_#0F766E] hover:opacity-95 cursor-pointer"
                   >
@@ -986,7 +1071,7 @@ export default function DailyRoute() {
                     type="button"
                     onClick={() => {
                       triggerToast("Cadência Concluída! +35 XP", 35);
-                      setPhaseIndex(4);
+                      advancePhase(3);
                     }}
                     className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#0D9488] text-white font-extrabold text-xs shadow-[0_4px_0_#0F766E] hover:opacity-95 cursor-pointer"
                   >

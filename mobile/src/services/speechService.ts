@@ -364,8 +364,9 @@ class SpeechService {
 
     if (type === "SYNTHESIZED" || type === "PRELOADED") {
       if (audioData) {
-        // Explicit sample rate passed to AudioContext (24000 for Kokoro, 22050 for Piper)
-        const rate = samplingRate || (lang?.toLowerCase().startsWith("de") || lang?.toLowerCase().startsWith("pt") ? 22050 : 24000);
+        // Explicit sample rate passed to AudioContext (24000 for Kokoro, 22050 for Piper medium/high, 16000 for low)
+        const isPiperLang = /^(de|pt|fr|es|it)/i.test(lang || "");
+        const rate = samplingRate || (isPiperLang ? 22050 : 24000);
         const buffer = this.createAudioBufferFromFloat32(audioData, rate);
         if (buffer && text) {
           const cacheKey = this.getCacheKey(lang || "en", mentorId || "einstein", speed || 1.0, text);
@@ -606,12 +607,19 @@ class SpeechService {
       MENTOR_VOICE_PROFILES[mentorId] || MENTOR_VOICE_PROFILES.einstein;
 
     const shortLang = lang.toLowerCase().split("-")[0];
-    const isPiperLang = shortLang === "de" || shortLang === "pt";
+    const isPiperLang = shortLang === "de" || shortLang === "pt" || shortLang === "fr" || shortLang === "es" || shortLang === "it";
     const engineName = isPiperLang ? "Piper TTS ONNX" : "Kokoro-82M";
+    const defaultVoiceMap: Record<string, string> = {
+      de: "de_DE-thorsten-high",
+      pt: "pt_BR-faber-medium",
+      fr: "fr_FR-siwis-medium",
+      es: "es_ES-davefx-medium",
+      it: "it_IT-paola-medium",
+    };
     const voiceToken = isPiperLang
-      ? mentorProfile.piperVoice[shortLang] || (shortLang === "de" ? "de_DE-thorsten-high" : "pt_BR-faber-medium")
+      ? mentorProfile.piperVoice[shortLang] || defaultVoiceMap[shortLang] || "de_DE-thorsten-high"
       : mentorProfile.kokoroVoice[shortLang] || mentorProfile.kokoroVoice.en || "af_river";
-    const expectedSampleRate = isPiperLang ? 22050 : 24000;
+    const expectedSampleRate = isPiperLang ? (voiceToken.includes("-low") ? 16000 : 22050) : 24000;
 
     const cacheKey = this.getCacheKey(lang, mentorId, speedRate, cleanText);
 
@@ -710,13 +718,26 @@ class SpeechService {
     try {
       const source = this.audioCtx.createBufferSource();
       source.buffer = buffer;
+
+      const mentorId = options.mentorId || "einstein";
+      const mentorProfile =
+        MENTOR_VOICE_PROFILES[mentorId] || MENTOR_VOICE_PROFILES.einstein;
+      const speedRate =
+        typeof options.speed === "number"
+          ? options.speed
+          : options.speed && options.speed in SPEED_NUMERIC_MAP
+          ? SPEED_NUMERIC_MAP[options.speed]
+          : 1.0;
+      const personaRate = (mentorProfile.rateMultiplier || 1.0) * speedRate;
+      source.playbackRate.value = Math.max(0.5, Math.min(2.0, personaRate));
+
       source.connect(this.audioCtx.destination);
       this.currentAudioSource = source;
 
       options.onStart?.();
 
       const words = cleanText.split(/\s+/);
-      const durationMs = buffer.duration * 1000;
+      const durationMs = (buffer.duration / Math.max(0.5, personaRate)) * 1000;
       const stepMs = durationMs / Math.max(1, words.length);
       let wordIdx = 0;
       let charAcc = 0;

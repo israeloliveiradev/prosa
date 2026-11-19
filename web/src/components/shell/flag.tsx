@@ -223,7 +223,7 @@ export function Flag({ code, size = 28 }: { code: string; size?: number }) {
       </Frame>
     );
   }
-  if (normalized === "ja") {
+  if (normalized === "ja" || normalized === "jp") {
     return (
       <Frame size={size} label={label}>
         <Japan />

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useProsa, type Mentor } from "@/context/prosa-context";
 import { speechService, type ActivePlaybackInfo } from "@/services/speechService";
+import { languageName } from "@/lib/languages";
 
 interface PolymathData {
   id: string;
@@ -362,14 +363,22 @@ export default function PersonaScreen() {
   };
 
   const handlePlayVoice = (polymath: PolymathData) => {
-    const isGerman = targetLang === "de";
-    const isPortuguese = targetLang === "pt-BR";
-    const lang = isGerman ? "de-DE" : isPortuguese ? "pt-BR" : "en-US";
-    const sampleText = isGerman
-      ? (polymath.voiceSampleDe || polymath.quote)
-      : isPortuguese
-      ? polymath.voiceSample
-      : (polymath.voiceSampleEn || polymath.quote);
+    const langMap: Record<string, string> = {
+      de: "de-DE",
+      "pt-BR": "pt-BR",
+      pt: "pt-BR",
+      ja: "ja-JP",
+      fr: "fr-FR",
+      es: "es-ES",
+      it: "it-IT",
+    };
+    const lang = langMap[targetLang] || "en-US";
+    const sampleText =
+      targetLang === "de"
+        ? (polymath.voiceSampleDe || polymath.quote)
+        : targetLang === "pt-BR" || targetLang === "pt"
+        ? polymath.voiceSample
+        : (polymath.voiceSampleEn || polymath.quote);
 
     speechService.speak(sampleText, {
       lang,
@@ -397,7 +406,7 @@ export default function PersonaScreen() {
             <span className="italic font-serif font-normal text-[#0D9488]">Aceleradores Cognitivos</span>
           </h1>
           <p className="text-sm font-medium text-[#64748B]">
-            Cada mentor polímata potencializa uma dimensão específica da sua neuroplasticidade e retenção linguística no aprendizado do Alemão.
+            Cada mentor polímata potencializa uma dimensão específica da sua neuroplasticidade e retenção linguística no aprendizado de {languageName(targetLang)}.
           </p>
         </div>
 
@@ -475,14 +484,21 @@ export default function PersonaScreen() {
               <span className="text-[11px] font-bold text-[#64748B] uppercase block">Efeito de Ressonância</span>
               <div className="flex items-center gap-1.5 text-[#059669] text-sm font-extrabold mt-0.5">
                 <Zap size={16} />
-                <span>+18% Retenção FSRS Germânica</span>
+                <span>+18% Retenção FSRS ({languageName(targetLang)})</span>
               </div>
             </div>
             <button
               onClick={() => {
-                const isGerman = targetLang === "de";
-                const isPortuguese = targetLang === "pt-BR";
-                const lang = isGerman ? "de-DE" : isPortuguese ? "pt-BR" : "en-US";
+                const langMap: Record<string, string> = {
+                  de: "de-DE",
+                  "pt-BR": "pt-BR",
+                  pt: "pt-BR",
+                  ja: "ja-JP",
+                  fr: "fr-FR",
+                  es: "es-ES",
+                  it: "it-IT",
+                };
+                const lang = langMap[targetLang] || "en-US";
                 speechService.speak(activeMentor.quote, {
                   lang,
                   speed: "1.0x",

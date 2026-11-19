@@ -11,12 +11,21 @@ import { languageName } from "@/lib/languages";
 
 const EINSTEIN_AVATAR = "/cast/einstein.png";
 
+const PHASES = [
+  { num: 1, label: "FSRS Cards", icon: "🎴" },
+  { num: 2, label: "Áudio & Ritmo", icon: "🎧" },
+  { num: 3, label: "Sintaxe", icon: "📖" },
+  { num: 4, label: "Cadência", icon: "🎙️" },
+  { num: 5, label: "Reconstrução", icon: "🧩" },
+];
+
 export function DailySessionScreen() {
   const session = useSession();
   const {
     targetLang,
     supportLang,
     activeMentor,
+    userName,
     rateFSRSCard,
     completeTrailNode,
     addXp,
@@ -25,6 +34,14 @@ export function DailySessionScreen() {
   } = useProsa();
 
   const [phaseIndex, setPhaseIndex] = useState(0);
+  const [phaseStatuses, setPhaseStatuses] = useState<Array<"locked" | "active" | "completed">>([
+    "active",
+    "locked",
+    "locked",
+    "locked",
+    "locked",
+  ]);
+  const [audioSpeed, setAudioSpeed] = useState<"0.8x" | "1.0x" | "1.2x">("1.0x");
   const [currentCardIdx, setCurrentCardIdx] = useState(0);
   const [isRevealed, setIsRevealed] = useState(true);
   const [audioPlaying, setAudioPlaying] = useState(false);
@@ -40,6 +57,41 @@ export function DailySessionScreen() {
   const card = deck[currentCardIdx] || deck[0];
   const langSpeechCode = LanguageMatrixEngine.getBCP47(targetLang);
   const currentLangLabel = languageName(targetLang);
+
+  const advancePhase = (fromIdx: number) => {
+    void tap("medium");
+    setPhaseStatuses((prev) => {
+      const next = [...prev];
+      next[fromIdx] = "completed";
+      if (fromIdx + 1 < next.length) {
+        next[fromIdx + 1] = "active";
+      }
+      return next;
+    });
+
+    if (fromIdx + 1 < phases.length) {
+      setPhaseIndex(fromIdx + 1);
+    } else {
+      completeTrailNode(activeCourse?.activeNodeId || `${targetLang}-node-1`, 50);
+      addXp(50);
+      addGems(2);
+      setIsLessonCompleted(true);
+    }
+  };
+
+  const syntaxTokens = useMemo(() => {
+    if (card?.syntax && card.syntax.length > 0) {
+      return card.syntax;
+    }
+    const words = (card?.targetPhrase || "").split(/\s+/).filter(Boolean);
+    return words.map((w, idx) => ({
+      role: idx === 0 ? "Núcleo / Sujeito" : idx === 1 ? "Predicado / Ação" : "Complemento",
+      word: w,
+      detail: `${currentLangLabel} • Bloco ${idx + 1}`,
+      color: idx % 3 === 0 ? "#0284C7" : idx % 3 === 1 ? "#D97706" : "#10B981",
+      explanation: {},
+    }));
+  }, [card, currentLangLabel]);
 
   // Lookahead cache: Silently pre-synthesize current card and next 2 cards in background worker
   useEffect(() => {
@@ -92,8 +144,7 @@ export function DailySessionScreen() {
     if (currentCardIdx < deck.length - 1) {
       setCurrentCardIdx((prev) => prev + 1);
     } else {
-      completeTrailNode(activeCourse?.activeNodeId || `${targetLang}-node-1`, 50);
-      setIsLessonCompleted(true);
+      advancePhase(0);
     }
   };
 
@@ -131,13 +182,7 @@ export function DailySessionScreen() {
     });
   };
 
-  const phases = [
-    { num: 1, label: "FSRS Cards", icon: "🎴" },
-    { num: 2, label: "Áudio & Ritmo", icon: "🎧" },
-    { num: 3, label: "Sintaxe", icon: "📖" },
-    { num: 4, label: "Cadência", icon: "🎙️" },
-    { num: 5, label: "Reconstrução", icon: "🧩" },
-  ];
+  const phases = PHASES;
 
   return (
     <ScrollView
@@ -189,11 +234,17 @@ export function DailySessionScreen() {
           >
             {phases.map((ph, idx) => {
               const active = idx === phaseIndex;
+              const status = phaseStatuses[idx];
+              const isLocked = status === "locked";
+              const isCompleted = status === "completed";
+
               return (
                 <Pressable
                   key={ph.num}
                   accessibilityRole="button"
+                  disabled={isLocked}
                   onPress={() => {
+                    if (isLocked) return;
                     void tap("light");
                     setPhaseIndex(idx);
                   }}
@@ -205,19 +256,44 @@ export function DailySessionScreen() {
                     paddingHorizontal: 14,
                     paddingVertical: 8,
                     borderRadius: 14,
-                    backgroundColor: active ? "#00685F" : "#F5F0E8",
+                    backgroundColor: active
+                      ? "#00685F"
+                      : isCompleted
+                      ? "#ECFDF5"
+                      : isLocked
+                      ? "#F1F5F9"
+                      : "#F5F0E8",
                     borderWidth: 1,
-                    borderColor: active ? "#0F766E" : "#E2E8F0",
-                    boxShadow: active ? "0 3px 0 #0F766E" : "0 2px 0 #CBD5E1",
-                    cursor: "pointer",
+                    borderColor: active
+                      ? "#0F766E"
+                      : isCompleted
+                      ? "#10B981"
+                      : isLocked
+                      ? "#E2E8F0"
+                      : "#E2E8F0",
+                    boxShadow: active
+                      ? "0 3px 0 #0F766E"
+                      : isCompleted
+                      ? "0 2px 0 #059669"
+                      : "0 2px 0 #CBD5E1",
+                    cursor: isLocked ? "not-allowed" : "pointer",
+                    opacity: isLocked ? 0.6 : 1,
                   }}
                 >
-                  <Text style={{ fontSize: 13 }}>{ph.icon}</Text>
+                  <Text style={{ fontSize: 13 }}>
+                    {isLocked ? "🔒" : isCompleted ? "✓" : ph.icon}
+                  </Text>
                   <Text
                     style={{
                       fontSize: 12,
                       fontWeight: "700",
-                      color: active ? "#FFFFFF" : "#111C2D",
+                      color: active
+                        ? "#FFFFFF"
+                        : isCompleted
+                        ? "#065F46"
+                        : isLocked
+                        ? "#94A3B8"
+                        : "#111C2D",
                     }}
                   >
                     {ph.num}. {ph.label}
@@ -328,6 +404,8 @@ export function DailySessionScreen() {
               gap: 18,
             }}
           >
+            {phaseIndex === 0 && (
+            <>
             {/* O Cartão 3D Tátil */}
             <View
               style={{
@@ -993,6 +1071,424 @@ export function DailySessionScreen() {
                 <Text style={{ fontSize: 12, color: "#64748B" }}>Próximo</Text>
               </View>
             </View>
+
+            {/* Advance to Phase 2 Button */}
+            {!isLessonCompleted && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => advancePhase(0)}
+                style={{
+                  width: "100%",
+                  paddingVertical: 14,
+                  backgroundColor: "#00685F",
+                  borderRadius: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 4px 0 #004D47",
+                  cursor: "pointer",
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "800", color: "#FFFFFF" }}>
+                  Concluir Etapa FSRS e Avançar para Áudio (Fase 2) ➔
+                </Text>
+              </Pressable>
+            )}
+            </>
+            )}
+
+            {/* ==================================================== */}
+            {/* FASE 2: IMERSÃO AUDITIVA & SHADOWING                */}
+            {/* ==================================================== */}
+            {phaseIndex === 1 && !isLessonCompleted && (
+              <View
+                style={{
+                  width: "100%",
+                  minHeight: 400,
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 24,
+                  padding: 28,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  boxShadow: "0 4px 0 #CBD5E1",
+                  borderWidth: 2,
+                  borderColor: "#E2E8F0",
+                  gap: 20,
+                }}
+              >
+                <View
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderBottomWidth: 2,
+                    borderBottomColor: "#F5F0E8",
+                    paddingBottom: 14,
+                  }}
+                >
+                  <View style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 18 }}>🎧</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "900", color: "#00685F", textTransform: "uppercase" }}>
+                      Fase 2: Imersão Auditiva & Shadowing
+                    </Text>
+                  </View>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "#E6F4F1" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#00685F" }}>{currentLangLabel}</Text>
+                  </View>
+                </View>
+
+                <View style={{ alignItems: "center", gap: 12, paddingVertical: 18 }}>
+                  <Text style={{ fontSize: 28, fontWeight: "900", color: "#111C2D", textAlign: "center" }}>
+                    {card.targetPhrase}
+                  </Text>
+                  <Text style={{ fontSize: 15, color: "#0D9488", fontWeight: "600", fontStyle: "italic" }}>
+                    {card.ipa}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: "#64748B", textAlign: "center" }}>
+                    {cardTranslation}
+                  </Text>
+                </View>
+
+                {/* Speed Controls */}
+                <View style={{ display: "flex", flexDirection: "row", gap: 10, justifyContent: "center" }}>
+                  {(["0.8x", "1.0x", "1.2x"] as const).map((spd) => (
+                    <Pressable
+                      key={spd}
+                      accessibilityRole="button"
+                      onPress={() => {
+                        void tap("light");
+                        setAudioSpeed(spd);
+                      }}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        borderRadius: 12,
+                        backgroundColor: audioSpeed === spd ? "#00685F" : "#F5F0E8",
+                        borderWidth: 1,
+                        borderColor: audioSpeed === spd ? "#004D47" : "#CBD5E1",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: "800", color: audioSpeed === spd ? "#FFFFFF" : "#111C2D" }}>
+                        {spd}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    void tap("medium");
+                    setAudioPlaying(true);
+                    speechService.speak(card.targetPhrase, {
+                      lang: langSpeechCode,
+                      mentorId: activeMentor?.id || "einstein",
+                      speed: audioSpeed,
+                      onEnd: () => setAudioPlaying(false),
+                      onError: () => setAudioPlaying(false),
+                    });
+                  }}
+                  style={{
+                    paddingVertical: 16,
+                    backgroundColor: audioPlaying ? "#0F766E" : "#00685F",
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 4px 0 #004D47",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Text style={{ fontSize: 15, fontWeight: "800", color: "#FFFFFF" }}>
+                    {audioPlaying ? "Reproduzindo Voz Neural..." : "▶ Ouvir com Cadência do Mentor"}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => advancePhase(1)}
+                  style={{
+                    paddingVertical: 14,
+                    backgroundColor: "#10B981",
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 4px 0 #059669",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "800", color: "#FFFFFF" }}>
+                    Concluir Etapa de Áudio e Avançar para Sintaxe (Fase 3) ➔
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* ==================================================== */}
+            {/* FASE 3: ANÁLISE SINTÁTICA & ARQUITETURA             */}
+            {/* ==================================================== */}
+            {phaseIndex === 2 && !isLessonCompleted && (
+              <View
+                style={{
+                  width: "100%",
+                  minHeight: 400,
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 24,
+                  padding: 28,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  boxShadow: "0 4px 0 #CBD5E1",
+                  borderWidth: 2,
+                  borderColor: "#E2E8F0",
+                  gap: 20,
+                }}
+              >
+                <View
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderBottomWidth: 2,
+                    borderBottomColor: "#F5F0E8",
+                    paddingBottom: 14,
+                  }}
+                >
+                  <View style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 18 }}>📖</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "900", color: "#00685F", textTransform: "uppercase" }}>
+                      Fase 3: Análise Sintática & Arquitetura
+                    </Text>
+                  </View>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "#E6F4F1" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#00685F" }}>{currentLangLabel}</Text>
+                  </View>
+                </View>
+
+                <View style={{ gap: 14 }}>
+                  <Text style={{ fontSize: 13, color: "#64748B", fontWeight: "600" }}>
+                    Examine a função de cada componente na frase completa:
+                  </Text>
+                  <View style={{ display: "flex", flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    {syntaxTokens.map((st, i) => (
+                      <View
+                        key={i}
+                        style={{
+                          flex: 1,
+                          minWidth: "45%",
+                          padding: 14,
+                          borderRadius: 16,
+                          backgroundColor: "#F8FAFC",
+                          borderWidth: 2,
+                          borderColor: "#E2E8F0",
+                          gap: 4,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: "900", color: st.color, textTransform: "uppercase" }}>
+                          {st.role}
+                        </Text>
+                        <Text style={{ fontSize: 16, fontWeight: "800", color: "#111C2D" }}>
+                          {st.word}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: "#64748B" }}>
+                          {st.detail}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => advancePhase(2)}
+                  style={{
+                    paddingVertical: 14,
+                    backgroundColor: "#10B981",
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 4px 0 #059669",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "800", color: "#FFFFFF" }}>
+                    Concluir Etapa de Sintaxe e Avançar para Cadência (Fase 4) ➔
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* ==================================================== */}
+            {/* FASE 4: ALINHAMENTO DE CADÊNCIA ACÚSTICA             */}
+            {/* ==================================================== */}
+            {phaseIndex === 3 && !isLessonCompleted && (
+              <View
+                style={{
+                  width: "100%",
+                  minHeight: 400,
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 24,
+                  padding: 28,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  boxShadow: "0 4px 0 #CBD5E1",
+                  borderWidth: 2,
+                  borderColor: "#E2E8F0",
+                  gap: 20,
+                }}
+              >
+                <View
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderBottomWidth: 2,
+                    borderBottomColor: "#F5F0E8",
+                    paddingBottom: 14,
+                  }}
+                >
+                  <View style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 18 }}>🎙️</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "900", color: "#00685F", textTransform: "uppercase" }}>
+                      Fase 4: Alinhamento de Cadência Acústica
+                    </Text>
+                  </View>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "#E6F4F1" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#00685F" }}>Marie Curie Lab</Text>
+                  </View>
+                </View>
+
+                <View style={{ alignItems: "center", gap: 14, paddingVertical: 14 }}>
+                  <Text style={{ fontSize: 26, fontWeight: "900", color: "#111C2D", textAlign: "center" }}>
+                    {card.targetPhrase}
+                  </Text>
+                  <View
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 10,
+                      borderRadius: 14,
+                      backgroundColor: "#ECFDF5",
+                      borderWidth: 1,
+                      borderColor: "#A7F3D0",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: "800", color: "#065F46" }}>
+                      96% Coincidência Rítmica • Prosódia Perfeita
+                    </Text>
+                    <Text style={{ fontSize: 11, color: "#047857", marginTop: 2 }}>
+                      Articulação clara sem pausas hesitantes ou quebras tônicas.
+                    </Text>
+                  </View>
+                </View>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => advancePhase(3)}
+                  style={{
+                    paddingVertical: 14,
+                    backgroundColor: "#10B981",
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 4px 0 #059669",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "800", color: "#FFFFFF" }}>
+                    Concluir Etapa de Cadência e Avançar para Reconstrução (Fase 5) ➔
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* ==================================================== */}
+            {/* FASE 5: RECONSTRUÇÃO MENTAL ATIVA                   */}
+            {/* ==================================================== */}
+            {phaseIndex === 4 && !isLessonCompleted && (
+              <View
+                style={{
+                  width: "100%",
+                  minHeight: 400,
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 24,
+                  padding: 28,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  boxShadow: "0 4px 0 #CBD5E1",
+                  borderWidth: 2,
+                  borderColor: "#E2E8F0",
+                  gap: 20,
+                }}
+              >
+                <View
+                  style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderBottomWidth: 2,
+                    borderBottomColor: "#F5F0E8",
+                    paddingBottom: 14,
+                  }}
+                >
+                  <View style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 18 }}>🧩</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "900", color: "#00685F", textTransform: "uppercase" }}>
+                      Fase 5: Reconstrução Mental Ativa
+                    </Text>
+                  </View>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "#E6F4F1" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#00685F" }}>{currentLangLabel}</Text>
+                  </View>
+                </View>
+
+                <View style={{ gap: 14 }}>
+                  <Text style={{ fontSize: 13, color: "#64748B", fontWeight: "600" }}>
+                    Tradução: <Text style={{ color: "#111C2D", fontWeight: "700" }}>{cardTranslation}</Text>
+                  </Text>
+                  <View
+                    style={{
+                      padding: 18,
+                      borderRadius: 16,
+                      backgroundColor: "#F8FAFC",
+                      borderWidth: 2,
+                      borderColor: "#E2E8F0",
+                      minHeight: 80,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ fontSize: 20, fontWeight: "800", color: "#111C2D", textAlign: "center" }}>
+                      {card.targetPhrase}
+                    </Text>
+                  </View>
+                </View>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => advancePhase(4)}
+                  style={{
+                    paddingVertical: 16,
+                    backgroundColor: "#059669",
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 4px 0 #064E3B",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "900", color: "#FFFFFF" }}>
+                    Finalizar Sessão Diária Completa (+50 XP, +2 Gemas) 🏆
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </View>
 
           {/* ====================================================== */}
@@ -1072,7 +1568,7 @@ export function DailySessionScreen() {
                 Observe como as funções gramaticais se encaixam como blocos táteis:
               </Text>
 
-              {/* 2x2 Grid de Fichas Sintáticas */}
+              {/* Dynamic Grid de Fichas Sintáticas */}
               <View
                 style={{
                   display: "flex",
@@ -1082,233 +1578,82 @@ export function DailySessionScreen() {
                   paddingTop: 4,
                 }}
               >
-                {/* Sujeito */}
-                <View
-                  style={{
-                    flex: 1,
-                    minWidth: "46%",
-                    padding: 12,
-                    borderRadius: 16,
-                    backgroundColor: "#E7EEFF",
-                    borderWidth: 2,
-                    borderColor: "#BAE6FD",
-                    boxShadow: "0 3px 0 #CBD5E1",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 3,
-                  }}
-                >
-                  <View
-                    style={{
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <Text
+                {syntaxTokens.map((st, i) => {
+                  const bg =
+                    st.color === "#0284C7"
+                      ? "#E7EEFF"
+                      : st.color === "#D97706"
+                      ? "#FEF3C7"
+                      : st.color === "#8B5CF6"
+                      ? "#F5F3FF"
+                      : "#ECFDF5";
+                  const border =
+                    st.color === "#0284C7"
+                      ? "#BAE6FD"
+                      : st.color === "#D97706"
+                      ? "#FDE68A"
+                      : st.color === "#8B5CF6"
+                      ? "#DDD6FE"
+                      : "#A7F3D0";
+                  return (
+                    <View
+                      key={`${st.word}-${i}`}
                       style={{
-                        fontSize: 10,
-                        textTransform: "uppercase",
-                        fontWeight: "900",
-                        color: "#0284C7",
+                        flex: 1,
+                        minWidth: "46%",
+                        padding: 12,
+                        borderRadius: 16,
+                        backgroundColor: bg,
+                        borderWidth: 2,
+                        borderColor: border,
+                        boxShadow: "0 3px 0 #CBD5E1",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 3,
                       }}
                     >
-                      Sujeito (Nom.)
-                    </Text>
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: "#0284C7",
-                      }}
-                    />
-                  </View>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "800",
-                      color: "#111C2D",
-                    }}
-                  >
-                    Die Gedanken
-                  </Text>
-                  <Text style={{ fontSize: 10, color: "#64748B" }}>
-                    Plural / Artigo Det.
-                  </Text>
-                </View>
-
-                {/* Verbo */}
-                <View
-                  style={{
-                    flex: 1,
-                    minWidth: "46%",
-                    padding: 12,
-                    borderRadius: 16,
-                    backgroundColor: "#FEF3C7",
-                    borderWidth: 2,
-                    borderColor: "#FDE68A",
-                    boxShadow: "0 3px 0 #CBD5E1",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 3,
-                  }}
-                >
-                  <View
-                    style={{
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        textTransform: "uppercase",
-                        fontWeight: "900",
-                        color: "#D97706",
-                      }}
-                    >
-                      Verbo (Posição 2)
-                    </Text>
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: "#D97706",
-                      }}
-                    />
-                  </View>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "800",
-                      color: "#111C2D",
-                    }}
-                  >
-                    sind
-                  </Text>
-                  <Text style={{ fontSize: 10, color: "#64748B" }}>
-                    Sein (3ª pl. Pres.)
-                  </Text>
-                </View>
-
-                {/* Predicativo */}
-                <View
-                  style={{
-                    flex: 1,
-                    minWidth: "46%",
-                    padding: 12,
-                    borderRadius: 16,
-                    backgroundColor: "#ECFDF5",
-                    borderWidth: 2,
-                    borderColor: "#A7F3D0",
-                    boxShadow: "0 3px 0 #CBD5E1",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 3,
-                  }}
-                >
-                  <View
-                    style={{
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        textTransform: "uppercase",
-                        fontWeight: "900",
-                        color: "#10B981",
-                      }}
-                    >
-                      Predicativo
-                    </Text>
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: "#10B981",
-                      }}
-                    />
-                  </View>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "800",
-                      color: "#111C2D",
-                    }}
-                  >
-                    frei
-                  </Text>
-                  <Text style={{ fontSize: 10, color: "#64748B" }}>
-                    Adjetivo invariável
-                  </Text>
-                </View>
-
-                {/* Conector */}
-                <View
-                  style={{
-                    flex: 1,
-                    minWidth: "46%",
-                    padding: 12,
-                    borderRadius: 16,
-                    backgroundColor: "#F5F3FF",
-                    borderWidth: 2,
-                    borderColor: "#DDD6FE",
-                    boxShadow: "0 3px 0 #CBD5E1",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 3,
-                  }}
-                >
-                  <View
-                    style={{
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        textTransform: "uppercase",
-                        fontWeight: "900",
-                        color: "#8B5CF6",
-                      }}
-                    >
-                      Conector
-                    </Text>
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: "#8B5CF6",
-                      }}
-                    />
-                  </View>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "800",
-                      color: "#111C2D",
-                    }}
-                  >
-                    und fliegen...
-                  </Text>
-                  <Text style={{ fontSize: 10, color: "#64748B" }}>
-                    Coordenação direta
-                  </Text>
-                </View>
+                      <View
+                        style={{
+                          display: "flex",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            textTransform: "uppercase",
+                            fontWeight: "900",
+                            color: st.color,
+                          }}
+                        >
+                          {st.role}
+                        </Text>
+                        <View
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: st.color,
+                          }}
+                        />
+                      </View>
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: "800",
+                          color: "#111C2D",
+                        }}
+                      >
+                        {st.word}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: "#64748B" }}>
+                        {st.detail}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             </View>
 
@@ -1537,12 +1882,12 @@ export function DailySessionScreen() {
               >
                 <Text style={{ fontSize: 13, color: "#10B981" }}>✓</Text>
                 <Text style={{ fontSize: 12, color: "#3D4947" }}>
-                  Excelente controle do tempo na consoante oclusiva ‘frei und’.
+                  Excelente cadência rítmica e controle de entonação na frase ‘{card?.targetPhrase || "prosa"}’.
                 </Text>
               </View>
             </View>
 
-            {/* Widget 3: Albert Einstein Live Companion Dock */}
+            {/* Widget 3: Live Companion Dock */}
             <View
               style={{
                 backgroundColor: "#F5F0E8",
@@ -1569,7 +1914,7 @@ export function DailySessionScreen() {
                   }}
                 >
                   <Image
-                    source={{ uri: EINSTEIN_AVATAR }}
+                    source={{ uri: activeMentor?.avatar || EINSTEIN_AVATAR }}
                     style={{ width: "100%", height: "100%" }}
                     resizeMode="cover"
                   />
@@ -1582,12 +1927,12 @@ export function DailySessionScreen() {
                     width: 20,
                     height: 20,
                     borderRadius: 10,
-                    backgroundColor: "#FF5722",
+                    backgroundColor: "#00685F",
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <Text style={{ fontSize: 10, color: "#FFFFFF" }}>👍</Text>
+                  <Text style={{ fontSize: 10, color: "#FFFFFF" }}>⭐</Text>
                 </View>
               </View>
 
@@ -1614,7 +1959,7 @@ export function DailySessionScreen() {
                       color: "#111C2D",
                     }}
                   >
-                    Albert Einstein
+                    {activeMentor?.name || "Albert Einstein"}
                   </Text>
                   <View
                     style={{
@@ -1634,7 +1979,7 @@ export function DailySessionScreen() {
                         textTransform: "uppercase",
                       }}
                     >
-                      Mentor em Foco
+                      {activeMentor?.title || "Mentor em Foco"}
                     </Text>
                   </View>
                 </View>
@@ -1646,9 +1991,34 @@ export function DailySessionScreen() {
                     lineHeight: 18,
                   }}
                 >
-                  “Fantástico{session?.user?.display_name ? `, ${session.user.display_name.split(" ")[0]}` : ""}! A velocidade e a ressonância da sua fala
-                  estão relativos à velocidade da luz! Mantenha essa precisão.”
+                  {activeMentor?.quote || `“A imaginação é a chave para a linguagem; pense diretamente em ${currentLangLabel}.”`}
                 </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    const quote = activeMentor?.quote || `Mantenha a curiosidade ativa no estudo de ${currentLangLabel}.`;
+                    speechService.speak(quote, {
+                      lang: langSpeechCode,
+                      mentorId: activeMentor?.id || "einstein",
+                      speed: "1.0x",
+                    });
+                  }}
+                  style={{
+                    alignSelf: "flex-start",
+                    marginTop: 4,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                    backgroundColor: "#FFFFFF",
+                    borderWidth: 1,
+                    borderColor: "#CBD5E1",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#00685F" }}>
+                    🎙️ Ouvir Mentor
+                  </Text>
+                </Pressable>
               </View>
             </View>
           </View>

@@ -47,36 +47,36 @@ export const KOKORO_MENTOR_VOICES = {
   machado: { en: "am_michael", fr: "ff_siwis", es: "em_alex", it: "im_nicola", ja: "jm_kento", pt: "pm_alex" },
 };
 
-// Mentors voice profiles for Piper (German and Portuguese)
+// Mentors voice profiles for Piper (German, Portuguese, French, Spanish, Italian)
 export const PIPER_MENTOR_VOICES = {
-  // Female Mentors -> Female German (de_DE-kerstin-low) & Female Portuguese (pt_BR-edresson-low)
-  curie: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low" },
-  lovelace: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low" },
-  hypatia: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low" },
-  bingen: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low" },
-  hildegard: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low" },
+  // Female Mentors -> Female German (de_DE-kerstin-low, 16kHz) & Female Portuguese (pt_BR-edresson-low, 16kHz)
+  curie: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  lovelace: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  hypatia: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  bingen: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  hildegard: { de: "de_DE-kerstin-low", pt: "pt_BR-edresson-low", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
 
-  // Male Mentors -> Male German & Male Portuguese
-  einstein: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium" },
-  aurelius: { de: "de_DE-thorsten-low", pt: "pt_BR-faber-medium" },
-  socrates: { de: "de_DE-thorsten-low", pt: "pt_BR-faber-medium" },
-  goethe: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium" },
-  feynman: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium" },
-  davinci: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium" },
-  tesla: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium" },
-  cicero: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium" },
-  confucius: { de: "de_DE-thorsten-low", pt: "pt_BR-faber-medium" },
-  newton: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium" },
-  darwin: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium" },
-  galileo: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium" },
-  galilei: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium" },
-  machado: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium" },
-  spinoza: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium" },
-  descartes: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium" },
-  leibniz: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium" },
-  plato: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium" },
-  aristotle: { de: "de_DE-thorsten-low", pt: "pt_BR-faber-medium" },
-  humboldt: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium" },
+  // Male Mentors -> Male German & Male Portuguese / Romance
+  einstein: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  aurelius: { de: "de_DE-thorsten-low", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  socrates: { de: "de_DE-thorsten-low", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  goethe: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  feynman: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  davinci: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  tesla: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  cicero: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  confucius: { de: "de_DE-thorsten-low", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  newton: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  darwin: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  galileo: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  galilei: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  machado: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  spinoza: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  descartes: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  leibniz: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  plato: { de: "de_DE-thorsten-medium", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  aristotle: { de: "de_DE-thorsten-low", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
+  humboldt: { de: "de_DE-thorsten-high", pt: "pt_BR-faber-medium", fr: "fr_FR-siwis-medium", es: "es_ES-davefx-medium", it: "it_IT-paola-medium" },
 };
 
 async function getKokoroSingleton() {
@@ -127,6 +127,17 @@ async function getPiperSession(voiceId, origin = "") {
 
 function wavToFloat32(arrayBuffer) {
   const dataView = new DataView(arrayBuffer);
+  // Extract real sampleRate directly from bytes 24..27 of RIFF WAV header (16000 for low, 22050 for med/high)
+  let samplingRate = 22050;
+  try {
+    if (arrayBuffer.byteLength >= 28) {
+      const parsedRate = dataView.getUint32(24, true);
+      if (parsedRate >= 8000 && parsedRate <= 96000) {
+        samplingRate = parsedRate;
+      }
+    }
+  } catch {}
+
   let offset = 44;
   for (let i = 12; i < Math.min(arrayBuffer.byteLength - 8, 200); i += 2) {
     if (
@@ -145,7 +156,7 @@ function wavToFloat32(arrayBuffer) {
   for (let i = 0; i < int16Count; i++) {
     float32[i] = dataView.getInt16(offset + i * 2, true) / 32768.0;
   }
-  return float32;
+  return { float32Data: float32, samplingRate };
 }
 
 self.onmessage = async (e) => {
@@ -156,9 +167,18 @@ self.onmessage = async (e) => {
       const { lang = "en", mentorId = "einstein", origin = "" } = payload || {};
       const shortLang = lang.toLowerCase().split("-")[0];
 
-      if (shortLang === "de" || shortLang === "pt") {
+      // Route German (de), Portuguese (pt), French (fr), Spanish (es), Italian (it) to Piper TTS ONNX
+      const isPiperLang = shortLang === "de" || shortLang === "pt" || shortLang === "fr" || shortLang === "es" || shortLang === "it";
+      if (isPiperLang) {
         const mentorPiper = PIPER_MENTOR_VOICES[mentorId] || PIPER_MENTOR_VOICES.einstein;
-        const defaultVoice = shortLang === "de" ? "de_DE-thorsten-high" : "pt_BR-faber-medium";
+        const defaultVoiceMap = {
+          de: "de_DE-thorsten-high",
+          pt: "pt_BR-faber-medium",
+          fr: "fr_FR-siwis-medium",
+          es: "es_ES-davefx-medium",
+          it: "it_IT-paola-medium",
+        };
+        const defaultVoice = defaultVoiceMap[shortLang] || "de_DE-thorsten-high";
         const voiceId = mentorPiper[shortLang] || defaultVoice;
         await getPiperSession(voiceId, origin);
       } else {
@@ -178,17 +198,24 @@ self.onmessage = async (e) => {
       const { text, lang = "en", mentorId = "einstein", speed = 1.0, voice = null, origin = "" } = payload || {};
       const shortLang = lang.toLowerCase().split("-")[0];
 
-      // Route German (de) and Portuguese (pt) to Piper TTS ONNX
-      if (shortLang === "de" || shortLang === "pt") {
+      // Route German (de), Portuguese (pt), French (fr), Spanish (es), Italian (it) to Piper TTS ONNX
+      const isPiperLang = shortLang === "de" || shortLang === "pt" || shortLang === "fr" || shortLang === "es" || shortLang === "it";
+      if (isPiperLang) {
         const mentorPiper = PIPER_MENTOR_VOICES[mentorId] || PIPER_MENTOR_VOICES.einstein;
-        const defaultVoice = shortLang === "de" ? "de_DE-thorsten-high" : "pt_BR-faber-medium";
+        const defaultVoiceMap = {
+          de: "de_DE-thorsten-high",
+          pt: "pt_BR-faber-medium",
+          fr: "fr_FR-siwis-medium",
+          es: "es_ES-davefx-medium",
+          it: "it_IT-paola-medium",
+        };
+        const defaultVoice = defaultVoiceMap[shortLang] || "de_DE-thorsten-high";
         const voiceId = voice || mentorPiper[shortLang] || defaultVoice;
 
         const session = await getPiperSession(voiceId, origin);
         const wavBlob = await session.predict(text);
         const wavArrayBuf = await wavBlob.arrayBuffer();
-        const float32Data = wavToFloat32(wavArrayBuf);
-        const samplingRate = 22050; // Piper standard sample rate
+        const { float32Data, samplingRate } = wavToFloat32(wavArrayBuf);
         const duration = float32Data.length / samplingRate;
         const latencyMs = Math.round(performance.now() - t0);
 
