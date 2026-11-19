@@ -53,7 +53,7 @@ const NAV_ITEMS: NavItem[] = [
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const session = useSession();
-  const { xp, gems, streak, targetLang, throughLang, activeMentor, isPro, setTargetLang } = useProsa();
+  const { xp, gems, streak, targetLang, throughLang, activeMentor, isPro, setTargetLang, courseTracks, currentLevel } = useProsa();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -226,10 +226,15 @@ export function AppShell({ children }: AppShellProps) {
                       className="fixed inset-0 z-40 bg-black/5"
                       onClick={() => setLangMenuOpen(false)}
                     />
-                    <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-stone-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
-                      <span className="px-3 py-1.5 text-[10px] font-black uppercase text-[#64748B] block tracking-wider">
-                        Mudar Idioma Alvo
-                      </span>
+                    <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-stone-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                      <div className="px-3 py-1.5 border-b border-stone-100 mb-1">
+                        <span className="text-[10px] font-black uppercase text-[#64748B] block tracking-wider">
+                          Trilhas de Aprendizado
+                        </span>
+                        <span className="text-[11px] text-stone-500 font-medium">
+                          Progresso e nível isolados por idioma
+                        </span>
+                      </div>
                       {[
                         { code: "de", name: "Alemão (Deutsch)" },
                         { code: "fr", name: "Francês (Français)" },
@@ -237,26 +242,41 @@ export function AppShell({ children }: AppShellProps) {
                         { code: "en", name: "Inglês (English)" },
                         { code: "es", name: "Espanhol (Español)" },
                         { code: "it", name: "Italiano (Italiano)" },
-                      ].map((lang) => (
-                        <button
-                          key={lang.code}
-                          type="button"
-                          onClick={() => {
-                            setTargetLang(lang.code);
-                            setLangMenuOpen(false);
-                          }}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${targetLang === lang.code
-                            ? "bg-[#0D9488]/10 text-[#0D9488]"
-                            : "hover:bg-stone-100 text-stone-700"
+                      ].map((lang) => {
+                        const track = courseTracks?.[lang.code];
+                        const trackLevel = lang.code === targetLang ? currentLevel : (track?.level || "A1");
+                        const trackXp = lang.code === targetLang ? xp : (track?.xp || 0);
+                        const isStarted = trackXp > 0 || lang.code === targetLang;
+
+                        return (
+                          <button
+                            key={lang.code}
+                            type="button"
+                            onClick={() => {
+                              setTargetLang(lang.code);
+                              setLangMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between gap-2.5 px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer ${
+                              targetLang === lang.code
+                                ? "bg-[#0D9488]/10 text-[#0D9488]"
+                                : "hover:bg-stone-100 text-stone-700"
                             }`}
-                        >
-                          <Flag code={lang.code} size={20} />
-                          <span>{lang.name}</span>
-                          {targetLang === lang.code && (
-                            <span className="ml-auto text-[#0D9488] font-bold">✓</span>
-                          )}
-                        </button>
-                      ))}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <Flag code={lang.code} size={20} />
+                              <div className="flex flex-col text-left">
+                                <span className="font-bold truncate">{lang.name}</span>
+                                <span className={`text-[10px] ${targetLang === lang.code ? "text-[#0D9488] font-bold" : "text-stone-500"}`}>
+                                  {isStarted ? `Nível ${trackLevel} • ${trackXp} XP` : "Novo Curso • Começar do A1"}
+                                </span>
+                              </div>
+                            </div>
+                            {targetLang === lang.code && (
+                              <span className="text-[#0D9488] font-bold">✓</span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </>
                 )}
