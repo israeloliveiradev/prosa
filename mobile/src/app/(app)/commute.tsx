@@ -451,8 +451,8 @@ export default function CommuteScreen() {
 
   const strokeDashoffset =
     phoneticScore !== null && phoneticScore > 0
-      ? Math.round(314 - (314 * phoneticScore) / 100)
-      : 314;
+      ? Math.round(352 - (352 * phoneticScore) / 100)
+      : 352;
 
   const curieDiagnosisText =
     evaluationResult?.curieFeedback || baseCurieTip;
@@ -801,22 +801,22 @@ export default function CommuteScreen() {
             <div className="relative w-44 h-44 flex items-center justify-center my-2">
               <svg
                 className="w-full h-full transform -rotate-90"
-                viewBox="0 0 120 120"
+                viewBox="0 0 140 140"
               >
                 <circle
-                  cx="60"
-                  cy="60"
+                  cx="70"
+                  cy="70"
                   fill="transparent"
-                  r="50"
+                  r="56"
                   stroke="#E2E8F0"
-                  strokeWidth="10"
+                  strokeWidth="8"
                 />
                 <circle
                   className="transition-all duration-1000 ease-out"
-                  cx="60"
-                  cy="60"
+                  cx="70"
+                  cy="70"
                   fill="transparent"
-                  r="50"
+                  r="56"
                   stroke={
                     phoneticScore === 0
                       ? "#EF4444"
@@ -824,18 +824,18 @@ export default function CommuteScreen() {
                       ? "#F59E0B"
                       : "#0D9488"
                   }
-                  strokeDasharray="314"
+                  strokeDasharray="352"
                   strokeDashoffset={strokeDashoffset}
                   strokeLinecap="round"
-                  strokeWidth="10"
+                  strokeWidth="8"
                 />
               </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center select-none pointer-events-none p-2">
-                <span className="text-3xl font-black text-[#111C2D] leading-none">
+              <div className="absolute inset-0 flex flex-col items-center justify-center select-none pointer-events-none text-center">
+                <span className="text-4xl font-black text-[#111C2D] tracking-tight leading-none">
                   {phoneticScore !== null ? `${phoneticScore}%` : "--%"}
                 </span>
-                <span className="text-[10px] font-black text-[#0D9488] uppercase tracking-wider mt-1 text-center">
-                  Precisão Fonética
+                <span className="text-[10px] font-black text-[#0D9488] uppercase tracking-wider mt-1.5">
+                  Precisão
                 </span>
               </div>
             </div>

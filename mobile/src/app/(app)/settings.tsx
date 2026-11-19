@@ -322,13 +322,14 @@ export default function SettingsScreen() {
       </div>
 
       {/* Navigation Filter Chips / Inner Sub-Tabs */}
-      <div className="bg-[#F5F0E8] p-1.5 rounded-2xl flex flex-wrap gap-1 border border-stone-200/80">
+      <div className="bg-[#F5F0E8] p-2 rounded-2xl flex flex-wrap items-center gap-2 border border-stone-200/80">
         <button
+          type="button"
           onClick={() => setActiveTab("audio")}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeTab === "audio"
-              ? "bg-white text-teal-800 shadow-sm border border-stone-200/80"
-              : "text-stone-600 hover:text-stone-900"
+              ? "bg-white text-teal-800 shadow-[0_2px_0_#CBD5E1] border border-stone-200/80"
+              : "text-stone-600 hover:text-stone-900 hover:bg-stone-200/50"
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">graphic_eq</span>
@@ -336,11 +337,12 @@ export default function SettingsScreen() {
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("rhythm")}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeTab === "rhythm"
-              ? "bg-white text-teal-800 shadow-sm border border-stone-200/80"
-              : "text-stone-600 hover:text-stone-900"
+              ? "bg-white text-teal-800 shadow-[0_2px_0_#CBD5E1] border border-stone-200/80"
+              : "text-stone-600 hover:text-stone-900 hover:bg-stone-200/50"
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">notifications_active</span>
@@ -348,11 +350,12 @@ export default function SettingsScreen() {
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("subscription")}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeTab === "subscription"
-              ? "bg-white text-teal-800 shadow-sm border border-stone-200/80"
-              : "text-stone-600 hover:text-stone-900"
+              ? "bg-white text-teal-800 shadow-[0_2px_0_#CBD5E1] border border-stone-200/80"
+              : "text-stone-600 hover:text-stone-900 hover:bg-stone-200/50"
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">workspace_premium</span>
@@ -360,11 +363,12 @@ export default function SettingsScreen() {
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("data")}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeTab === "data"
-              ? "bg-white text-teal-800 shadow-sm border border-stone-200/80"
-              : "text-stone-600 hover:text-stone-900"
+              ? "bg-white text-teal-800 shadow-[0_2px_0_#CBD5E1] border border-stone-200/80"
+              : "text-stone-600 hover:text-stone-900 hover:bg-stone-200/50"
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">shield</span>
