@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { router } from "expo-router";
 import { motion } from "framer-motion";
 import { TactileCard } from "@/components/tactile/tactile-card";
 import { TactileButton } from "@/components/tactile/tactile-button";
 import { useProsa, type Mentor } from "@/context/prosa-context";
+import { useTranslation } from "@/i18n/use-translation";
 import { tap } from "@/lib/haptics";
 import { Flag } from "@/components/shell/flag";
 import { signOut, useSession } from "@/lib/session";
@@ -24,62 +25,15 @@ import {
   ArrowRight,
   Check,
   LogOut,
+  Edit2,
+  Save,
 } from "lucide-react";
 
 const GABRIEL_AVATAR = "/cast/bento.png";
 const DA_VINCI_AVATAR = "/cast/davinci.png";
-
 const FEYNMAN_AVATAR = "/cast/feynman.png";
 const CURIE_AVATAR = "/cast/curie.png";
 const EINSTEIN_AVATAR = "/cast/einstein.png";
-
-interface CourseInfo {
-  code: string;
-  flag: string;
-  name: string;
-  nativeName: string;
-  level: string;
-  completedLessons: number;
-  totalLessons: number;
-  progressPercent: number;
-  badgeColor: string;
-}
-
-const COURSES: CourseInfo[] = [
-  {
-    code: "de",
-    flag: "🇩🇪",
-    name: "Alemão",
-    nativeName: "Deutsch",
-    level: "Nível B1/B2",
-    completedLessons: 42,
-    totalLessons: 60,
-    progressPercent: 68,
-    badgeColor: "#0D9488",
-  },
-  {
-    code: "fr",
-    flag: "🇫🇷",
-    name: "Francês",
-    nativeName: "Français",
-    level: "Nível A2",
-    completedLessons: 18,
-    totalLessons: 52,
-    progressPercent: 35,
-    badgeColor: "#D97706",
-  },
-  {
-    code: "ja",
-    flag: "🇯🇵",
-    name: "Japonês",
-    nativeName: "日本語",
-    level: "Nível A1",
-    completedLessons: 6,
-    totalLessons: 50,
-    progressPercent: 12,
-    badgeColor: "#FB7185",
-  },
-];
 
 const MENTORS_LIST: Mentor[] = [
   {
@@ -112,42 +66,91 @@ const MENTORS_LIST: Mentor[] = [
     title: "Mentor Primário",
     avatar: EINSTEIN_AVATAR,
     level: 10,
-    quote: "“A imaginação é mais importante que o léxico estático; pense em alemão.”",
+    quote: "“A imaginação é mais importante que o léxico estático; pense em seu idioma alvo.”",
   },
+];
+
+const TARGET_COURSES = [
+  { code: "de", nativeName: "Deutsch", badgeColor: "#0D9488" },
+  { code: "en", nativeName: "English", badgeColor: "#0284C7" },
+  { code: "fr", nativeName: "Français", badgeColor: "#D97706" },
+  { code: "es", nativeName: "Español", badgeColor: "#EA580C" },
+  { code: "it", nativeName: "Italiano", badgeColor: "#10B981" },
+  { code: "ja", nativeName: "日本語", badgeColor: "#FB7185" },
+];
+
+const ALL_LANGUAGES: Array<{ code: string; name: string; nativeName: string; flag: string }> = [
+  { code: "pt-BR", name: "Português", nativeName: "Português", flag: "br" },
+  { code: "en", name: "Inglês", nativeName: "English", flag: "gb" },
+  { code: "de", name: "Alemão", nativeName: "Deutsch", flag: "de" },
+  { code: "fr", name: "Francês", nativeName: "Français", flag: "fr" },
+  { code: "es", name: "Espanhol", nativeName: "Español", flag: "es" },
+  { code: "it", name: "Italiano", nativeName: "Italiano", flag: "it" },
+  { code: "ja", name: "Japonês", nativeName: "日本語", flag: "jp" },
 ];
 
 export default function ProfileScreen() {
   const session = useSession();
-  const displayName = session?.user?.display_name || "Estudante Polímata";
-  const userEmail = session?.user?.email || "estudante@prosa.io";
+  const { t } = useTranslation();
   const {
-    xp,
+    userName,
+    setUserName,
     gems,
     streak,
+    bestStreak,
     targetLang,
-    throughLang,
-    interfaceLang,
+    supportLang,
+    uiLang,
     activeMentor,
     isPro,
+    courses,
+    activeCourse,
+    totalXp,
     setTargetLang,
-    setThroughLang,
-    setInterfaceLang,
+    setSupportLang,
+    setUiLang,
+    syncSupportWithUi,
     setActiveMentor,
+    startCourseFromScratch,
   } = useProsa();
+
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState(userName);
+
+  const displayName = userName || session?.user?.display_name || "Estudante Polímata";
+  const userEmail = session?.user?.email || "estudante@prosa.io";
+  const userInitial = displayName[0]?.toUpperCase() ?? "P";
+
+  const globalLevel = Math.floor(totalXp / 250) + 1;
+  const xpInCurrentLevel = totalXp % 250;
+  const levelProgressPercent = Math.min(100, Math.round((xpInCurrentLevel / 250) * 100));
+
+  const startedCoursesCount = Object.values(courses).filter((c) => c.started).length;
+
+  const handleSaveName = () => {
+    if (tempName.trim()) {
+      setUserName(tempName.trim());
+    }
+    setIsEditingName(false);
+  };
 
   const handleSelectTargetLang = (code: string) => {
     void tap("light");
+    const course = courses[code];
+    if (!course?.started) {
+      startCourseFromScratch(code);
+    }
     setTargetLang(code);
   };
 
-  const handleSelectThroughLang = (lang: string) => {
+  const handleSelectSupportLang = (lang: string) => {
     void tap("light");
-    setThroughLang(lang);
+    setSupportLang(lang);
   };
 
-  const handleSelectInterfaceLang = (lang: string) => {
+  const handleSelectUiLang = (lang: string) => {
     void tap("light");
-    setInterfaceLang(lang);
+    setUiLang(lang);
   };
 
   const handleSelectMentor = (mentor: Mentor) => {
@@ -155,13 +158,19 @@ export default function ProfileScreen() {
     setActiveMentor(mentor);
   };
 
+  const avgPhonetic = activeCourse.pronunciationScores.length
+    ? Math.round(
+        activeCourse.pronunciationScores.reduce((a, b) => a + b, 0) /
+          activeCourse.pronunciationScores.length
+      )
+    : 92;
+
   return (
     <div className="w-full max-w-7xl mx-auto px-4 lg:px-8 py-6 flex flex-col gap-8 pb-16">
       {/* ======================================================== */}
       {/* 1. TOP HERO CARD (PERFIL & CEFR MASTER BADGE)            */}
       {/* ======================================================== */}
       <TactileCard className="p-6 lg:p-8 relative overflow-hidden">
-        {/* Ambient Tactile Depth Splashes */}
         <div className="absolute -top-16 -right-16 w-64 h-64 bg-[#0D9488]/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-[#FEA619]/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -170,7 +179,7 @@ export default function ProfileScreen() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
             <div className="relative group shrink-0">
               <div className="w-24 h-24 rounded-2xl bg-[#0D9488] p-1 shadow-[0_4px_0_#0F766E] border border-stone-200 overflow-hidden flex items-center justify-center text-white font-black text-3xl">
-                {displayName[0]?.toUpperCase() ?? "P"}
+                {userInitial}
               </div>
               {isPro && (
                 <span className="absolute -bottom-2 -right-2 bg-gradient-to-r from-[#D97706] to-[#FEA619] text-white font-extrabold text-[11px] px-2.5 py-0.5 rounded-full shadow-[0_2px_0_#92400E] flex items-center gap-1">
@@ -181,13 +190,47 @@ export default function ProfileScreen() {
 
             <div className="flex flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-[#111C2D] tracking-tight">
-                  {displayName}
-                </h1>
+                {isEditingName ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      className="px-3 py-1 text-xl font-extrabold text-[#111C2D] bg-white border border-[#0D9488] rounded-xl shadow-inner focus:outline-none"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveName}
+                      className="p-2 rounded-xl bg-[#0D9488] text-white shadow-sm hover:opacity-95 cursor-pointer"
+                    >
+                      <Save size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-2xl sm:text-3xl font-extrabold text-[#111C2D] tracking-tight">
+                      {displayName}
+                    </h1>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTempName(displayName);
+                        setIsEditingName(true);
+                      }}
+                      className="p-1.5 rounded-lg text-stone-400 hover:text-[#0D9488] hover:bg-stone-100 transition-colors cursor-pointer"
+                      title="Editar nome de usuário"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                  </div>
+                )}
+
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FEA619]/20 text-[#684000] font-bold text-xs shadow-[0_2px_0_#FEA619]">
                   <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
-                  <span>Membro Prosa Pro desde Nov 2024</span>
+                  <span>Membro Prosa Pro desde 2026</span>
                 </span>
+
                 <button
                   type="button"
                   onClick={async () => {
@@ -207,16 +250,16 @@ export default function ProfileScreen() {
                 <span>Liga Diamante · Divisão Humboldt</span>
               </p>
 
-              {/* Barra de Progresso de Nível */}
+              {/* Barra de Progresso de Nível Dinâmica */}
               <div className="mt-2 flex items-center gap-3 w-full sm:w-80">
                 <div className="flex-1 bg-[#F5F0E8] rounded-full h-3.5 p-0.5 shadow-[inset_0_2px_0_#CBD5E1]">
                   <div
                     className="bg-[#0D9488] rounded-full h-full shadow-[0_2px_0_#0F766E] transition-all duration-700"
-                    style={{ width: "81.6%" }}
+                    style={{ width: `${levelProgressPercent}%` }}
                   />
                 </div>
                 <span className="text-xs font-extrabold text-[#111C2D] whitespace-nowrap">
-                  2.450 <span className="text-[#64748B] font-normal">/ 3.000 XP (Nv 12)</span>
+                  {totalXp} <span className="text-[#64748B] font-normal">/ {globalLevel * 250} XP (Nv {globalLevel})</span>
                 </span>
               </div>
             </div>
@@ -234,15 +277,25 @@ export default function ProfileScreen() {
             </div>
 
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black text-[#0D9488]">Nível B2</span>
-              <span className="text-sm text-[#111C2D] font-bold">Explorador Avançado</span>
+              <span className="text-3xl font-black text-[#0D9488]">Nível {activeCourse.level}</span>
+              <span className="text-sm text-[#111C2D] font-bold">
+                {activeCourse.level === "A1"
+                  ? "Iniciante Elemental"
+                  : activeCourse.level === "A2"
+                  ? "Básico Autônomo"
+                  : activeCourse.level === "B1"
+                  ? "Intermediário Prático"
+                  : activeCourse.level === "B2"
+                  ? "Explorador Avançado"
+                  : "Mestre Fluente"}
+              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5 pt-1">
               <div className="bg-white p-2 rounded-xl shadow-[0_2px_0_#E2E8F0] flex flex-col">
                 <span className="text-[11px] text-[#64748B] font-semibold">Compreensão Oral</span>
                 <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs font-extrabold text-[#111C2D]">88%</span>
+                  <span className="text-xs font-extrabold text-[#111C2D]">90%</span>
                   <span className="w-2 h-2 rounded-full bg-[#06B6D4]" />
                 </div>
               </div>
@@ -258,7 +311,7 @@ export default function ProfileScreen() {
               <div className="bg-white p-2 rounded-xl shadow-[0_2px_0_#E2E8F0] flex flex-col">
                 <span className="text-[11px] text-[#64748B] font-semibold">Precisão Fonética</span>
                 <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs font-extrabold text-[#111C2D]">84%</span>
+                  <span className="text-xs font-extrabold text-[#111C2D]">{avgPhonetic}%</span>
                   <span className="w-2 h-2 rounded-full bg-[#FF5722]" />
                 </div>
               </div>
@@ -266,7 +319,7 @@ export default function ProfileScreen() {
               <div className="bg-white p-2 rounded-xl shadow-[0_2px_0_#E2E8F0] flex flex-col">
                 <span className="text-[11px] text-[#64748B] font-semibold">Gramática FSRS</span>
                 <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs font-extrabold text-[#111C2D]">79%</span>
+                  <span className="text-xs font-extrabold text-[#111C2D]">88%</span>
                   <span className="w-2 h-2 rounded-full bg-[#8B5CF6]" />
                 </div>
               </div>
@@ -290,12 +343,12 @@ export default function ProfileScreen() {
             </span>
           </div>
           <div className="mt-4">
-            <div className="text-2xl font-black text-[#111C2D]">14 Dias</div>
+            <div className="text-2xl font-black text-[#111C2D]">{streak} Dias</div>
             <div className="text-xs uppercase font-extrabold text-[#64748B] mt-1">
               Ofensiva Ininterrupta
             </div>
             <p className="text-xs text-[#64748B] mt-2">
-              Recorde pessoal: 28 dias · Risco zero de congelamento hoje.
+              Recorde pessoal: {bestStreak} dias · Sem risco de congelamento.
             </p>
           </div>
         </div>
@@ -311,12 +364,12 @@ export default function ProfileScreen() {
             </span>
           </div>
           <div className="mt-4">
-            <div className="text-2xl font-black text-[#111C2D]">2.450 XP</div>
+            <div className="text-2xl font-black text-[#111C2D]">{totalXp} XP</div>
             <div className="text-xs uppercase font-extrabold text-[#64748B] mt-1">
               Pontuação Acumulada
             </div>
             <p className="text-xs text-[#64748B] mt-2">
-              Zona de Promoção na Liga Diamante garantida.
+              Nível Global {globalLevel} · Zona de Promoção na Liga Diamante.
             </p>
           </div>
         </div>
@@ -332,12 +385,14 @@ export default function ProfileScreen() {
             </span>
           </div>
           <div className="mt-4">
-            <div className="text-2xl font-black text-[#111C2D]">128 Cartas</div>
+            <div className="text-2xl font-black text-[#111C2D]">
+              {activeCourse.fsrsCards.length || 24} Cartas
+            </div>
             <div className="text-xs uppercase font-extrabold text-[#64748B] mt-1">
               Palácio de Memória
             </div>
             <p className="text-xs text-[#64748B] mt-2">
-              Retenção projetada de 91,4% para os próximos 30 dias.
+              Retenção projetada de 91,4% para o curso {ALL_LANGUAGES.find((l) => l.code === targetLang)?.name || targetLang}.
             </p>
           </div>
         </div>
@@ -349,16 +404,16 @@ export default function ProfileScreen() {
               🎙️
             </div>
             <span className="px-2 py-0.5 rounded-full bg-[#10B981]/10 text-[#059669] font-bold text-[11px]">
-              142 Sessões
+              {activeCourse.pronunciationScores.length || 3} Ensaios
             </span>
           </div>
           <div className="mt-4">
-            <div className="text-2xl font-black text-[#111C2D]">94% Acerto</div>
+            <div className="text-2xl font-black text-[#111C2D]">{avgPhonetic}% Acerto</div>
             <div className="text-xs uppercase font-extrabold text-[#64748B] mt-1">
               Cadência &amp; Fonética
             </div>
             <p className="text-xs text-[#64748B] mt-2">
-              Avaliado pelo analisador de formantes acústicos.
+              Calibrado via espectrograma acústico com Marie Curie.
             </p>
           </div>
         </div>
@@ -387,7 +442,7 @@ export default function ProfileScreen() {
           </div>
         </div>
 
-        {/* Pillars Grid (Split 6:6) */}
+        {/* Pillars Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Pillar A: Idioma Alvo (6 cols) */}
           <div className="lg:col-span-6 bg-[#F5F0E8] rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex flex-col gap-4">
@@ -401,14 +456,23 @@ export default function ProfileScreen() {
                 </span>
               </div>
               <span className="text-[11px] text-[#64748B] font-bold uppercase">
-                3 Cursos Ativos
+                {startedCoursesCount} Cursos Iniciados
               </span>
             </div>
 
-            {/* Lista de Cursos */}
+            {/* Lista de Cursos com progresso isolado */}
             <div className="flex flex-col gap-3">
-              {COURSES.map((course) => {
+              {TARGET_COURSES.map((course) => {
                 const isActive = targetLang === course.code;
+                const cData = courses[course.code];
+                const isStarted = Boolean(cData?.started);
+                const completedLessons = cData?.completedNodeIds?.length || 0;
+                const totalLessons = 5;
+                const progressPercent = isStarted
+                  ? Math.round((completedLessons / totalLessons) * 100)
+                  : 0;
+                const flagCode = course.code === "en" ? "gb" : course.code === "ja" ? "jp" : course.code;
+
                 return (
                   <motion.div
                     key={course.code}
@@ -421,11 +485,11 @@ export default function ProfileScreen() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <Flag code={course.code} size={32} />
+                      <Flag code={flagCode} size={32} />
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                           <span className="font-extrabold text-base text-[#111C2D]">
-                            {course.name}
+                            {ALL_LANGUAGES.find((l) => l.code === course.code)?.name || course.code}
                           </span>
                           <span className="text-xs text-[#64748B]">
                             ({course.nativeName})
@@ -435,9 +499,16 @@ export default function ProfileScreen() {
                               Ativo
                             </span>
                           )}
+                          {!isStarted && (
+                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] uppercase font-bold">
+                              Novo
+                            </span>
+                          )}
                         </div>
                         <span className="text-xs text-[#64748B] mt-0.5">
-                          {course.level} · {course.completedLessons} de {course.totalLessons} lições concluídas
+                          {isStarted
+                            ? `Nível ${cData.level} · ${completedLessons} de ${totalLessons} lições (${cData.xp} XP)`
+                            : "Curso ainda não iniciado · Clique para começar do Zero"}
                         </span>
                       </div>
                     </div>
@@ -447,13 +518,13 @@ export default function ProfileScreen() {
                         className="text-xs font-black"
                         style={{ color: course.badgeColor }}
                       >
-                        {course.progressPercent}%
+                        {progressPercent}%
                       </span>
                       <div className="w-16 bg-[#F5F0E8] rounded-full h-1.5 mt-1 overflow-hidden">
                         <div
                           className="h-1.5 rounded-full"
                           style={{
-                            width: `${course.progressPercent}%`,
+                            width: `${progressPercent}%`,
                             backgroundColor: course.badgeColor,
                           }}
                         />
@@ -462,21 +533,12 @@ export default function ProfileScreen() {
                   </motion.div>
                 );
               })}
-
-              {/* Botão Adicionar Curso */}
-              <button
-                type="button"
-                className="w-full py-3 rounded-xl bg-white text-[#0D9488] font-bold text-xs shadow-[0_4px_0_#CBD5E1] active:translate-y-1 hover:bg-stone-50 transition-all flex items-center justify-center gap-2 border-dashed border-2 border-[#0D9488]/30 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Adicionar Novo Idioma à Trilha</span>
-              </button>
             </div>
           </div>
 
           {/* Pillar B & C: Apoio e Interface (6 cols) */}
           <div className="lg:col-span-6 flex flex-col gap-6">
-            {/* Pillar B: Idioma de Apoio */}
+            {/* Pillar B: Idioma de Apoio (All 7 languages) */}
             <div className="bg-[#F5F0E8] rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -493,48 +555,39 @@ export default function ProfileScreen() {
               </div>
 
               <p className="text-xs text-[#64748B]">
-                Explicações gramaticais, metáforas sintáticas e notas culturais serão transmitidas neste idioma.
+                Traduções, guias fonéticos e notas dos mentores serão transmitidas neste idioma.
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-1">
-                {[
-                  { code: "pt", flag: "🇧🇷", label: "Português" },
-                  { code: "es", flag: "🇪🇸", label: "Español" },
-                  { code: "en", flag: "🇺🇸", label: "English" },
-                ].map((item) => {
-                  const isActive = throughLang === item.code;
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+                {ALL_LANGUAGES.map((lang) => {
+                  const isActive = supportLang === lang.code;
                   return (
-                    <motion.button
-                      key={item.code}
+                    <button
+                      key={lang.code}
                       type="button"
-                      whileTap={{ y: 2 }}
-                      onClick={() => handleSelectThroughLang(item.code)}
-                      className={`flex items-center gap-2.5 p-3 rounded-xl text-left transition-all cursor-pointer ${
+                      onClick={() => handleSelectSupportLang(lang.code)}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl text-left transition-all cursor-pointer ${
                         isActive
-                          ? "bg-white border-2 border-[#855300] shadow-[0_4px_0_#653E00]"
-                          : "bg-white shadow-[0_4px_0_#CBD5E1] border border-stone-200/80 hover:bg-stone-50"
+                          ? "bg-white border-2 border-[#855300] shadow-[0_3px_0_#653E00]"
+                          : "bg-white shadow-[0_2px_0_#CBD5E1] border border-stone-200/80 hover:bg-stone-50"
                       }`}
                     >
-                      <Flag code={item.code} size={26} />
-                      <div>
-                        <div className="text-xs font-bold text-[#111C2D] leading-tight">
-                          {item.label}
+                      <Flag code={lang.flag} size={20} />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-[#111C2D] truncate">
+                          {lang.name}
                         </div>
-                        <div
-                          className={`text-[10px] font-bold uppercase mt-0.5 ${
-                            isActive ? "text-[#0D9488]" : "text-[#64748B]"
-                          }`}
-                        >
-                          {isActive ? "Ativo Primário" : "Trocar"}
+                        <div className="text-[10px] text-[#64748B]">
+                          {isActive ? "Ativo" : "Selecionar"}
                         </div>
                       </div>
-                    </motion.button>
+                    </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Pillar C: Interface do Aplicativo */}
+            {/* Pillar C: Interface do Aplicativo (All 7 languages) */}
             <div className="bg-[#F5F0E8] rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -542,33 +595,52 @@ export default function ProfileScreen() {
                     C
                   </span>
                   <span className="font-extrabold text-sm text-[#111C2D]">
-                    Interface do Aplicativo
+                    Interface do Aplicativo (Menus &amp; HUD)
                   </span>
                 </div>
-                <span className="text-[11px] text-[#64748B] font-bold">
-                  Menus &amp; HUD
-                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    syncSupportWithUi();
+                    void tap("success");
+                  }}
+                  className="text-[10px] text-[#0D9488] font-bold hover:underline cursor-pointer"
+                >
+                  Sincronizar com Apoio
+                </button>
               </div>
 
-              <div className="bg-white p-1.5 rounded-xl shadow-[0_3px_0_#E2E8F0] border border-stone-200/80 flex items-center gap-1.5">
-                {[
-                  { code: "pt-BR", label: "Português do Brasil (PT-BR)" },
-                  { code: "en-US", label: "English (US)" },
-                ].map((item) => {
-                  const isActive = interfaceLang === item.code;
+              <p className="text-xs text-[#64748B]">
+                Menus, navegação, botões táteis e cabeçalhos serão exibidos no idioma selecionado.
+              </p>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+                {ALL_LANGUAGES.map((lang) => {
+                  const isActive = uiLang === lang.code;
                   return (
                     <button
-                      key={item.code}
+                      key={lang.code}
                       type="button"
-                      onClick={() => handleSelectInterfaceLang(item.code)}
-                      className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      onClick={() => handleSelectUiLang(lang.code)}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl text-left transition-all cursor-pointer ${
                         isActive
-                          ? "bg-[#0D9488] text-white shadow-[0_2px_0_#0F766E]"
-                          : "text-[#3D4947] hover:bg-stone-100"
+                          ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
+                          : "bg-white shadow-[0_2px_0_#CBD5E1] border border-stone-200/80 hover:bg-stone-50 text-[#111C2D]"
                       }`}
                     >
-                      {isActive && <Check className="w-3.5 h-3.5" />}
-                      <span>{item.label}</span>
+                      <Flag code={lang.flag} size={20} />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold truncate">
+                          {lang.name}
+                        </div>
+                        <div
+                          className={`text-[10px] ${
+                            isActive ? "text-teal-100" : "text-[#64748B]"
+                          }`}
+                        >
+                          {isActive ? "UI Ativa" : "Trocar"}
+                        </div>
+                      </div>
                     </button>
                   );
                 })}
@@ -594,256 +666,65 @@ export default function ProfileScreen() {
               Mentores ativos que concedem bônus cognitivos e corrigem seus exercícios em tempo real.
             </p>
           </div>
-
-          <button
-            type="button"
-            className="self-start sm:self-auto px-4 py-2 rounded-xl bg-white text-[#855300] font-bold text-xs shadow-[0_4px_0_#CBD5E1] border border-stone-200/80 active:translate-y-1 hover:bg-stone-50 transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <Repeat className="w-4 h-4" />
-            <span>Trocar Mentores Ativos</span>
-          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {MENTORS_LIST.map((mentor) => {
-            const isSelected = activeMentor.id === mentor.id;
+            const isSelected = activeMentor?.id === mentor.id;
             return (
               <motion.div
                 key={mentor.id}
                 whileTap={{ y: 2 }}
                 onClick={() => handleSelectMentor(mentor)}
-                className={`rounded-2xl p-5 flex flex-col justify-between transition-all cursor-pointer ${
+                className={`rounded-2xl p-5 border cursor-pointer transition-all flex flex-col justify-between ${
                   isSelected
-                    ? "bg-white border-2 border-[#0D9488] shadow-[0_4px_0_#0F766E]"
-                    : "bg-white border border-stone-200/80 shadow-[0_4px_0_#E2E8F0] hover:shadow-[0_2px_0_#E2E8F0]"
+                    ? "bg-white border-2 border-[#0D9488] shadow-[0_6px_0_#0F766E]"
+                    : "bg-white border-stone-200 shadow-[0_4px_0_#CBD5E1] hover:bg-stone-50"
                 }`}
               >
-                <div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full ring-2 ring-[#0D9488] p-0.5 relative flex-shrink-0">
-                      <img
-                        src={mentor.avatar}
-                        alt={mentor.name}
-                        className="w-full h-full object-cover rounded-full"
-                      />
-                      <span className="absolute -bottom-1 -right-1 bg-[#0D9488] text-white text-[10px] font-bold px-1 rounded-full">
-                        Nv {mentor.level}
-                      </span>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <h3 className="font-extrabold text-sm text-[#111C2D]">
-                          {mentor.name}
-                        </h3>
-                        {isSelected && (
-                          <span className="text-amber-500 text-xs">★</span>
-                        )}
-                      </div>
-                      <span className="text-[11px] text-[#0D9488] uppercase font-bold">
-                        {mentor.title}
-                      </span>
-                    </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-teal-50 border border-teal-200 overflow-hidden shrink-0">
+                    <img
+                      src={mentor.avatar}
+                      alt={mentor.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (!target.dataset.tried) {
+                          target.dataset.tried = "1";
+                          target.src = `/assets/assets${mentor.avatar}`;
+                        }
+                      }}
+                    />
                   </div>
-
-                  <p className="font-serif text-xs text-[#111C2D] italic mt-3 leading-relaxed">
-                    {mentor.quote}
-                  </p>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-[#111C2D]">
+                      {mentor.name}
+                    </h3>
+                    <span className="text-xs text-[#0D9488] font-bold block">
+                      {mentor.title}
+                    </span>
+                    <span className="text-[10px] text-[#64748B]">
+                      Nv. {mentor.level} de Afinidade
+                    </span>
+                  </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-stone-200 flex items-center justify-between text-xs">
-                  <span className="text-[#64748B] text-[11px] font-semibold">
-                    {isSelected ? "Afinidade Pessoal:" : "Efeito Ativo:"}
+                <p className="text-xs text-stone-600 italic font-serif mt-3 pt-3 border-t border-stone-100">
+                  {mentor.quote}
+                </p>
+
+                <div className="mt-3 pt-2 flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#64748B] uppercase">
+                    {isSelected ? "Mentor Ativo" : "Selecionar"}
                   </span>
-                  <span
-                    className={`font-extrabold ${
-                      isSelected ? "text-[#0D9488]" : "text-[#059669]"
-                    }`}
-                  >
-                    {isSelected ? "98% Em Sintonia" : "+15% Bônus FSRS"}
-                  </span>
+                  {isSelected && (
+                    <span className="w-2 h-2 rounded-full bg-[#0D9488]" />
+                  )}
                 </div>
               </motion.div>
             );
           })}
-        </div>
-      </section>
-
-      {/* ======================================================== */}
-      {/* 5. ACHIEVEMENT MEDAL GALLERY (GALERIA DE INSÍGNIAS)      */}
-      {/* ======================================================== */}
-      <TactileCard className="p-6 lg:p-8 flex flex-col gap-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Award className="w-6 h-6 text-[#D97706]" />
-              <h2 className="text-xl sm:text-2xl font-extrabold text-[#111C2D]">
-                Galeria de Conquistas &amp; Insígnias
-              </h2>
-            </div>
-            <p className="text-xs sm:text-sm text-[#64748B] mt-1">
-              Marcos conquistados em duelos, precisão fonética e expansão sináptica.
-            </p>
-          </div>
-
-          <span className="px-3.5 py-1.5 rounded-full bg-[#F5F0E8] text-[#111C2D] text-xs font-black shadow-[0_2px_0_#E2E8F0] self-start sm:self-auto">
-            18 / 24 Insígnias Coletadas
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Medal 1: Fogo Eterno */}
-          <div className="bg-[#F5F0E8] rounded-2xl p-4 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex items-center gap-4 hover:shadow-[0_2px_0_#E2E8F0] transition-all">
-            <div className="w-14 h-14 rounded-2xl bg-[#D97706]/20 text-[#D97706] flex items-center justify-center text-3xl shadow-[0_3px_0_#D97706] shrink-0">
-              🏆
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <h4 className="font-extrabold text-sm text-[#111C2D]">Fogo Eterno</h4>
-                <span className="px-1.5 py-0.5 rounded bg-[#D97706] text-white text-[10px] font-bold">
-                  OURO
-                </span>
-              </div>
-              <p className="text-xs text-[#64748B] mt-0.5">Manter 14 dias de ofensiva ininterrupta.</p>
-              <span className="text-[11px] text-[#059669] font-bold mt-1.5 flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Desbloqueado hoje!
-              </span>
-            </div>
-          </div>
-
-          {/* Medal 2: Ouvido de Ouro */}
-          <div className="bg-[#F5F0E8] rounded-2xl p-4 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex items-center gap-4 hover:shadow-[0_2px_0_#E2E8F0] transition-all">
-            <div className="w-14 h-14 rounded-2xl bg-[#06B6D4]/20 text-[#06B6D4] flex items-center justify-center text-3xl shadow-[0_3px_0_#06B6D4] shrink-0">
-              🎧
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <h4 className="font-extrabold text-sm text-[#111C2D]">Ouvido de Ouro</h4>
-                <span className="px-1.5 py-0.5 rounded bg-[#06B6D4] text-white text-[10px] font-bold">
-                  CIANO
-                </span>
-              </div>
-              <p className="text-xs text-[#64748B] mt-0.5">95%+ em 10 testes de áudio neural de Goethe.</p>
-              <span className="text-[11px] text-[#059669] font-bold mt-1.5 flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Desbloqueado
-              </span>
-            </div>
-          </div>
-
-          {/* Medal 3: Cirurgião Gramatical */}
-          <div className="bg-[#F5F0E8] rounded-2xl p-4 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex items-center gap-4 hover:shadow-[0_2px_0_#E2E8F0] transition-all">
-            <div className="w-14 h-14 rounded-2xl bg-[#10B981]/20 text-[#10B981] flex items-center justify-center text-3xl shadow-[0_3px_0_#059669] shrink-0">
-              🔬
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <h4 className="font-extrabold text-sm text-[#111C2D]">Cirurgião Gramatical</h4>
-                <span className="px-1.5 py-0.5 rounded bg-[#10B981] text-white text-[10px] font-bold">
-                  ESMERALDA
-                </span>
-              </div>
-              <p className="text-xs text-[#64748B] mt-0.5">50 frases complexas dissecadas com Da Vinci.</p>
-              <span className="text-[11px] text-[#059669] font-bold mt-1.5 flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Desbloqueado
-              </span>
-            </div>
-          </div>
-
-          {/* Medal 4: Gladiador Polímata */}
-          <div className="bg-[#F5F0E8] rounded-2xl p-4 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex items-center gap-4 hover:shadow-[0_2px_0_#E2E8F0] transition-all">
-            <div className="w-14 h-14 rounded-2xl bg-[#EC4899]/20 text-[#EC4899] flex items-center justify-center text-3xl shadow-[0_3px_0_#EC4899] shrink-0">
-              ⚔️
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <h4 className="font-extrabold text-sm text-[#111C2D]">Gladiador Polímata</h4>
-                <span className="px-1.5 py-0.5 rounded bg-[#EC4899] text-white text-[10px] font-bold">
-                  MAGENTA
-                </span>
-              </div>
-              <p className="text-xs text-[#64748B] mt-0.5">Vencer 5 duelos de 120s seguidos sem errar.</p>
-              <span className="text-[11px] text-[#059669] font-bold mt-1.5 flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Desbloqueado
-              </span>
-            </div>
-          </div>
-
-          {/* Medal 5: Mente Renascentista */}
-          <div className="bg-[#F5F0E8] rounded-2xl p-4 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex items-center gap-4 hover:shadow-[0_2px_0_#E2E8F0] transition-all">
-            <div className="w-14 h-14 rounded-2xl bg-[#8B5CF6]/20 text-[#8B5CF6] flex items-center justify-center text-3xl shadow-[0_3px_0_#8B5CF6] shrink-0">
-              🏛️
-            </div>
-            <div className="flex flex-col flex-1">
-              <div className="flex items-center justify-between">
-                <h4 className="font-extrabold text-sm text-[#111C2D]">Mente Renascentista</h4>
-                <span className="text-xs font-black text-[#8B5CF6]">80%</span>
-              </div>
-              <p className="text-xs text-[#64748B] mt-0.5">16 de 20 mentores históricos desbloqueados.</p>
-              <div className="w-full bg-white rounded-full h-2 mt-2 shadow-[inset_0_1px_0_#CBD5E1] overflow-hidden">
-                <div className="bg-[#8B5CF6] h-2 rounded-full" style={{ width: "80%" }} />
-              </div>
-            </div>
-          </div>
-
-          {/* Medal 6: Hipervelocidade FSRS */}
-          <div className="bg-[#F5F0E8] rounded-2xl p-4 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex items-center gap-4 hover:shadow-[0_2px_0_#E2E8F0] transition-all">
-            <div className="w-14 h-14 rounded-2xl bg-[#D97706]/20 text-[#D97706] flex items-center justify-center text-3xl shadow-[0_3px_0_#D97706] shrink-0">
-              ⚡
-            </div>
-            <div className="flex flex-col flex-1">
-              <div className="flex items-center justify-between">
-                <h4 className="font-extrabold text-sm text-[#111C2D]">Hipervelocidade FSRS</h4>
-                <span className="text-xs font-black text-[#D97706]">64%</span>
-              </div>
-              <p className="text-xs text-[#64748B] mt-0.5">128 de 200 cartas no patamar "Permanente".</p>
-              <div className="w-full bg-white rounded-full h-2 mt-2 shadow-[inset_0_1px_0_#CBD5E1] overflow-hidden">
-                <div className="bg-[#D97706] h-2 rounded-full" style={{ width: "64%" }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </TactileCard>
-
-      {/* ======================================================== */}
-      {/* 6. DIAGNOSTIC ACTION & QUICK EXPORT STRIP                */}
-      {/* ======================================================== */}
-      <section className="bg-[#F5F0E8] rounded-3xl p-6 lg:p-8 shadow-[0_4px_0_#E2E8F0] flex flex-col md:flex-row items-center justify-between gap-6 border-2 border-[#0D9488]/20">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#0D9488] text-white flex items-center justify-center text-3xl shadow-[0_4px_0_#0F766E] shrink-0">
-            🎯
-          </div>
-          <div>
-            <h3 className="font-extrabold text-lg text-[#111C2D]">
-              Pronto para auditar seu salto de nível?
-            </h3>
-            <p className="text-xs sm:text-sm text-[#64748B] mt-0.5">
-              Faça o teste adaptativo CEFR de 5 minutos com Leonardo da Vinci e Marie Curie para recalibrar o algoritmo.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <TactileButton
-            variant="primary"
-            size="md"
-            onPress={() => router.push("/placement")}
-            label="Refazer Teste de Nivelamento CEFR ➔"
-          />
-          <button
-            type="button"
-            className="px-4 py-3 rounded-xl bg-white text-[#111C2D] font-bold text-xs shadow-[0_4px_0_#CBD5E1] border border-stone-200/80 active:translate-y-1 hover:bg-stone-50 transition-all flex items-center gap-2 cursor-pointer"
-            title="Exportar Baralho Anki / CSV"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Exportar FSRS</span>
-          </button>
-          <button
-            type="button"
-            className="p-3 rounded-xl bg-white text-[#111C2D] shadow-[0_4px_0_#CBD5E1] border border-stone-200/80 active:translate-y-1 hover:bg-stone-50 transition-all cursor-pointer"
-            title="Configurações de Acessibilidade"
-          >
-            <Sliders className="w-4 h-4" />
-          </button>
         </div>
       </section>
     </div>

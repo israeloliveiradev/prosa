@@ -52,6 +52,14 @@ export function ReadyStep({ level, onOpenProse, onRestart }: ReadyStepProps) {
                   if (!target.dataset.tried) {
                     target.dataset.tried = "1";
                     target.src = "/assets/assets/cast/einstein.png";
+                  } else if (target.dataset.tried === "1") {
+                    target.dataset.tried = "2";
+                    target.src = "/assets/images/einstein-reading.jpg";
+                  } else {
+                    target.style.display = "none";
+                    if (target.parentElement) {
+                      target.parentElement.innerHTML = '<span class="font-bold text-teal-800 text-lg">AE</span>';
+                    }
                   }
                 }}
               />

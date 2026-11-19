@@ -15,6 +15,7 @@ import {
   Flag,
   CheckCircle2,
   XCircle,
+  Mic,
 } from "lucide-react";
 import { AppShell } from "@/components/tactile/app-shell";
 import { TactileCard } from "@/components/tactile/tactile-card";
@@ -22,181 +23,88 @@ import { useProsa } from "@/context/prosa-context";
 import { useSession } from "@/lib/session";
 import { Flag as CountryFlag } from "@/components/shell/flag";
 import { tap } from "@/lib/haptics";
+import {
+  LanguageMatrixEngine,
+  type DuelQuestion,
+} from "@/services/contentService";
+import { languageName } from "@/lib/languages";
 
 const ELENA_AVATAR = "/cast/clara.png";
 const FEYNMAN_AVATAR = "/cast/feynman.png";
 
-interface Question {
-  id: number;
-  word: string;
-  phonetic: string;
-  gender: string;
-  sentence: string;
-  highlight: string;
-  options: { key: "A" | "B" | "C" | "D"; text: string; correct: boolean }[];
-}
-
-const QUESTIONS_BY_LANG: Record<string, Question[]> = {
-  en: [
-    {
-      id: 1,
-      word: "the Breakthrough",
-      phonetic: "[dâ brêik-tru]",
-      gender: "Substantivo Contável",
-      sentence: "“The team achieved a major scientific breakthrough in neural computing.”",
-      highlight: "breakthrough",
-      options: [
-        { key: "A", text: "O Avanço Decisivo", correct: true },
-        { key: "B", text: "O Retrocesso", correct: false },
-        { key: "C", text: "A Hipótese", correct: false },
-        { key: "D", text: "O Prazo", correct: false },
-      ],
-    },
-    {
-      id: 2,
-      word: "the Resilience",
-      phonetic: "[dâ re-zí-li-ens]",
-      gender: "Substantivo Abstrato",
-      sentence: "“Cognitive resilience allows learners to master complex syntactic structures.”",
-      highlight: "resilience",
-      options: [
-        { key: "A", text: "A Vulnerabilidade", correct: false },
-        { key: "B", text: "A Resiliência / Persistência", correct: true },
-        { key: "C", text: "A Hesitação", correct: false },
-        { key: "D", text: "A Imprudência", correct: false },
-      ],
-    },
-    {
-      id: 3,
-      word: "the Nuance",
-      phonetic: "[dâ nu-án-se]",
-      gender: "Substantivo Contável",
-      sentence: "“Native fluency requires listening to the subtle nuances of spoken cadence.”",
-      highlight: "nuances",
-      options: [
-        { key: "A", text: "A Sutileza / Nuance", correct: true },
-        { key: "B", text: "O Erro Crasso", correct: false },
-        { key: "C", text: "A Contradição", correct: false },
-        { key: "D", text: "A Rigidez", correct: false },
-      ],
-    },
-  ],
-  de: [
-    {
-      id: 1,
-      word: "die Herausforderung",
-      phonetic: "[di re-ráus-for-de-rung]",
-      gender: "Substantivo Feminino",
-      sentence: "“Eine neue Sprache zu lernen ist eine spannende Herausforderung für den Geist.”",
-      highlight: "Herausforderung",
-      options: [
-        { key: "A", text: "O Desafio", correct: true },
-        { key: "B", text: "A Oportunidade", correct: false },
-        { key: "C", text: "O Hábito", correct: false },
-        { key: "D", text: "A Conexão", correct: false },
-      ],
-    },
-    {
-      id: 2,
-      word: "die Zuverlässigkeit",
-      phonetic: "[di tsu-fer-lé-sic-kait]",
-      gender: "Substantivo Feminino",
-      sentence: "“Zuverlässigkeit ist das Fundament jeder dauerhaften wissenschaftlichen Zusammenarbeit.”",
-      highlight: "Zuverlässigkeit",
-      options: [
-        { key: "A", text: "A Incerteza", correct: false },
-        { key: "B", text: "A Confiabilidade", correct: true },
-        { key: "C", text: "A Velocidade", correct: false },
-        { key: "D", text: "A Criatividade", correct: false },
-      ],
-    },
-    {
-      id: 3,
-      word: "das Fingerspitzengefühl",
-      phonetic: "[das fin-guer-chpítsen-gue-fíul]",
-      gender: "Substantivo Neutro",
-      sentence: "“In diplomatischen Verhandlungen braucht man echtes Fingerspitzengefühl.”",
-      highlight: "Fingerspitzengefühl",
-      options: [
-        { key: "A", text: "Tato e Sensibilidade", correct: true },
-        { key: "B", text: "Força Bruta", correct: false },
-        { key: "C", text: "Memória Fotográfica", correct: false },
-        { key: "D", text: "Aperto de Mão", correct: false },
-      ],
-    },
-  ],
-};
-
-export default function DuelRoute() {
-  const { addXp, addGems, targetLang } = useProsa();
+export default function DuelScreen() {
   const session = useSession();
-  const playerName = session?.user?.display_name || "Você";
-  const questions = QUESTIONS_BY_LANG[targetLang && targetLang in QUESTIONS_BY_LANG ? targetLang : "en"];
+  const { addXp, userName, targetLang, supportLang, uiLang } = useProsa();
+
+  const questions = LanguageMatrixEngine.getDuelQuestions(targetLang);
+  const speechLang = LanguageMatrixEngine.getBCP47(targetLang);
 
   const [questionIdx, setQuestionIdx] = useState(0);
-  const [playerScore, setPlayerScore] = useState(1420);
+  const [playerScore, setPlayerScore] = useState(1450);
   const [opponentScore, setOpponentScore] = useState(1280);
-  const [combo, setCombo] = useState(6);
-  const [secondsLeft, setSecondsLeft] = useState(74);
+  const [combo, setCombo] = useState(3);
+  const [secondsLeft, setSecondsLeft] = useState(84);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [isAnswerCorrect, setIsAnswerCorrect] = useState<boolean | null>(null);
   const [freezeActive, setFreezeActive] = useState(false);
-  const [doubleXpActive, setDoubleXpActive] = useState(true);
+  const [showIpa, setShowIpa] = useState(false);
 
-  const currentQ = questions[questionIdx] || questions[0];
+  const playerName = userName || session?.user?.display_name || "Você";
 
-  // Timer countdown
+  const currentQ = questions[questionIdx % questions.length] || questions[0];
+
+  // Opponent autonomous scoring interval
   useEffect(() => {
     if (freezeActive) return;
-    const interval = setInterval(() => {
-      setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 120));
-    }, 1000);
-    return () => clearInterval(interval);
+    const oppTimer = setInterval(() => {
+      setOpponentScore((prev) => prev + Math.floor(Math.random() * 25) + 15);
+    }, 2800);
+    return () => clearInterval(oppTimer);
   }, [freezeActive]);
 
-  // Tug of war percentage
-  const totalScore = playerScore + opponentScore || 1;
-  const playerPercent = Math.min(85, Math.max(15, Math.round((playerScore / totalScore) * 100)));
+  // Round countdown timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 120));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const totalScore = playerScore + opponentScore;
+  const playerPercent = totalScore > 0 ? Math.round((playerScore / totalScore) * 100) : 50;
   const opponentPercent = 100 - playerPercent;
 
   const handleChoice = useCallback(
-    (key: "A" | "B" | "C" | "D", isCorrect: boolean) => {
+    (key: string, isCorrect: boolean) => {
       if (selectedKey !== null) return;
-      void tap(isCorrect ? "medium" : "heavy");
       setSelectedKey(key);
-      setIsAnswerCorrect(isCorrect);
 
       if (isCorrect) {
-        const gain = doubleXpActive ? 120 : 60;
-        setPlayerScore((prev) => prev + gain);
+        void tap("success");
+        const points = 180 + combo * 20;
+        setPlayerScore((prev) => prev + points);
         setCombo((prev) => prev + 1);
-        addXp(gain);
-        if (combo >= 5) {
-          addGems(5);
-        }
+        addXp(15);
       } else {
-        setCombo(1);
-        setOpponentScore((prev) => prev + 40);
+        void tap("heavy");
+        setCombo(0);
       }
 
       setTimeout(() => {
         setSelectedKey(null);
-        setIsAnswerCorrect(null);
         setQuestionIdx((prev) => (prev + 1) % questions.length);
-      }, 1100);
+      }, 700);
     },
-    [selectedKey, doubleXpActive, combo, addXp, addGems, questions.length]
+    [selectedKey, combo, addXp, questions.length]
   );
 
-  // Keyboard shortcut listener for A, B, C, D
+  // Keyboard navigation
   useEffect(() => {
-    if (Platform.OS !== "web") return;
+    if (Platform.OS !== "web" || !currentQ) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      const k = e.key.toUpperCase();
-      if (["A", "B", "C", "D"].includes(k)) {
-        const option = currentQ.options.find((o) => o.key === k);
+      const keyUpper = e.key.toUpperCase();
+      if (["A", "B", "C", "D"].includes(keyUpper)) {
+        const option = currentQ.options.find((o) => o.key === keyUpper);
         if (option) {
-          e.preventDefault();
           handleChoice(option.key, option.correct);
         }
       }
@@ -216,7 +124,7 @@ export default function DuelRoute() {
     if (Platform.OS === "web" && typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(currentQ.word);
-      utterance.lang = "de-DE";
+      utterance.lang = speechLang;
       utterance.rate = 0.85;
       window.speechSynthesis.speak(utterance);
     }
@@ -228,6 +136,15 @@ export default function DuelRoute() {
     setFreezeActive(true);
     setTimeout(() => setFreezeActive(false), 5000);
   };
+
+  const intuitive =
+    currentQ.intuitivePronunciation[supportLang] ||
+    currentQ.intuitivePronunciation["pt-BR"] ||
+    currentQ.intuitivePronunciation["en"] ||
+    "";
+
+  const targetFlag = targetLang === "en" ? "gb" : targetLang === "ja" ? "jp" : targetLang;
+  const supportFlag = supportLang === "en" ? "gb" : supportLang === "pt-BR" || supportLang === "pt" ? "br" : supportLang;
 
   return (
     <div className="w-full max-w-6xl mx-auto flex flex-col gap-6 pb-16">
@@ -248,8 +165,11 @@ export default function DuelRoute() {
                 Liga Diamante • Humboldt
               </span>
             </div>
-            <span className="text-xs text-[#64748B] font-semibold">
-              Rodada {questionIdx + 6} de 15 • Alemão 🇩🇪 via Português 🇧🇷
+            <span className="text-xs text-[#64748B] font-semibold flex items-center gap-1.5 flex-wrap">
+              <span>Rodada {questionIdx + 1} de {questions.length} •</span>
+              <CountryFlag code={targetFlag} size={14} />
+              <span>{languageName(targetLang)} via {languageName(supportLang)}</span>
+              <CountryFlag code={supportFlag} size={14} />
             </span>
           </div>
         </div>
@@ -291,7 +211,7 @@ export default function DuelRoute() {
                 <span className="font-extrabold text-sm text-[#111C2D] truncate">
                   {playerName}
                 </span>
-                <span className="text-xs">🇧🇷</span>
+                <CountryFlag code={supportFlag} size={14} />
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-xl text-[#0D9488]">
@@ -303,10 +223,7 @@ export default function DuelRoute() {
                 </span>
               </div>
               <div className="flex items-center gap-1.5 text-xs text-[#64748B] font-semibold flex-wrap">
-                <span>Rodada {questionIdx + 6} de 15 • {targetLang === "en" ? "Inglês" : "Alemão"}</span>
-                <CountryFlag code={targetLang === "en" ? "gb" : "de"} size={14} />
-                <span>via Português</span>
-                <CountryFlag code="br" size={14} />
+                <span>{languageName(targetLang)} via {languageName(supportLang)}</span>
               </div>
             </div>
           </div>
@@ -320,19 +237,16 @@ export default function DuelRoute() {
 
             {/* Bar Container */}
             <div className="w-full h-5 rounded-full bg-[#F5F0E8] p-1 shadow-[inset_0_2px_4px_rgba(0,0,0,0.08)] relative flex items-center">
-              {/* Left Player Fill */}
               <div
                 className="h-full rounded-l-full bg-gradient-to-r from-[#0D9488] to-[#6BD8CB] transition-all duration-300"
                 style={{ width: `${playerPercent}%` }}
               />
-              {/* Clash Spark Indicator */}
               <div
                 className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-7 h-7 rounded-full bg-[#FEA619] shadow-[0_0_12px_#FEA619] flex items-center justify-center text-xs animate-bounce"
                 style={{ left: `${playerPercent}%` }}
               >
                 ⚡
               </div>
-              {/* Right Player Fill */}
               <div
                 className="h-full rounded-r-full bg-gradient-to-r from-[#FB7185] to-[#B10E6B] transition-all duration-300"
                 style={{ width: `${opponentPercent}%` }}
@@ -362,16 +276,25 @@ export default function DuelRoute() {
                   {opponentScore.toLocaleString("pt-BR")}
                 </span>
               </div>
+              <span className="text-xs text-[#64748B] font-semibold">
+                Poliglota · Berlim, Alemanha
+              </span>
             </div>
             <div className="relative flex-shrink-0">
-              <img
-                src={ELENA_AVATAR}
-                alt="Elena Rostova"
-                className="w-14 h-14 rounded-2xl object-cover shadow-[0_4px_0_#8C0053]"
-              />
-              <span className="absolute -bottom-1 -left-1 px-1.5 py-0.5 rounded-md bg-[#B10E6B] text-[10px] font-extrabold text-white shadow-[0_2px_0_#8C0053]">
-                NV 13
-              </span>
+              <div className="w-14 h-14 rounded-2xl bg-[#B10E6B]/10 border border-[#B10E6B]/30 overflow-hidden shadow-[0_4px_0_#93005A]">
+                <img
+                  src={ELENA_AVATAR}
+                  alt="Elena"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    if (!target.dataset.tried) {
+                      target.dataset.tried = "1";
+                      target.src = "/assets/assets/cast/clara.png";
+                    }
+                  }}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -385,10 +308,11 @@ export default function DuelRoute() {
         <div className="sm:col-span-5 rounded-3xl bg-white p-5 shadow-[0_4px_0_#CBD5E1] border border-stone-200/80 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-[0_3px_0_#CBD5E1] ${secondsLeft <= 20
-                ? "bg-[#FF5722] text-white shadow-[0_3px_0_#C2410C] animate-bounce"
-                : "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
-                }`}
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-[0_3px_0_#CBD5E1] ${
+                secondsLeft <= 20
+                  ? "bg-[#FF5722] text-white shadow-[0_3px_0_#C2410C] animate-bounce"
+                  : "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
+              }`}
             >
               <Clock className="w-6 h-6 animate-spin" />
             </div>
@@ -426,12 +350,13 @@ export default function DuelRoute() {
               {[1, 2, 3, 4, 5].map((pip) => (
                 <div
                   key={pip}
-                  className={`h-2 flex-1 rounded-full transition-all ${pip <= (combo % 6)
-                    ? pip >= 4
-                      ? "bg-[#FEA619] shadow-[0_0_8px_#FEA619]"
-                      : "bg-[#FF5722] shadow-[0_0_8px_#FF5722]"
-                    : "bg-stone-300 opacity-40"
-                    }`}
+                  className={`h-2 flex-1 rounded-full transition-all ${
+                    pip <= (combo % 6)
+                      ? pip >= 4
+                        ? "bg-[#FEA619] shadow-[0_0_8px_#FEA619]"
+                        : "bg-[#FF5722] shadow-[0_0_8px_#FF5722]"
+                      : "bg-stone-300 opacity-40"
+                  }`}
                 />
               ))}
             </div>
@@ -462,7 +387,7 @@ export default function DuelRoute() {
                 <span>Resposta Anterior Instantânea: 0.6s (+180 PTS)</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs text-[#64748B] font-semibold">
-                <span>Palavra {questionIdx + 6} de 15</span>
+                <span>Palavra {questionIdx + 1} de {questions.length}</span>
                 <span>•</span>
                 <span className="text-[#0D9488] font-bold">Nível Intermediário B2</span>
               </div>
@@ -471,7 +396,7 @@ export default function DuelRoute() {
             {/* Prompt Center Area */}
             <div className="flex flex-col items-center text-center py-2 px-2">
               <span className="text-xs uppercase tracking-widest text-[#64748B] font-extrabold mb-2">
-                Traduza para o Português:
+                Traduza para o {languageName(supportLang)}:
               </span>
 
               <div className="flex items-center justify-center gap-3 flex-wrap">
@@ -488,13 +413,29 @@ export default function DuelRoute() {
                 </button>
               </div>
 
+              {/* Phonetics Helper: Intuitive by default with discreet IPA toggle */}
               <div className="flex items-center gap-3 mt-2 flex-wrap justify-center text-xs text-[#64748B]">
-                <span className="font-sans text-[#0D9488] font-bold text-xs tracking-wide">
-                  {currentQ.phonetic}
-                </span>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#F5F0E8] text-[#3D4947]">
+                  <Mic size={13} className="text-[#0D9488]" />
+                  {showIpa ? (
+                    <span className="font-mono text-xs">{currentQ.ipa}</span>
+                  ) : (
+                    <span
+                      className="text-xs"
+                      dangerouslySetInnerHTML={{ __html: intuitive }}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowIpa((prev) => !prev)}
+                    className="ml-1 text-[10px] font-mono px-1 py-0.5 rounded bg-stone-200 hover:bg-stone-300 text-stone-700 cursor-pointer"
+                  >
+                    {showIpa ? "Intuitiva" : "IPA"}
+                  </button>
+                </div>
                 <span>•</span>
                 <span className="px-2 py-0.5 rounded-md bg-[#FEA619]/20 text-[#855300] font-extrabold text-[11px]">
-                  {currentQ.gender}
+                  {LanguageMatrixEngine.getLocalizedText(currentQ.gender, supportLang, currentQ.gender["pt-BR"] || "")}
                 </span>
               </div>
 
@@ -520,6 +461,12 @@ export default function DuelRoute() {
                   }
                 }
 
+                const localizedOptionText = LanguageMatrixEngine.getLocalizedText(
+                  opt.text,
+                  supportLang,
+                  opt.text["pt-BR"] || ""
+                );
+
                 return (
                   <motion.button
                     key={opt.key}
@@ -533,7 +480,7 @@ export default function DuelRoute() {
                         {opt.key}
                       </span>
                       <span className="font-extrabold text-base text-[#111C2D]">
-                        {opt.text}
+                        {localizedOptionText}
                       </span>
                     </div>
                     <span className="text-[11px] font-bold text-[#64748B] opacity-60 group-hover:opacity-100">
@@ -548,155 +495,79 @@ export default function DuelRoute() {
             <div className="flex items-center justify-between pt-2">
               <button
                 type="button"
-                className="text-xs font-semibold text-[#64748B] hover:text-[#EF4444] flex items-center gap-1 transition-colors"
+                className="text-xs text-[#64748B] hover:text-[#111C2D] font-bold flex items-center gap-1 cursor-pointer"
               >
-                <Flag className="w-3.5 h-3.5" />
+                <Flag size={14} />
                 <span>Reportar questão ambígua</span>
               </button>
-              <span className="text-xs text-[#64748B] hidden sm:inline">
+
+              <span className="text-xs text-[#64748B] font-semibold">
                 Pressione [A], [B], [C] ou [D] para responder em menos de 1s
               </span>
             </div>
           </TactileCard>
 
-          {/* Cheering Historical Mentor Widget (Richard Feynman) */}
-          <div className="w-full rounded-3xl bg-white p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex flex-col sm:flex-row items-center gap-4">
-            <div className="relative flex-shrink-0">
-              <img
-                src={FEYNMAN_AVATAR}
-                alt="Richard Feynman"
-                className="w-16 h-16 rounded-full object-cover ring-4 ring-[#FEA619] shadow-[0_4px_0_#D97706]"
-              />
-              <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#FF5722] text-white text-xs font-bold shadow-[0_2px_0_rgba(0,0,0,0.2)]">
-                🔥
-              </span>
-            </div>
-
-            <div className="flex-1 flex flex-col gap-1">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-sm text-[#111C2D]">
-                    Richard Feynman
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FFDDB8] text-[#2A1700] uppercase font-bold">
-                    Mentor de Ritmo & Foco
-                  </span>
-                </div>
-                <span className="text-xs font-extrabold text-[#0D9488]">
-                  Bônus de Vitória 1.2x
-                </span>
+          {/* Richard Feynman Tactical Companion Deck */}
+          <div className="rounded-3xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 p-5 shadow-[0_4px_0_#CBD5E1] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-200 border-2 border-amber-300 overflow-hidden flex-shrink-0">
+                <img
+                  src={FEYNMAN_AVATAR}
+                  alt="Feynman"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    if (!target.dataset.tried) {
+                      target.dataset.tried = "1";
+                      target.src = "/assets/assets/cast/feynman.png";
+                    }
+                  }}
+                />
               </div>
-
-              <div className="relative bg-[#F5F0E8] rounded-2xl p-3.5 shadow-[inset_0_2px_0_#CBD5E1] mt-1">
-                <p className="font-serif text-sm text-[#111C2D] italic">
-                  “— Fantástico ritmo, Gabriel! Mantenha a cadência sincopada e o combo {combo}x explode a pontuação da Elena!”
+              <div className="flex flex-col">
+                <span className="text-xs font-black text-[#855300] uppercase tracking-wider">
+                  Dica de Richard Feynman
+                </span>
+                <p className="text-xs sm:text-sm text-stone-800 font-serif italic">
+                  “Não traduza palavra por palavra; visualize o conceito no mundo real antes de escolher a opção.”
                 </p>
               </div>
             </div>
-          </div>
-        </div >
 
-        {/* ====================================================== */}
-        {/* RIGHT: BATTLE ARSENAL & COMBAT LOG (4 COLS)            */}
-        {/* ====================================================== */}
+            <button
+              type="button"
+              onClick={handleFreeze}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer flex-shrink-0 ${
+                freezeActive
+                  ? "bg-cyan-600 text-white shadow-inner animate-pulse"
+                  : "bg-white text-cyan-800 border border-cyan-300 shadow-[0_2px_0_#06B6D4] hover:bg-cyan-50"
+              }`}
+            >
+              <Snowflake size={14} />
+              <span>{freezeActive ? "Congelamento Ativo!" : "Congelar Oponente (5s)"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: ARENA LEADERBOARD & DEFENSE PERKS (4 COLS) */}
         <div className="lg:col-span-4 flex flex-col gap-6">
-          {/* Power-up Inventory Slots */}
-          <TactileCard className="p-5 flex flex-col gap-4">
+          {/* Defense Card */}
+          <div className="bg-white rounded-3xl p-6 shadow-[0_4px_0_#CBD5E1] border border-stone-200/80 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="font-extrabold text-base text-[#111C2D]">
-                Arsenal de Batalha
-              </span>
-              <span className="text-xs text-[#64748B] font-semibold">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-[#0D9488]" />
+                <h3 className="font-extrabold text-base text-[#111C2D]">
+                  Escudos Defensivos
+                </h3>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full bg-teal-100 text-[#00685F] font-bold text-xs">
                 2 Disponíveis
               </span>
             </div>
-
-            {/* Power-up Buttons List */}
-            <div className="flex flex-col gap-3">
-              {/* 1. Congelar Tempo */}
-              <motion.button
-                type="button"
-                whileTap={{ y: 2 }}
-                onClick={handleFreeze}
-                className={`w-full p-3.5 rounded-2xl flex items-center justify-between shadow-[0_4px_0_#CBD5E1] transition-all cursor-pointer ${freezeActive ? "bg-[#06B6D4]/20 border-2 border-[#06B6D4]" : "bg-[#F5F0E8] hover:bg-stone-200"
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">❄️</span>
-                  <div className="flex flex-col text-left">
-                    <span className="font-extrabold text-sm text-[#111C2D]">
-                      Congelar Tempo
-                    </span>
-                    <span className="text-xs text-[#64748B]">
-                      {freezeActive ? "Pausado (5s)!" : "Pausa relógio por 5s"}
-                    </span>
-                  </div>
-                </div>
-                <span className="px-2.5 py-1 rounded-xl bg-[#06B6D4] text-white font-extrabold text-xs shadow-[0_2px_0_#0F766E]">
-                  {freezeActive ? "ATIVO" : "USAR"}
-                </span>
-              </motion.button>
-
-              {/* 2. Duplo XP Relâmpago */}
-              <div className="w-full p-3.5 rounded-2xl bg-[#D97706]/10 flex items-center justify-between shadow-[0_4px_0_rgba(217,119,6,0.3)] border border-[#D97706]/30">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl animate-spin">⚡</span>
-                  <div className="flex flex-col text-left">
-                    <span className="font-extrabold text-sm text-[#D97706]">
-                      Duplo XP Relâmpago
-                    </span>
-                    <span className="text-xs text-[#D97706]/80">
-                      Ativo nas próximas 3 rodadas
-                    </span>
-                  </div>
-                </div>
-                <span className="px-2.5 py-1 rounded-xl bg-[#D97706] text-white font-extrabold text-xs shadow-[0_2px_0_#B45309]">
-                  ATIVO
-                </span>
-              </div>
-
-              {/* 3. Eliminar Duas Alternativas (Cooldown) */}
-              <div className="w-full p-3.5 rounded-2xl bg-[#F5F0E8]/60 flex items-center justify-between opacity-50 cursor-not-allowed border border-stone-200">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl grayscale">🎯</span>
-                  <div className="flex flex-col text-left">
-                    <span className="font-extrabold text-sm text-[#64748B]">
-                      Eliminar Alternativas
-                    </span>
-                    <span className="text-xs text-[#64748B]">
-                      Recarrega em 2 rodadas
-                    </span>
-                  </div>
-                </div>
-                <span className="text-sm">🔒</span>
-              </div>
-            </div>
-          </TactileCard>
-
-          {/* Live Combat Log */}
-          <TactileCard className="p-5 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="font-extrabold text-base text-[#111C2D]">
-                Registro de Combate
-              </span>
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-ping" />
-            </div>
-
-            <div className="flex flex-col gap-2.5 text-xs">
-              <div className="flex items-center justify-between p-2 rounded-xl bg-[#10B981]/10 text-[#059669]">
-                <span className="font-bold">{playerName.split(" ")[0]} acertou em 0.6s</span>
-                <span className="font-extrabold">+180 PTS</span>
-              </div>
-              <div className="flex items-center justify-between p-2 rounded-xl bg-[#F5F0E8] text-[#64748B]">
-                <span>Elena respondeu</span>
-                <span className="font-bold">+120 PTS</span>
-              </div>
-              <div className="flex items-center justify-between p-2 rounded-xl bg-[#FF5722]/10 text-[#FF5722]">
-                <span className="font-bold">{playerName.split(" ")[0]} atingiu 6x Combo!</span>
-                <span className="font-extrabold">Fogo Ativo</span>
-              </div>
-            </div>
-          </TactileCard>
+            <p className="text-xs text-[#64748B]">
+              Protege sua ofensiva e seus pontos em caso de resposta incorreta durante o duelo.
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import { router } from "expo-router";
 import { motion } from "framer-motion";
 import {
   Award,
@@ -17,6 +18,7 @@ import {
   Sparkles,
   Target,
   Volume2,
+  RotateCcw,
 } from "lucide-react";
 import { TactileCard } from "@/components/tactile/tactile-card";
 import { useProsa } from "@/context/prosa-context";
@@ -35,14 +37,15 @@ interface Checkpoint {
 
 export function DossierScreen() {
   const session = useSession();
-  const { xp, streak, targetLang } = useProsa();
+  const { userName, xp, streak, targetLang, activeCourse, courses } = useProsa();
   const [copiedLink, setCopiedLink] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [newFocus, setNewFocus] = useState("");
   const [newNote, setNewNote] = useState("");
 
-  const userName = session?.user?.display_name || "Você";
+  const displayName = userName || session?.user?.display_name || "Você";
   const userEmail = session?.user?.email || "aluno@prosa.app";
-  const userInitial = userName[0]?.toUpperCase() ?? "V";
+  const userInitial = displayName[0]?.toUpperCase() ?? "V";
 
   const langKey = targetLang || "en";
   const currentLangLabel = languageName(langKey);
@@ -50,8 +53,8 @@ export function DossierScreen() {
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([
     {
       id: "chk-1",
-      focus: "Fixação da ordem sintática canônica em orações causais",
-      note: "Completar 5 sessões de recomposição no laboratório de Da Vinci.",
+      focus: "Fixação da ordem sintática canônica em orações principais",
+      note: "Completar sessões de recomposição no laboratório de Da Vinci.",
       done: true,
       dueOn: "Concluído",
     },
@@ -64,7 +67,7 @@ export function DossierScreen() {
     },
     {
       id: "chk-3",
-      focus: "Consolidação de 50 novos vocábulos raros no Palácio FSRS",
+      focus: "Consolidação de novos vocábulos raros no Palácio FSRS",
       note: "Revisão espaçada ativa diária com os mnemônicos de Marie Curie.",
       done: false,
       dueOn: "Em 7 dias",
@@ -74,7 +77,15 @@ export function DossierScreen() {
   const toggleCheckpoint = (id: string) => {
     void tap("success");
     setCheckpoints((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, done: !c.done, dueOn: !c.done ? "Concluído" : "Pendente" } : c))
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              done: !c.done,
+              dueOn: !c.done ? "Concluído" : "Pendente",
+            }
+          : c
+      )
     );
   };
 
@@ -96,7 +107,9 @@ export function DossierScreen() {
   const handleCopyShareLink = () => {
     void tap("success");
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      void navigator.clipboard.writeText(`https://prosa.app/dossier/share/${langKey}-${Date.now().toString(36)}`);
+      void navigator.clipboard.writeText(
+        `https://prosa.app/dossier/share/${langKey}-${Date.now().toString(36)}`
+      );
     }
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 3000);
@@ -109,8 +122,51 @@ export function DossierScreen() {
     }
   };
 
+  const handleExportFsrs = () => {
+    void tap("success");
+    const exportData = {
+      version: "2.0.0",
+      app: "Prosa Language Engine",
+      exportedAt: new Date().toISOString(),
+      student: displayName,
+      course: {
+        targetLang,
+        level: activeCourse.level,
+        xp: activeCourse.xp,
+        prosaScore: activeCourse.prosaScore,
+        cardsCount: activeCourse.fsrsCards.length,
+        deck: activeCourse.fsrsCards,
+      },
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `prosa-fsrs-${targetLang}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setDownloadSuccess(true);
+    setTimeout(() => setDownloadSuccess(false), 3000);
+  };
+
+  const flagCode = langKey === "en" ? "gb" : langKey === "ja" ? "jp" : langKey;
+
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6 pb-16">
+      <style>{`
+        @media print {
+          header, aside, nav, .no-print, button, #btn-print { display: none !important; }
+          body { background: white !important; }
+          #printable-dossier { margin: 0; padding: 12px; box-shadow: none !important; border: none !important; }
+        }
+      `}</style>
+
       {/* 1. Header do Dossiê */}
       <motion.div
         initial={{ opacity: 0, y: 15 }}
@@ -143,11 +199,11 @@ export function DossierScreen() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 no-print">
             <button
               type="button"
               onClick={handlePrintDossier}
-              className="px-4 py-2.5 rounded-xl bg-[#F5F0E8] hover:bg-stone-200 text-stone-800 font-bold text-xs border border-stone-300 shadow-[0_2px_0_#CBD5E1] flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl bg-[#F5F0E8] hover:bg-stone-200 text-stone-800 font-bold text-xs border border-stone-300 shadow-[0_2px_0_#CBD5E1] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
             >
               <Printer className="w-4 h-4 text-stone-700" />
               <span>Imprimir / PDF</span>
@@ -155,8 +211,26 @@ export function DossierScreen() {
 
             <button
               type="button"
+              onClick={handleExportFsrs}
+              className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-stone-50 text-teal-800 font-bold text-xs border border-teal-300 shadow-[0_2px_0_#CBD5E1] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-[#0D9488]" />
+              <span>{downloadSuccess ? "FSRS Exportado!" : "Exportar FSRS"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => router.push("/placement")}
+              className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-stone-50 text-amber-900 font-bold text-xs border border-amber-300 shadow-[0_2px_0_#CBD5E1] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-4 h-4 text-amber-600" />
+              <span>Refazer Teste CEFR</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleCopyShareLink}
-              className="px-5 py-2.5 rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white font-extrabold text-xs shadow-[0_3px_0_#0F766E] flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-[#0D9488] hover:bg-[#0F766E] text-white font-extrabold text-xs shadow-[0_3px_0_#0F766E] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
             >
               {copiedLink ? (
                 <>
@@ -166,7 +240,7 @@ export function DossierScreen() {
               ) : (
                 <>
                   <Share2 className="w-4 h-4" />
-                  <span>Compartilhar Dossiê</span>
+                  <span>Compartilhar</span>
                 </>
               )}
             </button>
@@ -175,7 +249,7 @@ export function DossierScreen() {
       </motion.div>
 
       {/* 2. Grid Principal: Perfil do Estudante & 4 Métricas de Domínio */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div id="printable-dossier" className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Coluna Esquerda: Cartão de Nível & Mentor Signatário (5 cols) */}
         <div className="lg:col-span-5 space-y-6">
           {/* Cartão de Proficiência do Estudante */}
@@ -186,12 +260,13 @@ export function DossierScreen() {
               </div>
               <div className="min-w-0 flex-1">
                 <span className="font-extrabold text-lg text-stone-900 block truncate">
-                  {userName}
+                  {displayName}
                 </span>
                 <span className="text-xs text-stone-500 block truncate mb-1">
                   {userEmail}
                 </span>
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-stone-100 text-stone-700 font-bold text-xs">
+                  <Flag code={flagCode} size={14} />
                   <span>Trilha Ativa:</span>
                   <span className="text-[#0D9488]">{currentLangLabel}</span>
                 </div>
@@ -205,15 +280,23 @@ export function DossierScreen() {
                   Nível Validado CEFR
                 </span>
                 <span className="text-3xl font-black text-teal-900 font-serif">
-                  B2 Avançado
+                  Nível {activeCourse.level}
                 </span>
                 <span className="text-xs text-teal-700 block mt-0.5">
-                  Pronto para debates complexos e leitura canônica.
+                  {activeCourse.level === "A1"
+                    ? "Iniciante Elemental no padrão europeu."
+                    : activeCourse.level === "A2"
+                    ? "Básico Autônomo com estruturas cotidianas."
+                    : activeCourse.level === "B1"
+                    ? "Intermediário Prático com independência."
+                    : activeCourse.level === "B2"
+                    ? "Pronto para debates complexos e leitura canônica."
+                    : "Mestre Fluente com domínio acadêmico."}
                 </span>
               </div>
               <div className="w-16 h-16 rounded-2xl bg-teal-600 text-white flex flex-col items-center justify-center shadow-[0_3px_0_#0F766E]">
                 <span className="text-[10px] font-bold uppercase">SCORE</span>
-                <span className="text-xl font-black">780</span>
+                <span className="text-xl font-black">{activeCourse.prosaScore || 780}</span>
               </div>
             </div>
 
@@ -223,8 +306,8 @@ export function DossierScreen() {
                 Foco Didático Imediato:
               </span>
               <p className="text-xs text-stone-600 leading-relaxed bg-[#F5F0E8] p-3.5 rounded-xl border border-stone-200">
-                Domínio de orações subordinadas e conectores causais adversativos (<em>because, since, although</em>),
-                com alinhamento de pitch e ritmo prosódico em tempo real.
+                Domínio de orações subordinadas e conectores causais adversativos,
+                com alinhamento de pitch e ritmo prosódico em tempo real na trilha de {currentLangLabel}.
               </p>
             </div>
           </TactileCard>
@@ -236,6 +319,13 @@ export function DossierScreen() {
                 src="/cast/einstein.png"
                 alt="Albert Einstein"
                 className="w-12 h-12 rounded-xl object-cover ring-2 ring-amber-400 shadow-sm"
+                onError={(e) => {
+                  const target = e.currentTarget as HTMLImageElement;
+                  if (!target.dataset.tried) {
+                    target.dataset.tried = "1";
+                    target.src = "/assets/assets/cast/einstein.png";
+                  }
+                }}
               />
               <div>
                 <span className="text-[10px] font-extrabold uppercase text-[#D97706] tracking-wider block">
@@ -244,13 +334,13 @@ export function DossierScreen() {
                 <span className="font-extrabold text-sm text-stone-900 block">
                   Albert Einstein
                 </span>
-                <span className="text-[11px] text-stone-500">Cátedra de Pensamento Lógico</span>
+                <span className="text-[11px] text-stone-500">Cátedra de Pensamento Polímata</span>
               </div>
             </div>
 
             <div className="p-3.5 rounded-xl bg-[#F5F0E8] border border-stone-200 text-xs italic text-stone-800 font-serif leading-relaxed">
-              “O rigor estrutural da linguagem é a chave para a clareza dos conceitos universais. {userName} demonstra
-              uma retenção sináptica acima da média e ritmo articulatório equilibrado.”
+              “O rigor estrutural da linguagem é a chave para a clareza dos conceitos universais. {displayName} demonstra
+              uma retenção sináptica acima da média e ritmo articulatório equilibrado no curso de {currentLangLabel}.”
             </div>
           </div>
         </div>
@@ -264,8 +354,10 @@ export function DossierScreen() {
                 <Layers className="w-4 h-4" />
                 <span className="text-[10px] font-black uppercase text-stone-400">FSRS</span>
               </div>
-              <span className="text-2xl font-black text-stone-900 block">1.420</span>
-              <span className="text-[11px] text-stone-500 font-semibold block">Lemas Ativos</span>
+              <span className="text-2xl font-black text-stone-900 block">
+                {activeCourse.fsrsCards.length || 24}
+              </span>
+              <span className="text-[11px] text-stone-500 font-semibold block">Cartas no Deck</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-white border border-stone-200/80 shadow-sm space-y-1">
@@ -282,7 +374,7 @@ export function DossierScreen() {
                 <Brain className="w-4 h-4" />
                 <span className="text-[10px] font-black uppercase text-stone-400">OUVIDO</span>
               </div>
-              <span className="text-2xl font-black text-stone-900 block">85%</span>
+              <span className="text-2xl font-black text-stone-900 block">92%</span>
               <span className="text-[11px] text-stone-500 font-semibold block">Auditiva Nativa</span>
             </div>
 
@@ -291,8 +383,8 @@ export function DossierScreen() {
                 <BookOpen className="w-4 h-4" />
                 <span className="text-[10px] font-black uppercase text-stone-400">LEITURA</span>
               </div>
-              <span className="text-2xl font-black text-stone-900 block">90%</span>
-              <span className="text-[11px] text-stone-500 font-semibold block">Hermenêutica</span>
+              <span className="text-2xl font-black text-stone-900 block">95%</span>
+              <span className="text-[11px] text-stone-500 font-semibold block">Sintaxe CEFR</span>
             </div>
           </div>
 
@@ -355,14 +447,14 @@ export function DossierScreen() {
             </div>
 
             {/* Adicionar Novo Checkpoint */}
-            <div className="pt-3 border-t border-stone-200/80 space-y-2.5">
+            <div className="pt-3 border-t border-stone-200/80 space-y-2.5 no-print">
               <span className="text-xs font-bold text-stone-800 block">
                 + Adicionar Checkpoint Personalizado
               </span>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
-                  placeholder="Meta (ex: Dominar preposições regidas por dativo)..."
+                  placeholder="Meta (ex: Dominar orações causais e flexão de casos)..."
                   value={newFocus}
                   onChange={(e) => setNewFocus(e.target.value)}
                   className="flex-1 p-2.5 text-xs rounded-xl bg-white border border-stone-300 text-stone-900 shadow-inner"
