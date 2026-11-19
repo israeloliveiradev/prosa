@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { View, Text, Pressable, ScrollView, Image, Platform } from "react-native";
 import Svg, { Path, Circle } from "react-native-svg";
 import { router } from "expo-router";
@@ -28,6 +28,7 @@ export function DailySessionScreen() {
   const [currentCardIdx, setCurrentCardIdx] = useState(0);
   const [isRevealed, setIsRevealed] = useState(true);
   const [audioPlaying, setAudioPlaying] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [showIpa, setShowIpa] = useState(false);
   const [isLessonCompleted, setIsLessonCompleted] = useState(false);
 
@@ -39,6 +40,22 @@ export function DailySessionScreen() {
   const card = deck[currentCardIdx] || deck[0];
   const langSpeechCode = LanguageMatrixEngine.getBCP47(targetLang);
   const currentLangLabel = languageName(targetLang);
+
+  // Lookahead cache: Silently pre-synthesize current card and next 2 cards in background worker
+  useEffect(() => {
+    if (!deck || deck.length === 0) return;
+    const opts = {
+      lang: langSpeechCode,
+      mentorId: activeMentor?.id || "einstein",
+      speed: "0.9x" as const,
+    };
+    for (let i = currentCardIdx; i <= currentCardIdx + 2 && i < deck.length; i++) {
+      const phrase = deck[i]?.targetPhrase;
+      if (phrase) {
+        speechService.preload(phrase, opts);
+      }
+    }
+  }, [currentCardIdx, deck, langSpeechCode, activeMentor?.id]);
 
   const cardTranslation = LanguageMatrixEngine.getLocalizedText(
     card.translation,
@@ -82,14 +99,35 @@ export function DailySessionScreen() {
 
   const handlePlayAudio = () => {
     void tap("medium");
-    setAudioPlaying(true);
     const phrase = card?.targetPhrase?.replace(/[“”"«»]/g, "") || "Prosa";
+    const isCached = speechService.isCached(phrase, {
+      lang: langSpeechCode,
+      mentorId: activeMentor?.id || "einstein",
+      speed: "0.9x",
+    });
+
+    if (!isCached) {
+      setIsAudioLoading(true);
+    } else {
+      setAudioPlaying(true);
+    }
+
     speechService.speak(phrase, {
       lang: langSpeechCode,
       mentorId: activeMentor?.id || "einstein",
       speed: "0.9x",
-      onEnd: () => setAudioPlaying(false),
-      onError: () => setAudioPlaying(false),
+      onStart: () => {
+        setIsAudioLoading(false);
+        setAudioPlaying(true);
+      },
+      onEnd: () => {
+        setIsAudioLoading(false);
+        setAudioPlaying(false);
+      },
+      onError: () => {
+        setIsAudioLoading(false);
+        setAudioPlaying(false);
+      },
     });
   };
 
@@ -398,16 +436,18 @@ export function DailySessionScreen() {
                       width: 36,
                       height: 36,
                       borderRadius: 18,
-                      backgroundColor: audioPlaying ? "#00685F" : "#F5F0E8",
+                      backgroundColor: audioPlaying ? "#00685F" : isAudioLoading ? "#FEF3C7" : "#F5F0E8",
                       borderWidth: 1,
-                      borderColor: "#CBD5E1",
+                      borderColor: isAudioLoading ? "#F59E0B" : "#CBD5E1",
                       alignItems: "center",
                       justifyContent: "center",
                       boxShadow: "0 2px 0 #CBD5E1",
                       cursor: "pointer",
                     }}
                   >
-                    <Text style={{ fontSize: 16 }}>{audioPlaying ? "🔊" : "🔈"}</Text>
+                    <Text style={{ fontSize: 16 }}>
+                      {isAudioLoading ? "⏳" : audioPlaying ? "🔊" : "🔈"}
+                    </Text>
                   </Pressable>
                 </View>
               </View>

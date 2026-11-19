@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { kv } from "@/lib/kv";
+import { speechService } from "@/services/speechService";
 
 export interface Mentor {
   id: string;
@@ -369,6 +370,11 @@ export function ProsaProvider({ children }: { children: ReactNode }) {
     sessionsCount: 0,
     currentCardIndex: 0,
   };
+
+  // 100% silent background boot and weight cache of Kokoro-82M neural engine
+  useEffect(() => {
+    void speechService.warmup(targetLang, activeMentor?.id);
+  }, [targetLang, activeMentor?.id]);
 
   // Total XP across all started courses
   const totalXp = Object.values(courses).reduce((acc, c) => acc + (c.started ? c.xp : 0), 0);
