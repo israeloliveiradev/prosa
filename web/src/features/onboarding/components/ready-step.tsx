@@ -43,22 +43,18 @@ export function ReadyStep({ level, onOpenProse, onRestart }: ReadyStepProps) {
         <div className="flex items-start gap-4 p-4 rounded-2xl bg-[#F5F0E8] border border-stone-200/90">
           <div className="relative shrink-0 w-16 h-16">
             <div className="w-full h-full rounded-2xl overflow-hidden bg-[#0D9488]/15 border border-[#0D9488]/30 shadow-sm flex items-center justify-center">
-              {Platform.OS === "web" ? (
-                <img
-                  src="/cast/einstein.png"
-                  alt="Albert Einstein"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = "/assets/cast/einstein.png";
-                  }}
-                />
-              ) : (
-                <Image
-                  source={require("../../../../assets/cast/einstein.png")}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode="cover"
-                />
-              )}
+              <img
+                src="/cast/einstein.png"
+                alt="Albert Einstein"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.currentTarget as HTMLImageElement;
+                  if (!target.dataset.tried) {
+                    target.dataset.tried = "1";
+                    target.src = "/assets/assets/cast/einstein.png";
+                  }
+                }}
+              />
             </div>
             <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center text-[10px] font-black border-2 border-white shadow-sm">
               P
