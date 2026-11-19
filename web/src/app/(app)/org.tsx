@@ -340,6 +340,8 @@ export default function ShopScreen() {
       setGems(gems - selectedItem.price);
       showToast("Artefato Adquirido!", `${selectedItem.name} foi adicionado ao seu inventário ativo.`);
       setSelectedItem(null);
+    } else {
+      showToast("Gemas Insuficientes", `Você precisa de mais ${selectedItem.price - gems} gemas para adquirir este artefato.`);
     }
   };
 

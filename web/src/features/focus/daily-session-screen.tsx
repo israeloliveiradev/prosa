@@ -1,76 +1,92 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { View, Text, Pressable, ScrollView, Image, Platform } from "react-native";
 import Svg, { Path, Circle } from "react-native-svg";
+import { router } from "expo-router";
 import { tap } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
+import { useProsa } from "@/context/prosa-context";
 import { speechService } from "@/services/speechService";
+import { LanguageMatrixEngine, type CardItem } from "@/services/contentService";
+import { languageName } from "@/lib/languages";
 
 const EINSTEIN_AVATAR = "/cast/einstein.png";
 
-interface CardData {
-  id: number;
-  level: string;
-  indexText: string;
-  retention: string;
-  targetPhrase: string;
-  phonetics: string;
-  translation: string;
-  culturalNote: string;
-  interval: string;
-}
-
-const SAMPLE_CARDS: CardData[] = [
-  {
-    id: 14,
-    level: "🇩🇪 A2.2",
-    indexText: "Cartão #14 de 28",
-    retention: "89%",
-    targetPhrase: "“Die Gedanken sind frei und fliegen wie der Wind.”",
-    phonetics: "[dee geh-dan-ken zint fry oont flee-gen vee dayr vint]",
-    translation: "“Os pensamentos são livres e voam como o vento.”",
-    culturalNote:
-      "💡 Provérbio popular folclórico alemão do século XVIII sobre liberdade individual.",
-    interval: "1 dia atrás",
-  },
-  {
-    id: 15,
-    level: "🇩🇪 B1.1",
-    indexText: "Cartão #15 de 28",
-    retention: "92%",
-    targetPhrase: "“Übung macht den Meister, wenn man beharrlich bleibt.”",
-    phonetics: "[ee-boong mahkht dayn mys-ter ven mahn beh-har-likh blypt]",
-    translation: "“A prática faz o mestre, quando se é perseverante.”",
-    culturalNote:
-      "💡 Expressão alemã correspondente a 'A prática leva à perfeição'.",
-    interval: "3 dias atrás",
-  },
-];
-
 export function DailySessionScreen() {
   const session = useSession();
+  const {
+    targetLang,
+    supportLang,
+    activeMentor,
+    rateFSRSCard,
+    completeTrailNode,
+    addXp,
+    addGems,
+    activeCourse,
+  } = useProsa();
+
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [currentCardIdx, setCurrentCardIdx] = useState(0);
   const [isRevealed, setIsRevealed] = useState(true);
   const [audioPlaying, setAudioPlaying] = useState(false);
+  const [showIpa, setShowIpa] = useState(false);
+  const [isLessonCompleted, setIsLessonCompleted] = useState(false);
 
-  const card = SAMPLE_CARDS[currentCardIdx] || SAMPLE_CARDS[0];
+  const deck = useMemo(() => {
+    const raw = LanguageMatrixEngine.getDeckForCourse(targetLang);
+    return raw && raw.length > 0 ? raw : LanguageMatrixEngine.getDeckForCourse("en");
+  }, [targetLang]);
+
+  const card = deck[currentCardIdx] || deck[0];
+  const langSpeechCode = LanguageMatrixEngine.getBCP47(targetLang);
+  const currentLangLabel = languageName(targetLang);
+
+  const cardTranslation = LanguageMatrixEngine.getLocalizedText(
+    card.translation,
+    supportLang,
+    "Tradução indisponível"
+  );
+
+  const cardCulturalNote = LanguageMatrixEngine.getLocalizedText(
+    card.culturalNote,
+    supportLang,
+    "💡 Observe a estrutura canônica da frase."
+  );
+
+  const intuitivePron =
+    card.intuitivePronunciation?.[supportLang] ||
+    card.intuitivePronunciation?.["pt-BR"] ||
+    card.intuitivePronunciation?.["en"] ||
+    card.ipa;
 
   const handleRate = (points: number) => {
     void tap("light");
-    if (currentCardIdx < SAMPLE_CARDS.length - 1) {
+    const ratingMap: Record<number, "again" | "hard" | "good" | "easy"> = {
+      1: "again",
+      2: "hard",
+      3: "good",
+      4: "easy",
+    };
+    const rating = ratingMap[points] || "good";
+    rateFSRSCard(card.id, rating);
+    addXp(points >= 3 ? 25 : 15);
+    if (points === 4) addGems(2);
+    else if (points === 3) addGems(1);
+
+    if (currentCardIdx < deck.length - 1) {
       setCurrentCardIdx((prev) => prev + 1);
     } else {
-      setCurrentCardIdx(0);
+      completeTrailNode(activeCourse?.activeNodeId || `${targetLang}-node-1`, 50);
+      setIsLessonCompleted(true);
     }
   };
 
   const handlePlayAudio = () => {
     void tap("medium");
     setAudioPlaying(true);
-    const phrase = card?.targetPhrase?.replace(/[“”"«»]/g, "") || "Die Gedanken sind frei und fliegen wie der Wind.";
+    const phrase = card?.targetPhrase?.replace(/[“”"«»]/g, "") || "Prosa";
     speechService.speak(phrase, {
-      lang: "de-DE",
-      mentorId: "einstein",
+      lang: langSpeechCode,
+      mentorId: activeMentor?.id || "einstein",
       speed: "0.9x",
       onEnd: () => setAudioPlaying(false),
       onError: () => setAudioPlaying(false),
@@ -337,7 +353,7 @@ export function DailySessionScreen() {
                       color: "#64748B",
                     }}
                   >
-                    {card.indexText}
+                    Cartão #{currentCardIdx + 1} de {deck.length}
                   </Text>
                 </View>
 
@@ -371,7 +387,7 @@ export function DailySessionScreen() {
                         color: "#059669",
                       }}
                     >
-                      FSRS Retenção: {card.retention}
+                      FSRS Retenção: 91.4%
                     </Text>
                   </View>
                   <Pressable
@@ -415,7 +431,7 @@ export function DailySessionScreen() {
                       color: "#64748B",
                     }}
                   >
-                    Frase Alvo (Alemão)
+                    Frase Alvo ({currentLangLabel})
                   </Text>
                   <Text
                     style={{
@@ -430,7 +446,7 @@ export function DailySessionScreen() {
                   </Text>
                 </View>
 
-                {/* Pronúncia Fonética */}
+                {/* Pronúncia Intuitiva / Fonética */}
                 <View
                   style={{
                     alignSelf: "flex-start",
@@ -447,15 +463,48 @@ export function DailySessionScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 13, color: "#00685F" }}>🎙️</Text>
-                  <Text
+                  {showIpa ? (
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: "#3D4947",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {card.ipa}
+                    </Text>
+                  ) : (
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: "#111C2D",
+                        fontWeight: "600",
+                      }}
+                    >
+                      {intuitivePron.replace(/<[^>]+>/g, "")}
+                    </Text>
+                  )}
+                  <Pressable
+                    onPress={() => setShowIpa((prev) => !prev)}
                     style={{
-                      fontSize: 12,
-                      color: "#3D4947",
-                      fontFamily: "monospace",
+                      marginLeft: 4,
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 6,
+                      backgroundColor: showIpa ? "#00685F" : "#CBD5E1",
+                      cursor: "pointer",
                     }}
                   >
-                    {card.phonetics}
-                  </Text>
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: "700",
+                        color: showIpa ? "#FFFFFF" : "#334155",
+                      }}
+                    >
+                      {showIpa ? "Intuitiva" : "IPA"}
+                    </Text>
+                  </Pressable>
                 </View>
 
                 {/* Tradução e Contexto */}
@@ -477,7 +526,7 @@ export function DailySessionScreen() {
                         color: "#64748B",
                       }}
                     >
-                      Português (Contexto)
+                      Tradução ({supportLang.toUpperCase()})
                     </Text>
                     <Text
                       style={{
@@ -487,7 +536,7 @@ export function DailySessionScreen() {
                         marginTop: 4,
                       }}
                     >
-                      {card.translation}
+                      {cardTranslation}
                     </Text>
                     <Text
                       style={{
@@ -497,7 +546,7 @@ export function DailySessionScreen() {
                         fontStyle: "italic",
                       }}
                     >
-                      {card.culturalNote}
+                      {cardCulturalNote}
                     </Text>
                   </View>
                 ) : null}
@@ -531,7 +580,7 @@ export function DailySessionScreen() {
                       fontWeight: "600",
                     }}
                   >
-                    Intervalo anterior: {card.interval}
+                    Intervalo anterior: {(card as any).interval || "1 dia atrás"}
                   </Text>
                 </View>
                 <Pressable
@@ -564,6 +613,46 @@ export function DailySessionScreen() {
             {/* ==================================================== */}
             {/* 4 CHUNKY 3D TACTILE BUTTONS SIDE-BY-SIDE IN ONE ROW  */}
             {/* ==================================================== */}
+            {isLessonCompleted ? (
+              <View
+                style={{
+                  width: "100%",
+                  padding: 24,
+                  backgroundColor: "#ECFDF5",
+                  borderRadius: 22,
+                  borderWidth: 2,
+                  borderColor: "#10B981",
+                  boxShadow: "0 4px 0 #059669",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <Text style={{ fontSize: 32 }}>🏆</Text>
+                <Text style={{ fontSize: 18, fontWeight: "900", color: "#065F46" }}>
+                  Sessão Diária Concluída com Sucesso!
+                </Text>
+                <Text style={{ fontSize: 13, color: "#047857", textAlign: "center", maxWidth: 360 }}>
+                  +50 XP e Gemas creditados. Nó ativo da Trilha de Aventura consolidado no FSRS.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/")}
+                  style={{
+                    marginTop: 8,
+                    paddingHorizontal: 24,
+                    paddingVertical: 12,
+                    borderRadius: 14,
+                    backgroundColor: "#059669",
+                    boxShadow: "0 4px 0 #064E3B",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "800", color: "#FFFFFF" }}>
+                    Voltar para a Trilha de Aventura ➔
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
             <View
               style={{
                 display: "flex",
@@ -752,6 +841,7 @@ export function DailySessionScreen() {
                 </Text>
               </Pressable>
             </View>
+            )}
 
             {/* Shortcuts Bar */}
             <View

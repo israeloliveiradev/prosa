@@ -1,53 +1,94 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { View, Text, Pressable, Image, ScrollView } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { router } from "expo-router";
 import { tap } from "@/lib/haptics";
 import { useSession } from "@/lib/session";
+import { useProsa } from "@/context/prosa-context";
+import { LanguageMatrixEngine, type DuelQuestion } from "@/services/contentService";
+import { speechService } from "@/services/speechService";
+import { languageName } from "@/lib/languages";
 
 const GABRIEL_DUEL_AVATAR = "/cast/bento.png";
 const ELENA_DUEL_AVATAR = "/cast/clara.png";
 const FEYNMAN_CHEER_AVATAR = "/cast/feynman.png";
 
-interface DrillOption {
-  letter: string;
-  label: string;
-  isCorrect: boolean;
-}
-
-const DRILL_OPTIONS: DrillOption[] = [
-  { letter: "A", label: "O Desafio", isCorrect: true },
-  { letter: "B", label: "A Oportunidade", isCorrect: false },
-  { letter: "C", label: "O Hábito", isCorrect: false },
-  { letter: "D", label: "A Conexão", isCorrect: false },
-];
-
 export function DuelScreen() {
   const session = useSession();
+  const {
+    targetLang,
+    supportLang,
+    activeMentor,
+    addXp,
+    addGems,
+  } = useProsa();
+
   const playerName = session?.user?.display_name ?? "Você";
-  const [timeLeft, setTimeLeft] = useState(74);
+  const [timeLeft, setTimeLeft] = useState(120);
   const [playerScore, setPlayerScore] = useState(1420);
   const [opponentScore, setOpponentScore] = useState(1280);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [freezeActive, setFreezeActive] = useState(false);
+  const [comboCount, setComboCount] = useState(3);
+  const [questionIdx, setQuestionIdx] = useState(0);
+  const [matchOver, setMatchOver] = useState(false);
+  const [xpAwarded, setXpAwarded] = useState(false);
+
+  const questions = useMemo(() => {
+    const raw = LanguageMatrixEngine.getDuelQuestions(targetLang);
+    return raw && raw.length > 0 ? raw : LanguageMatrixEngine.getDuelQuestions("en");
+  }, [targetLang]);
+
+  const currentQ = questions[questionIdx % questions.length];
+
+  const speechLang = LanguageMatrixEngine.getBCP47(targetLang);
+  const isFeynmanActive = activeMentor?.id === "feynman";
 
   useEffect(() => {
-    if (freezeActive) return;
+    if (freezeActive || matchOver) return;
     const interval = setInterval(() => {
-      setTimeLeft((t) => (t > 0 ? t - 1 : 0));
+      setTimeLeft((t) => {
+        if (t <= 1) {
+          clearInterval(interval);
+          setMatchOver(true);
+          return 0;
+        }
+        return t - 1;
+      });
     }, 1000);
     return () => clearInterval(interval);
-  }, [freezeActive]);
+  }, [freezeActive, matchOver]);
 
-  const handleChoice = (option: DrillOption) => {
-    void tap(option.isCorrect ? "success" : "heavy");
-    setSelectedOption(option.letter);
+  useEffect(() => {
+    if (matchOver && !xpAwarded) {
+      setXpAwarded(true);
+      addXp(250);
+      addGems(50);
+    }
+  }, [matchOver, xpAwarded, addXp, addGems]);
 
-    if (option.isCorrect) {
-      setPlayerScore((prev) => prev + 180);
+  const handleChoice = (optKey: string, isCorrect: boolean) => {
+    void tap(isCorrect ? "success" : "heavy");
+    setSelectedOption(optKey);
+
+    if (isCorrect) {
+      const bonusMultiplier = isFeynmanActive ? 1.25 : 1.0;
+      const points = Math.round((180 + comboCount * 20) * bonusMultiplier);
+      setPlayerScore((prev) => prev + points);
+      setComboCount((c) => c + 1);
       setShowToast(true);
-      setTimeout(() => setShowToast(false), 2000);
+      setTimeout(() => setShowToast(false), 1500);
+
+      setTimeout(() => {
+        setSelectedOption(null);
+        setQuestionIdx((q) => q + 1);
+      }, 700);
+    } else {
+      setComboCount(0);
+      setTimeout(() => {
+        setSelectedOption(null);
+      }, 700);
     }
   };
 
@@ -55,6 +96,15 @@ export function DuelScreen() {
     void tap("medium");
     setFreezeActive(true);
     setTimeout(() => setFreezeActive(false), 5000);
+  };
+
+  const handlePlayPromptAudio = () => {
+    void tap("light");
+    speechService.speak(currentQ.word, {
+      lang: speechLang,
+      mentorId: activeMentor?.id || "feynman",
+      speed: "1.0x",
+    });
   };
 
   const circumference = 2 * Math.PI * 42; // ~263.89
@@ -285,129 +335,161 @@ export function DuelScreen() {
               </View>
 
               {/* Prompt Center Area */}
-              <View className="flex-col items-center text-center py-2 px-2">
-                <Text className="text-[11px] font-black uppercase tracking-widest text-[#64748B] mb-2">
-                  Traduza para o Português:
-                </Text>
-                <View className="flex-row items-center justify-center gap-3 flex-wrap">
-                  <Text className="text-3xl sm:text-4xl font-black text-[#111C2D] tracking-tight">
-                    die Herausforderung
+              {matchOver ? (
+                <View className="flex-col items-center text-center py-6 px-4 bg-emerald-50 rounded-2xl border-2 border-emerald-400 gap-3">
+                  <Text className="text-4xl">🏆</Text>
+                  <Text className="text-2xl font-black text-emerald-900">
+                    Duelo Relâmpago 120s Concluído!
                   </Text>
-                  <Pressable
-                    onPress={() => void tap("light")}
-                    className="w-12 h-12 rounded-2xl bg-[#F5F0E8] items-center justify-center shadow-[0_4px_0_#CBD5E1] active:translate-y-1 active:shadow-none"
-                  >
-                    <Text className="text-xl">🔊</Text>
-                  </Pressable>
-                </View>
-
-                <View className="flex-row items-center gap-2 mt-2 flex-wrap justify-center">
-                  <Text className="text-xs font-bold text-[#00685F]">
-                    [dee heh-rows-for-deh-roong]
+                  <Text className="text-sm font-bold text-emerald-700">
+                    Vitória de {playerName} com {playerScore} PTS (+250 XP & +50 Gemas adicionados!)
                   </Text>
-                  <Text className="text-[#CBD5E1]">•</Text>
-                  <View className="px-2 py-0.5 rounded bg-[#FFDDB8]">
-                    <Text className="text-[10px] font-bold text-[#2A1700]">Substantivo Feminino</Text>
+                  <View className="flex-row items-center gap-3 mt-4">
+                    <Pressable
+                      onPress={() => {
+                        setTimeLeft(120);
+                        setPlayerScore(1420);
+                        setMatchOver(false);
+                        setXpAwarded(false);
+                        setQuestionIdx(0);
+                      }}
+                      className="px-5 py-3 rounded-xl bg-emerald-700 shadow-[0_3px_0_#064E3B] cursor-pointer"
+                    >
+                      <Text className="text-white text-xs font-black">Jogar Novamente (120s)</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => router.push("/")}
+                      className="px-5 py-3 rounded-xl bg-white border border-stone-200 shadow-[0_2px_0_#CBD5E1] cursor-pointer"
+                    >
+                      <Text className="text-stone-800 text-xs font-bold">Voltar à Trilha</Text>
+                    </Pressable>
                   </View>
                 </View>
+              ) : (
+                <>
+                  <View className="flex-col items-center text-center py-2 px-2">
+                    <Text className="text-[11px] font-black uppercase tracking-widest text-[#64748B] mb-2">
+                      Traduza para o {supportLang.toUpperCase().split("-")[0]}:
+                    </Text>
+                    <View className="flex-row items-center justify-center gap-3 flex-wrap">
+                      <Text className="text-3xl sm:text-4xl font-black text-[#111C2D] tracking-tight">
+                        {currentQ.word}
+                      </Text>
+                      <Pressable
+                        onPress={handlePlayPromptAudio}
+                        className="w-12 h-12 rounded-2xl bg-[#F5F0E8] items-center justify-center shadow-[0_4px_0_#CBD5E1] active:translate-y-1 active:shadow-none cursor-pointer"
+                      >
+                        <Text className="text-xl">🔊</Text>
+                      </Pressable>
+                    </View>
 
-                <View className="mt-4 p-3.5 rounded-2xl bg-[#F5F0E8] border border-[#CBD5E1] max-w-xl">
-                  <Text className="text-sm text-[#111C2D] italic">
-                    “Eine neue Sprache zu lernen ist eine spannende{" "}
-                    <Text className="font-black text-[#00685F] underline">Herausforderung</Text> für den Geist.”
-                  </Text>
-                </View>
-              </View>
-
-              {/* 4 Chunky 3D Answer Tiles (2x2 Grid via Flexbox) */}
-              <View
-                style={{
-                  display: "flex",
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: 14,
-                  paddingTop: 8,
-                  width: "100%",
-                }}
-              >
-                {DRILL_OPTIONS.map((opt) => {
-                  const isSelected = selectedOption === opt.letter;
-                  const isCorrect = opt.isCorrect;
-
-                  const bg = isSelected ? (isCorrect ? "#10B981" : "#EF4444") : "#FFFFFF";
-                  const borderColor = isSelected ? (isCorrect ? "#059669" : "#DC2626") : "#E2E8F0";
-                  const shadow = isSelected
-                    ? isCorrect
-                      ? "0 4px 0 #059669"
-                      : "0 4px 0 #DC2626"
-                    : "0 4px 0 #CBD5E1";
-
-                  return (
-                    <Pressable
-                      key={opt.letter}
-                      accessibilityRole="button"
-                      onPress={() => handleChoice(opt)}
-                      style={{
-                        flex: 1,
-                        minWidth: "46%",
-                        padding: 16,
-                        borderRadius: 18,
-                        backgroundColor: bg,
-                        borderWidth: 2,
-                        borderColor: borderColor,
-                        boxShadow: shadow,
-                        display: "flex",
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <View style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 12 }}>
-                        <View
-                          style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 12,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: isSelected ? "rgba(255, 255, 255, 0.25)" : "#F5F0E8",
-                            boxShadow: "0 2px 0 #CBD5E1",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 14,
-                              fontWeight: "900",
-                              color: isSelected ? "#FFFFFF" : "#111C2D",
-                            }}
-                          >
-                            {opt.letter}
-                          </Text>
-                        </View>
-                        <Text
-                          style={{
-                            fontSize: 16,
-                            fontWeight: "800",
-                            color: isSelected ? "#FFFFFF" : "#111C2D",
-                          }}
-                        >
-                          {opt.label}
+                    <View className="flex-row items-center gap-2 mt-2 flex-wrap justify-center">
+                      <Text className="text-xs font-bold text-[#00685F]">
+                        {currentQ.intuitivePronunciation?.[supportLang] || currentQ.ipa}
+                      </Text>
+                      <Text className="text-[#CBD5E1]">•</Text>
+                      <View className="px-2 py-0.5 rounded bg-[#FFDDB8]">
+                        <Text className="text-[10px] font-bold text-[#2A1700]">
+                          {LanguageMatrixEngine.getLocalizedText(currentQ.gender, supportLang, "Termo Léxico")}
                         </Text>
                       </View>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "600",
-                          color: isSelected ? "rgba(255, 255, 255, 0.85)" : "#64748B",
-                        }}
-                      >
-                        [Tecla {opt.letter}]
+                    </View>
+
+                    <View className="mt-4 p-3.5 rounded-2xl bg-[#F5F0E8] border border-[#CBD5E1] max-w-xl">
+                      <Text className="text-sm text-[#111C2D] italic">
+                        {currentQ.sentence}
                       </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+                    </View>
+                  </View>
+
+                  {/* 4 Chunky 3D Answer Tiles (2x2 Grid via Flexbox) */}
+                  <View
+                    style={{
+                      display: "flex",
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: 14,
+                      paddingTop: 8,
+                      width: "100%",
+                    }}
+                  >
+                    {currentQ.options.map((opt) => {
+                      const isSelected = selectedOption === opt.key;
+                      const isCorrect = opt.correct;
+                      const optLabel = LanguageMatrixEngine.getLocalizedText(opt.text, supportLang, opt.key);
+
+                      const bg = isSelected ? (isCorrect ? "#10B981" : "#EF4444") : "#FFFFFF";
+                      const borderColor = isSelected ? (isCorrect ? "#059669" : "#DC2626") : "#E2E8F0";
+                      const shadow = isSelected
+                        ? isCorrect
+                          ? "0 4px 0 #059669"
+                          : "0 4px 0 #DC2626"
+                        : "0 4px 0 #CBD5E1";
+
+                      return (
+                        <Pressable
+                          key={opt.key}
+                          accessibilityRole="button"
+                          onPress={() => handleChoice(opt.key, opt.correct)}
+                          style={{
+                            flex: 1,
+                            minWidth: "46%",
+                            padding: 16,
+                            borderRadius: 18,
+                            backgroundColor: bg,
+                            borderWidth: 2,
+                            borderColor: borderColor,
+                            boxShadow: shadow,
+                            display: "flex",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <View style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 12 }}>
+                            <View
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 12,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: isSelected ? "rgba(255, 255, 255, 0.25)" : "#F5F0E8",
+                                boxShadow: "0 2px 0 #CBD5E1",
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 14,
+                                  fontWeight: "900",
+                                  color: isSelected ? "#FFFFFF" : "#00685F",
+                                }}
+                              >
+                                {opt.key}
+                              </Text>
+                            </View>
+                            <Text
+                              style={{
+                                fontSize: 15,
+                                fontWeight: "800",
+                                color: isSelected ? "#FFFFFF" : "#111C2D",
+                              }}
+                            >
+                              {optLabel}
+                            </Text>
+                          </View>
+                          {isSelected && (
+                            <Text style={{ fontSize: 16, color: "#FFFFFF", fontWeight: "900" }}>
+                              {isCorrect ? "✓" : "✕"}
+                            </Text>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
 
               {/* Bottom micro-actions bar inside card */}
               <View className="flex-row items-center justify-between pt-2">
