@@ -34,7 +34,7 @@ const COMMUTE_PHRASES: Record<string, CommutePhrase> = {
     badge: "LONDON SOUTHWARK RP B2",
     voiceLabel: "1.0x Oxford Neural",
     phrase: "I would like an iced oat latte with a double shot of espresso, please.",
-    ipa: "[eye wood lyke an eyst oht LAH-tay with a DUH-buhl shaht uhv eh-SPREH-soh pleez]",
+    ipa: "[ai uúd láik an áist ôut LÁ-tei uíd a DÂ-bol chát ov es-PRÉ-sou, pliz]",
     translation: "Eu gostaria de um latte gelado com leite de aveia e dose dupla de espresso, por favor.",
     speechLang: "en-US",
     situation: "Pedido em cafeteria / Situação cotidiana",
@@ -45,7 +45,7 @@ const COMMUTE_PHRASES: Record<string, CommutePhrase> = {
     badge: "BERLIN-MITTE HOCHDEUTSCH B1",
     voiceLabel: "1.0x Hamburgo Neural",
     phrase: "Ich möchte gerne eine heiße Schokolade mit Hafermilch.",
-    ipa: "[ikh MOEKH-teh GAIR-neh EYE-neh HY-seh shoh-koh-LAH-deh mit HAH-fer-milkh]",
+    ipa: "[i-sh mêtche guêrne áine ráisse choco-LÁ-de mit RÁ-fer-mil-sh]",
     translation: "Eu gostaria de um chocolate quente com leite de aveia.",
     speechLang: "de-DE",
     situation: "Pedido em cafeteria / Situação cotidiana",
@@ -56,7 +56,7 @@ const COMMUTE_PHRASES: Record<string, CommutePhrase> = {
     badge: "MADRID CASTELLANO B1",
     voiceLabel: "1.0x Salamanca Neural",
     phrase: "Quisiera un café con leche de avena bien caliente, por favor.",
-    ipa: "[kee-syeh-rah oon kah-feh kohn LEH-cheh deh ah-VEH-nah byen kah-LYEN-teh pohr fah-vohr]",
+    ipa: "[qui-siê-ra un ca-fé com LÊ-tche de a-VÊ-na bi-êm ca-li-ÊN-te por fa-VOR]",
     translation: "Eu gostaria de um café com leite de aveia bem quente, por favor.",
     speechLang: "es-ES",
     situation: "Pedido em cafeteria / Situação cotidiana",
@@ -67,7 +67,7 @@ const COMMUTE_PHRASES: Record<string, CommutePhrase> = {
     badge: "PARIS SAINT-GERMAIN B1",
     voiceLabel: "1.0x Parisien Neural",
     phrase: "Je voudrais un chocolat chaud avec du lait d'avoine, s'il vous plaît.",
-    ipa: "[zhuh voo-dreh uhn shoh-koh-lah shoh ah-vek dyoo leh dah-vwan seel voo pleh]",
+    ipa: "[ju vu-drê um cho-co-LÁ chô a-véc du lê da-VUA-na sil vu plê]",
     translation: "Eu gostaria de um chocolate quente com leite de aveia, por favor.",
     speechLang: "fr-FR",
     situation: "Pedido em cafeteria / Situação cotidiana",
@@ -78,7 +78,7 @@ const COMMUTE_PHRASES: Record<string, CommutePhrase> = {
     badge: "ROMA TRASTEVERE B1",
     voiceLabel: "1.0x Fiorentino Neural",
     phrase: "Vorrei una cioccolata calda con latte d'avena, per favore.",
-    ipa: "[vohr-REH-ee OO-nah chohk-koh-LAH-tah KAHL-dah kohn LAHT-teh dah-VEH-nah payr fah-VOH-reh]",
+    ipa: "[vo-RRÊ-i Ú-na tcho-co-LÁ-ta CÁL-da com LÁT-te da-VÊ-na per fa-VÔ-re]",
     translation: "Eu gostaria de um chocolate quente com leite de aveia, por favor.",
     speechLang: "it-IT",
     situation: "Pedido em cafeteria / Situação cotidiana",
@@ -89,7 +89,7 @@ const COMMUTE_PHRASES: Record<string, CommutePhrase> = {
     badge: "TOKYO SHIBUYA N4/B1",
     voiceLabel: "1.0x Tokyo Neural",
     phrase: "ホットのオーツミルクラテを一つお願いします。",
-    ipa: "[hotto no ootsu miruku rate o hitotsu onegai shimasu]",
+    ipa: "[rôtto no ôtsu mirucu rate o ritótsu onegai ximásu]",
     translation: "Um latte quente com leite de aveia, por favor.",
     speechLang: "ja-JP",
     situation: "Pedido em cafeteria / Situação cotidiana",
@@ -525,9 +525,9 @@ export default function CommuteScreen() {
                   strokeWidth="10"
                 />
               </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center select-none">
-                <span className="text-4xl font-black text-[#111C2D] leading-none">94%</span>
-                <span className="text-[10px] font-black text-[#0D9488] uppercase tracking-widest mt-1">
+              <div className="absolute inset-0 flex flex-col items-center justify-center select-none pointer-events-none p-2">
+                <span className="text-3xl font-black text-[#111C2D] leading-none">94%</span>
+                <span className="text-[10px] font-black text-[#0D9488] uppercase tracking-wider mt-1 text-center">
                   Precisão
                 </span>
               </div>

@@ -41,7 +41,7 @@ const QUESTIONS_BY_LANG: Record<string, Question[]> = {
     {
       id: 1,
       word: "the Breakthrough",
-      phonetic: "[the brayk-throo]",
+      phonetic: "[dâ brêik-tru]",
       gender: "Substantivo Contável",
       sentence: "“The team achieved a major scientific breakthrough in neural computing.”",
       highlight: "breakthrough",
@@ -55,7 +55,7 @@ const QUESTIONS_BY_LANG: Record<string, Question[]> = {
     {
       id: 2,
       word: "the Resilience",
-      phonetic: "[the ri-zil-yens]",
+      phonetic: "[dâ re-zí-li-ens]",
       gender: "Substantivo Abstrato",
       sentence: "“Cognitive resilience allows learners to master complex syntactic structures.”",
       highlight: "resilience",
@@ -69,7 +69,7 @@ const QUESTIONS_BY_LANG: Record<string, Question[]> = {
     {
       id: 3,
       word: "the Nuance",
-      phonetic: "[the noo-ahns]",
+      phonetic: "[dâ nu-án-se]",
       gender: "Substantivo Contável",
       sentence: "“Native fluency requires listening to the subtle nuances of spoken cadence.”",
       highlight: "nuances",
@@ -85,7 +85,7 @@ const QUESTIONS_BY_LANG: Record<string, Question[]> = {
     {
       id: 1,
       word: "die Herausforderung",
-      phonetic: "[dee heh-rows-for-deh-roong]",
+      phonetic: "[di re-ráus-for-de-rung]",
       gender: "Substantivo Feminino",
       sentence: "“Eine neue Sprache zu lernen ist eine spannende Herausforderung für den Geist.”",
       highlight: "Herausforderung",
@@ -99,7 +99,7 @@ const QUESTIONS_BY_LANG: Record<string, Question[]> = {
     {
       id: 2,
       word: "die Zuverlässigkeit",
-      phonetic: "[dee tsoo-fer-les-ikh-kyt]",
+      phonetic: "[di tsu-fer-lé-sic-kait]",
       gender: "Substantivo Feminino",
       sentence: "“Zuverlässigkeit ist das Fundament jeder dauerhaften wissenschaftlichen Zusammenarbeit.”",
       highlight: "Zuverlässigkeit",
@@ -113,7 +113,7 @@ const QUESTIONS_BY_LANG: Record<string, Question[]> = {
     {
       id: 3,
       word: "das Fingerspitzengefühl",
-      phonetic: "[dahs fing-er-shpit-sen-geh-feel]",
+      phonetic: "[das fin-guer-chpítsen-gue-fíul]",
       gender: "Substantivo Neutro",
       sentence: "“In diplomatischen Verhandlungen braucht man echtes Fingerspitzengefühl.”",
       highlight: "Fingerspitzengefühl",
