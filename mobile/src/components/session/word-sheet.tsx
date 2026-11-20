@@ -1,5 +1,6 @@
-import { Pressable, Text } from "react-native";
+import { Text, View } from "react-native";
 import { GlassSheet } from "@/components/session/glass-sheet";
+import { TactileButton } from "@/components/tactile/tactile-button";
 import { useCopy } from "@/lib/i18n";
 import { keepWords } from "@/lib/text";
 
@@ -25,21 +26,20 @@ export function WordSheet({
   const copy = useCopy();
   return (
     <GlassSheet visible={token !== null} onClose={onClose} label={copy.guideWordTitle}>
-      <Text className="font-display mt-2 text-3xl text-ink">{word || token}</Text>
-      {translation ? <Text className="mt-3 text-xl text-ink">{keepWords(translation)}</Text> : null}
-      {sentence ? <Text className="mt-3 text-base leading-6 text-muted">{keepWords(sentence)}</Text> : null}
-      {extra ? <Text className="mt-3 text-base leading-6 text-muted">{keepWords(copy.extraWordNote)}</Text> : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ disabled: saved }}
-        disabled={saved}
-        onPress={onSave}
-        className={`mt-6 min-h-12 cursor-pointer items-center justify-center rounded-full px-4 ${saved ? "bg-mossSoft" : "bg-ember"}`}
-      >
-        <Text className={`text-base font-semibold ${saved ? "text-moss" : "text-onEmber"}`}>
-          {saved ? copy.alreadyInDeck : copy.saveToDeck}
-        </Text>
-      </Pressable>
+      <Text className="mt-2 font-display text-4xl font-extrabold text-ink">{word || token}</Text>
+      {translation ? <Text className="mt-3 font-sans text-xl font-semibold text-ink">{translation}</Text> : null}
+      {sentence ? <Text className="mt-3 font-serif text-lg leading-8 text-muted">{sentence}</Text> : null}
+      {extra ? <Text className="mt-3 font-sans text-sm leading-6 text-muted">{keepWords(copy.extraWordNote)}</Text> : null}
+      <View className="mt-6">
+        <TactileButton
+          variant={saved ? "secondary" : "primary"}
+          size="lg"
+          fullWidth
+          disabled={saved}
+          onPress={onSave}
+          label={saved ? copy.alreadyInDeck : copy.saveToDeck}
+        />
+      </View>
     </GlassSheet>
   );
 }

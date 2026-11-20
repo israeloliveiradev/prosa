@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { View, Platform, ScrollView } from "react-native";
+import { View, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/theme/ThemeContext";
@@ -9,6 +9,8 @@ import { Progress } from "@/ui/progress";
 import { useBreakpoint } from "@/ui/hooks/use-breakpoint";
 import { radius } from "@/design/tokens";
 import { Logo } from "@/components/shell/logo";
+import { useAreaCopy } from "@/lib/copy/area";
+import { SHELL_COPY } from "@/lib/copy/shell";
 
 export interface FocusShellProps {
   children: ReactNode;
@@ -32,12 +34,13 @@ export function FocusShell({
   onBack,
   onClose,
   confirmExit = true,
-  exitTitle = "Deseja sair da sessão?",
-  exitMessage = "O progresso não salvo desta etapa será perdido.",
+  exitTitle,
+  exitMessage,
   footer,
   testID = "focus-shell",
 }: FocusShellProps) {
   const { palette } = useTheme();
+  const t = useAreaCopy(SHELL_COPY);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isDesktopOrLaptop } = useBreakpoint();
@@ -98,7 +101,7 @@ export function FocusShell({
                 icon="chevron-left"
                 variant="ghost"
                 size="md"
-                accessibilityLabel="Voltar etapa anterior"
+                accessibilityLabel={t.focusBack}
                 onPress={onBack}
                 testID="focus-shell-back"
               />
@@ -107,7 +110,7 @@ export function FocusShell({
                 icon="x"
                 variant="ghost"
                 size="md"
-                accessibilityLabel="Fechar sessão de estudo"
+                accessibilityLabel={t.focusClose}
                 onPress={handleClose}
                 testID="focus-shell-close"
               />
@@ -120,7 +123,7 @@ export function FocusShell({
             {headerCenter ? (
               headerCenter
             ) : progressValue !== undefined ? (
-              <Progress value={progressValue} aria-label="Progresso da etapa" />
+              <Progress value={progressValue} aria-label={t.focusProgress} />
             ) : null}
           </View>
 
@@ -132,7 +135,7 @@ export function FocusShell({
                 icon="x"
                 variant="ghost"
                 size="md"
-                accessibilityLabel="Fechar sessão de estudo"
+                accessibilityLabel={t.focusClose}
                 onPress={handleClose}
                 testID="focus-shell-close"
               />
@@ -190,17 +193,17 @@ export function FocusShell({
       <Dialog
         visible={exitDialogOpen}
         onClose={() => setExitDialogOpen(false)}
-        title={exitTitle}
-        description={exitMessage}
+        title={exitTitle ?? t.focusExitTitle}
+        description={exitMessage ?? t.focusExitMessage}
         tone="negative"
         confirmAction={{
-          label: "Sair mesmo assim",
+          label: t.focusExitConfirm,
           onPress: handleConfirmExit,
           variant: "primary",
           tone: "negative",
         }}
         cancelAction={{
-          label: "Continuar estudando",
+          label: t.focusExitCancel,
           onPress: () => setExitDialogOpen(false),
           variant: "secondary",
         }}

@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import { Kicker, Notice, StageCard } from "@/components/session/stage-kit";
+import { TactileButton } from "@/components/tactile/tactile-button";
 import { evaluateJournal, offerPair } from "@/lib/api";
+import { fill, SESSION_COPY } from "@/lib/copy/session";
+import { useAreaCopy } from "@/lib/copy/area";
 import { tap } from "@/lib/haptics";
 import { useCopy } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
@@ -20,7 +24,8 @@ export function JournalStage({
   targetLang: string;
   nativeLang: string;
   level: LessonRequest["level"];
-  onEvaluated?: () => void;
+  /** Chamado uma vez, quando a escada de correção fecha. */
+  onEvaluated?: (evaluation: JournalEvaluation) => void;
   onCards?: (cards: RepairCard[]) => void;
 }) {
   const { palette } = useTheme();
@@ -57,7 +62,7 @@ export function JournalStage({
         setAttempt((current) => Math.min(4, current + 1));
       } else if (!counted.current) {
         counted.current = true;
-        onEvaluated?.();
+        onEvaluated?.(evaluation);
       }
       void tap("success");
     } catch (caught) {
@@ -70,57 +75,53 @@ export function JournalStage({
   const blocked = pending || text.trim().length === 0;
 
   return (
-    <View>
-      <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.journal}</Text>
-      <Text className="font-displayItalic mt-2 text-headline leading-10 text-ink">{prompt}</Text>
-      <Text className="mt-4 font-label text-sm text-muted">{copy.yourReply}</Text>
-      <TextInput
-        value={text}
-        onChangeText={setText}
-        editable={open}
-        multiline
-        textAlignVertical="top"
-        placeholder={copy.journalPlaceholder}
-        placeholderTextColor={palette.onSurfaceVariant}
-        accessibilityLabel={copy.journalLabel}
-        className="mt-2 min-h-40 rounded-[28px] bg-card px-5 py-4 text-lg leading-7 text-ink"
-      />
-      <Text className="mt-2 text-sm text-muted">{`${text.trim().length} ${copy.characters}`}</Text>
-      {open ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: blocked, busy: pending }}
-          disabled={blocked}
-          onPress={() => {
-            void submit();
-          }}
-          className={`mt-4 min-h-12 items-center justify-center self-start rounded-full px-6 ${blocked ? "bg-line" : "bg-ember"}`}
-        >
-          <Text className={`text-base font-semibold ${blocked ? "text-muted" : "text-onEmber"}`}>
-            {pending ? copy.askingCorrection : attempt > 1 ? copy.journalRetry : copy.askCorrection}
-          </Text>
-        </Pressable>
-      ) : null}
-      {error ? (
-        <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" className="mt-3 text-base text-roseInk">
-          {error}
-        </Text>
-      ) : null}
-      {result?.cards && result.cards.length > 0 ? <Text className="mt-3 text-base text-moss">{copy.repairCardSaved}</Text> : null}
-      {result && session?.token ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            void offerPair(session.token, { target_lang: targetLang, prompt, body: text.trim() })
-              .then((next) => setPaired(next.matched ? copy.pairOffered : copy.pairWaiting))
-              .catch(() => setPaired(copy.pairEmpty));
-          }}
-          className="mt-4 min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-        >
-          <Text className="text-base font-semibold text-ink">{paired ?? copy.pairOffer}</Text>
-        </Pressable>
-      ) : null}
+    <View className="gap-4">
+      <StageCard>
+        <Kicker>{copy.journal}</Kicker>
+        <Text className="mt-2 font-display text-2xl leading-8 font-extrabold text-ink">{prompt}</Text>
+        <Text className="mt-4 font-sans text-sm font-bold text-muted">{copy.yourReply}</Text>
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          editable={open && !pending}
+          multiline
+          textAlignVertical="top"
+          placeholder={copy.journalPlaceholder}
+          placeholderTextColor={palette.faint}
+          accessibilityLabel={copy.journalLabel}
+          className="mt-2 min-h-40 rounded-2xl px-4 py-3 font-serif text-lg leading-8 text-ink"
+          style={{ backgroundColor: palette.raised, borderWidth: 2, borderColor: palette.border }}
+        />
+        <Text className="mt-2 font-sans text-sm text-muted" style={{ fontVariant: ["tabular-nums"] }}>{`${text.trim().length} ${copy.characters}`}</Text>
+        {open ? (
+          <View className="mt-4 flex-row">
+            <TactileButton
+              variant="primary"
+              size="lg"
+              disabled={blocked}
+              onPress={() => void submit()}
+              label={pending ? copy.askingCorrection : attempt > 1 ? copy.journalRetry : copy.askCorrection}
+            />
+          </View>
+        ) : null}
+        {error ? <Notice>{error}</Notice> : null}
+        {result?.cards && result.cards.length > 0 ? <Notice tone="success">{copy.repairCardSaved}</Notice> : null}
+      </StageCard>
       {result ? <UpgradeCard result={result} /> : null}
+      {result && session?.token ? (
+        <View className="flex-row">
+          <TactileButton
+            variant="secondary"
+            size="md"
+            onPress={() => {
+              void offerPair(session.token, { target_lang: targetLang, prompt, body: text.trim() })
+                .then((next) => setPaired(next.matched ? copy.pairOffered : copy.pairWaiting))
+                .catch(() => setPaired(copy.pairEmpty));
+            }}
+            label={paired ?? copy.pairOffer}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -128,6 +129,7 @@ export function JournalStage({
 function UpgradeCard({ result }: { result: JournalEvaluation }) {
   const { palette } = useTheme();
   const copy = useCopy();
+  const local = useAreaCopy(SESSION_COPY);
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withSpring(1, { damping: 16, stiffness: 160 });
@@ -138,18 +140,27 @@ function UpgradeCard({ result }: { result: JournalEvaluation }) {
   }));
 
   return (
-    <Animated.View className="mt-6 rounded-[28px] border border-line bg-card px-5 py-5" style={[style, { borderLeftWidth: 3, borderLeftColor: palette.primary }]}>
-      <Text className="font-label text-sm text-ember">{result.native_upgrade ? `Upgrade nativo · ${result.score}` : `${result.score}`}</Text>
-      {result.corrections.map((correction, index) => (
-        <View key={`${correction.original}-${index}`} className="mt-4">
-          <Text className="text-base text-muted">{correction.original}</Text>
-          {correction.step === "prompt" ? <Text className="mt-1 text-sm leading-5 text-ink">{copy.journalRewrite}</Text> : null}
-          {correction.kind ? <Text className="mt-1 font-label text-sm text-ember">{correction.kind}</Text> : null}
-          {correction.reason ? <Text className="mt-1 text-sm leading-5 text-muted">{correction.reason}</Text> : null}
-          {correction.corrected ? <Text className="mt-1 font-label text-base text-ink">{correction.corrected}</Text> : null}
-        </View>
-      ))}
-      {result.native_upgrade ? <Text className="mt-5 font-display text-xl leading-7 text-ink">{result.native_upgrade}</Text> : null}
+    <Animated.View style={style}>
+      <StageCard style={{ borderLeftWidth: 4, borderLeftColor: palette.primary }}>
+        <Kicker>{fill(local.score, { score: result.score })}</Kicker>
+        {result.corrections.map((correction, index) => (
+          <View key={`${correction.original}-${index}`} className="mt-4">
+            <Text className="font-sans text-base text-muted" style={{ textDecorationLine: correction.corrected ? "line-through" : "none" }}>
+              {correction.original}
+            </Text>
+            {correction.step === "prompt" ? <Text className="mt-1 font-sans text-sm leading-5 text-ink">{copy.journalRewrite}</Text> : null}
+            {correction.kind ? <Text className="mt-1 font-sans text-xs font-extrabold uppercase tracking-wider text-accentInk">{correction.kind}</Text> : null}
+            {correction.reason ? <Text className="mt-1 font-sans text-sm leading-5 text-muted">{correction.reason}</Text> : null}
+            {correction.corrected ? <Text className="mt-1 font-sans text-base font-bold text-ink">{correction.corrected}</Text> : null}
+          </View>
+        ))}
+        {result.native_upgrade ? (
+          <View className="mt-5 rounded-xl px-4 py-3" style={{ backgroundColor: palette.active }}>
+            <Text className="font-sans text-xs font-extrabold uppercase tracking-wider text-primary">{local.nativeVersion}</Text>
+            <Text className="mt-1 font-serif text-lg leading-8 text-ink">{result.native_upgrade}</Text>
+          </View>
+        ) : null}
+      </StageCard>
     </Animated.View>
   );
 }

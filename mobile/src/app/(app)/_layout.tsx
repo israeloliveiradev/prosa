@@ -26,10 +26,12 @@ export default function AppLayout() {
     <AppShell>
       <Stack screenOptions={{ headerShown: false, animation: "none" }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="path" />
+        <Stack.Screen name="news" />
+        <Stack.Screen name="talk" />
+        <Stack.Screen name="profile" />
         <Stack.Screen name="practice" />
         <Stack.Screen name="memory" />
-        <Stack.Screen name="news" />
-        <Stack.Screen name="profile" />
         <Stack.Screen name="settings" options={{ animation: "default" }} />
         <Stack.Screen name="guide" options={{ animation: "default" }} />
         <Stack.Screen name="paywall" options={{ animation: "default" }} />
@@ -43,8 +45,6 @@ export default function AppLayout() {
         <Stack.Screen name="persona" options={{ animation: "default" }} />
         <Stack.Screen name="prose" options={{ animation: "default" }} />
         <Stack.Screen name="score" options={{ animation: "default" }} />
-        <Stack.Screen name="placement" options={{ animation: "default" }} />
-        <Stack.Screen name="summary" options={{ animation: "default" }} />
         <Stack.Screen name="dossier" options={{ animation: "default" }} />
       </Stack>
     </AppShell>

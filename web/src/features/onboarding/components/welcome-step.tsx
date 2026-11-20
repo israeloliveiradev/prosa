@@ -1,67 +1,120 @@
-import React from "react";
-import { View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import { Text } from "@/ui/text";
-import { Button } from "@/ui/button";
-import { useCopy } from "@/lib/i18n";
+import { useTheme } from "@/theme/ThemeContext";
+import { useAreaCopy } from "@/lib/copy/area";
+import { ONBOARDING_COPY } from "@/lib/copy/onboarding";
+import { useCast } from "@/lib/cast";
+import { CORE_SESSION_MINUTES } from "../model/journey-flow";
+import { StepAction, StepFrame } from "./step-frame";
 
 export interface WelcomeStepProps {
   onBegin: () => void;
 }
 
+/** Retrato público do elenco (mobile/public/cast/<id>.png). */
+export function portraitUri(mindId: string): string {
+  return `/cast/${mindId}.png`;
+}
+
 export function WelcomeStep({ onBegin }: WelcomeStepProps) {
-  const copy = useCopy();
+  const t = useAreaCopy(ONBOARDING_COPY);
+  const { palette } = useTheme();
+  const { people } = useCast();
 
   return (
-    <View
+    <StepFrame
       testID="onboarding-welcome"
-      className="w-full max-w-xl mx-auto my-6"
+      kicker={t.welcomeKicker}
+      title={t.welcomeTitle}
+      dek={t.welcomeBody}
+      footer={<StepAction label={t.welcomeCta} onPress={onBegin} testID="onboarding-begin" />}
     >
-      <View className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200/80 shadow-[0_4px_0_#CBD5E1] flex flex-col gap-6">
-        {/* Top Badges */}
-        <div className="flex items-center justify-between">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold">
-            <span>⏳</span>
-            <span>20 Minutos Diários</span>
-          </div>
-          <span className="text-xs font-semibold text-stone-400">Método Polímata</span>
-        </div>
-
-        {/* Title & Introduction */}
-        <div className="flex flex-col gap-2">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
-            {copy.startWelcomeTitle ?? "Hoje você tem vinte minutos."}
-          </h2>
-          <p className="text-sm text-stone-600 leading-relaxed">
-            {copy.startWelcomeBody ??
-              "A Prosa não é um curso infinito de decoreba. É uma história imersiva por dia, no idioma que você estuda, destrinchada em português através do método polímata de transferência sintática direta."}
-          </p>
-        </div>
-
-        {/* Council Preview */}
-        <div className="p-4 rounded-2xl bg-[#F5F0E8] border border-stone-200/90 flex flex-col gap-2.5">
-          <div className="flex items-center gap-2">
-            <span className="text-base">🏛️</span>
-            <span className="text-xs font-bold uppercase tracking-wider text-stone-700">
-              Seu Conselho de Sábios
-            </span>
-          </div>
-          <p className="font-serif italic text-xs sm:text-sm text-stone-800 leading-relaxed">
-            “Einstein lê e explica a física do idioma. Curie organiza sua memória de longo prazo (FSRS). Feynman estimula sua fala ativa, e Leonardo da Vinci conduz seu caderno de reconstrução.”
-          </p>
-        </div>
-
-        {/* Action Button */}
-        <div className="pt-2">
-          <Button
-            label={copy.startBegin ?? "Começar pelo começo"}
-            variant="primary"
-            size="lg"
-            onPress={onBegin}
-            testID="onboarding-begin"
-            fullWidth
-          />
-        </div>
+      <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.line, borderBottomColor: palette.outline }]}>
+        <View style={[styles.minutesBadge, { backgroundColor: palette.primarySoft, borderColor: palette.primary }]}>
+          <Text variant="body" weight="bold" tone="accent" align="center">
+            {t.minutesValue(CORE_SESSION_MINUTES)}
+          </Text>
+        </View>
+        <Text variant="body" tone="ink" style={styles.session}>
+          {t.welcomeSession(CORE_SESSION_MINUTES)}
+        </Text>
       </View>
-    </View>
+
+      <View style={styles.mentors}>
+        <Text variant="label" weight="semibold" tone="muted">
+          {t.welcomeMentors}
+        </Text>
+        <View style={styles.mentorRow}>
+          {people.map((mind) => (
+            <View key={mind.slot} style={styles.mentor} testID={`onboarding-mentor-${mind.slot}`}>
+              <View style={[styles.portraitFrame, { borderColor: palette.line, borderBottomColor: palette.outline, backgroundColor: palette.sunken }]}>
+                <Image
+                  source={{ uri: portraitUri(mind.id) }}
+                  style={styles.portrait}
+                  accessibilityLabel={mind.name}
+                  resizeMode="cover"
+                />
+              </View>
+              <Text variant="body-sm" weight="bold" tone="ink" align="center" numberOfLines={1}>
+                {mind.name}
+              </Text>
+              <Text variant="caption" tone="muted" align="center" numberOfLines={1}>
+                {t.roles[mind.slot]}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </StepFrame>
   );
 }
+
+const styles = StyleSheet.create({
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderBottomWidth: 4,
+  },
+  minutesBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  session: {
+    flex: 1,
+    lineHeight: 22,
+  },
+  mentors: {
+    gap: 12,
+  },
+  mentorRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  mentor: {
+    flexGrow: 1,
+    flexBasis: 96,
+    alignItems: "center",
+    gap: 4,
+  },
+  portraitFrame: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderBottomWidth: 4,
+    overflow: "hidden",
+  },
+  portrait: {
+    width: "100%",
+    height: "100%",
+  },
+});

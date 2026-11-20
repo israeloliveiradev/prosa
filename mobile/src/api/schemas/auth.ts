@@ -16,7 +16,8 @@ export const AccountUserSchema = z
     last_lesson_at: z.string().nullable().optional(),
     name: z.string().nullable().optional(),
     display_name: z.string().nullable().optional(),
-    display_locale: z.enum(["pt", "en"]).optional(),
+    // Idioma de interface guardado na conta. Um valor desconhecido não derruba a sessão.
+    display_locale: z.enum(["pt", "en", "de", "fr", "es", "it", "ja"]).optional().catch(undefined),
     reminder_enabled: z.boolean().optional(),
     reminder_hour: z.number().optional(),
     totp_enabled: z.boolean().optional(),

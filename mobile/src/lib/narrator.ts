@@ -1,57 +1,102 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { voiceCopy } from "@/lib/copy/voice";
 import { kv } from "@/lib/kv";
 import { dayIndex, localDate } from "@/lib/listen-pace";
+import { onSystemVoicesChanged, systemVoices } from "@/services/speechService";
+import { DEFAULT_VOICE_BY_LANG, ENGINE_BY_LANG, KOKORO_VOICES, PIPER_VOICES, type TtsEngine, type VoiceGender } from "@/workers/ttsWorker";
 
+/**
+ * Vozes do narrador, todas no aparelho:
+ * - en: Kokoro-82M (um modelo; cada voz é um estilo leve);
+ * - de, fr, es, it, ru, pt: Piper (um modelo por voz, baixado no primeiro uso);
+ * - ja: vozes do sistema (Web Speech), listadas do próprio aparelho.
+ */
 export interface NarrationVoice {
   id: string;
+  /** Nome próprio da voz. */
   name: string;
-  detail: string;
+  /** Nome para exibir (com o sotaque quando ele importa: "Emma (GB)"). */
+  label: string;
+  gender: VoiceGender | null;
+  engine: TtsEngine;
   lang: string;
 }
 
-const VOICES: readonly NarrationVoice[] = [
-  { id: "en-US-AvaNeural", name: "Ava", detail: "feminina", lang: "en" },
-  { id: "en-US-AndrewNeural", name: "Andrew", detail: "masculina", lang: "en" },
-  { id: "en-US-EmmaNeural", name: "Emma", detail: "feminina", lang: "en" },
-  { id: "en-US-BrianNeural", name: "Brian", detail: "masculina", lang: "en" },
-  { id: "es-ES-ElviraNeural", name: "Elvira", detail: "feminina", lang: "es" },
-  { id: "es-ES-AlvaroNeural", name: "Álvaro", detail: "masculina", lang: "es" },
-  { id: "es-MX-DaliaNeural", name: "Dalia", detail: "feminina", lang: "es" },
-  { id: "es-MX-JorgeNeural", name: "Jorge", detail: "masculina", lang: "es" },
-  { id: "de-DE-KatjaNeural", name: "Katja", detail: "feminina", lang: "de" },
-  { id: "de-DE-ConradNeural", name: "Conrad", detail: "masculina", lang: "de" },
-  { id: "fr-FR-DeniseNeural", name: "Denise", detail: "feminina", lang: "fr" },
-  { id: "fr-FR-HenriNeural", name: "Henri", detail: "masculina", lang: "fr" },
-  { id: "it-IT-ElsaNeural", name: "Elsa", detail: "feminina", lang: "it" },
-  { id: "it-IT-DiegoNeural", name: "Diego", detail: "masculina", lang: "it" },
-  { id: "ru-RU-SvetlanaNeural", name: "Svetlana", detail: "feminina", lang: "ru" },
-  { id: "ru-RU-DmitryNeural", name: "Dmitry", detail: "masculina", lang: "ru" },
-  { id: "ja-JP-NanamiNeural", name: "Nanami", detail: "feminina", lang: "ja" },
-  { id: "ja-JP-KeitaNeural", name: "Keita", detail: "masculina", lang: "ja" },
-  { id: "pt-BR-FranciscaNeural", name: "Francisca", detail: "feminina", lang: "pt" },
-  { id: "pt-BR-AntonioNeural", name: "Antonio", detail: "masculina", lang: "pt" },
-];
+/** Vozes oferecidas no seletor, na ordem de exibição (a primeira é a padrão do idioma). */
+export const NARRATOR_VOICE_IDS: Readonly<Record<string, readonly string[]>> = {
+  en: ["af_heart", "am_michael", "bf_emma", "bm_george", "af_bella", "am_fenrir"],
+  de: ["de_DE-thorsten-medium", "de_DE-kerstin-low", "de_DE-karlsson-low", "de_DE-ramona-low"],
+  fr: ["fr_FR-siwis-medium", "fr_FR-tom-medium", "fr_FR-upmc-medium", "fr_FR-gilles-low"],
+  es: ["es_ES-davefx-medium", "es_MX-claude-high", "es_ES-sharvard-medium", "es_MX-ald-medium"],
+  it: ["it_IT-paola-medium", "it_IT-riccardo-x_low"],
+  ru: ["ru_RU-irina-medium", "ru_RU-dmitri-medium", "ru_RU-denis-medium", "ru_RU-ruslan-medium"],
+  pt: ["pt_BR-faber-medium", "pt_BR-edresson-low"],
+};
 
 const STORAGE_KEY = "prosa.narrator.v1";
 const listeners = new Set<() => void>();
 let hydrated = false;
 let saved: Record<string, string> = {};
+let systemWatch: (() => void) | null = null;
 
-export function voicesFor(lang: string): NarrationVoice[] {
-  const code = lang.trim().toLowerCase().slice(0, 2);
-  return VOICES.filter((voice) => voice.lang === code);
+function code(lang: string): string {
+  return lang.trim().toLowerCase().slice(0, 2);
 }
 
+function catalogVoice(id: string, lang: string): NarrationVoice | null {
+  const kokoro = KOKORO_VOICES[id];
+  if (kokoro && lang === "en") {
+    return { id, name: kokoro.name, label: `${kokoro.name} (${kokoro.accent})`, gender: kokoro.gender, engine: "kokoro", lang };
+  }
+  const piper = PIPER_VOICES[id];
+  if (piper && piper.lang === lang) {
+    return { id, name: piper.name, label: piper.name, gender: piper.gender, engine: "piper", lang };
+  }
+  return null;
+}
+
+export function voicesFor(lang: string): NarrationVoice[] {
+  const target = code(lang);
+  if (ENGINE_BY_LANG[target] === "webspeech") {
+    const system = systemVoices(target).map((voice) => ({
+      id: voice.id,
+      name: voice.name,
+      label: voice.name,
+      gender: voice.gender,
+      engine: "webspeech" as const,
+      lang: target,
+    }));
+    if (system.length > 0) {
+      return system;
+    }
+    const fallback = DEFAULT_VOICE_BY_LANG[target];
+    const name = voiceCopy().deviceVoiceName;
+    return fallback ? [{ id: fallback, name, label: name, gender: null, engine: "webspeech", lang: target }] : [];
+  }
+  return (NARRATOR_VOICE_IDS[target] ?? []).flatMap((id) => {
+    const voice = catalogVoice(id, target);
+    return voice ? [voice] : [];
+  });
+}
+
+/**
+ * Voz padrão do dia. Em inglês ela muda a cada dia entre as vozes do Kokoro (todas usam o mesmo
+ * modelo, então variar não custa download). Nos idiomas do Piper cada voz é um modelo de
+ * dezenas de MB: a padrão fica fixa e as outras ficam no seletor.
+ */
 export function defaultVoiceId(lang: string, date = localDate()): string {
-  const options = voicesFor(lang);
+  const target = code(lang);
+  const options = voicesFor(target);
   if (options.length === 0) {
     return "";
   }
-  return options[dayIndex(date, options.length)]?.id ?? "";
+  if (ENGINE_BY_LANG[target] === "kokoro") {
+    return options[dayIndex(date, options.length)]?.id ?? options[0]?.id ?? "";
+  }
+  return options[0]?.id ?? "";
 }
 
 export function sampleLine(lang: string): string {
-  const code = lang.trim().toLowerCase().slice(0, 2);
   const lines: Record<string, string> = {
     en: "Hello. I will read with you today.",
     es: "Hola. Hoy leo contigo.",
@@ -62,7 +107,7 @@ export function sampleLine(lang: string): string {
     ja: "こんにちは。今日は一緒に読みます。",
     pt: "Olá. Hoje eu leio com você.",
   };
-  return lines[code] ?? lines.en ?? "Hello.";
+  return lines[code(lang)] ?? lines.en ?? "Hello.";
 }
 
 function readSaved(): Record<string, string> {
@@ -89,46 +134,61 @@ function readSaved(): Record<string, string> {
 }
 
 export function narratorVoice(lang: string): string {
-  const code = lang.trim().toLowerCase().slice(0, 2);
-  const chosen = readSaved()[code];
-  if (chosen && voicesFor(code).some((voice) => voice.id === chosen)) {
+  const target = code(lang);
+  const chosen = readSaved()[target];
+  if (chosen && voicesFor(target).some((voice) => voice.id === chosen)) {
     return chosen;
   }
-  return defaultVoiceId(code);
+  return defaultVoiceId(target);
 }
 
-export function setNarratorVoice(lang: string, voiceId: string): void {
-  const code = lang.trim().toLowerCase().slice(0, 2);
-  if (!voicesFor(code).some((voice) => voice.id === voiceId)) {
-    return;
-  }
-  hydrated = true;
-  const next = { ...readSaved(), [code]: voiceId };
-  saved = next;
-  kv.set(STORAGE_KEY, JSON.stringify(next));
-  for (const listener of listeners) {
+function notify(): void {
+  for (const listener of [...listeners]) {
     listener();
   }
 }
 
+export function setNarratorVoice(lang: string, voiceId: string): void {
+  const target = code(lang);
+  if (!voicesFor(target).some((voice) => voice.id === voiceId)) {
+    return;
+  }
+  hydrated = true;
+  const next = { ...readSaved(), [target]: voiceId };
+  saved = next;
+  kv.set(STORAGE_KEY, JSON.stringify(next));
+  notify();
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+  if (!systemWatch) {
+    // As vozes do sistema (japonês) chegam depois do carregamento no Chrome.
+    systemWatch = onSystemVoicesChanged(notify);
+  }
   return () => {
     listeners.delete(listener);
+    if (listeners.size === 0 && systemWatch) {
+      systemWatch();
+      systemWatch = null;
+    }
   };
 }
 
 export function useNarratorVoice(lang: string): string {
-  const code = lang.trim().toLowerCase().slice(0, 2);
-  const selected = useSyncExternalStore(subscribe, () => narratorVoice(code), () => defaultVoiceId(code));
+  const target = code(lang);
+  const selected = useSyncExternalStore(subscribe, () => narratorVoice(target), () => defaultVoiceId(target));
   useEffect(() => {
     if (hydrated) {
       return;
     }
     hydrated = true;
-    for (const listener of listeners) {
-      listener();
-    }
+    notify();
   }, []);
   return selected;
+}
+
+/** Assina mudanças na escolha de voz e na lista de vozes do sistema. */
+export function subscribeNarrator(listener: () => void): () => void {
+  return subscribe(listener);
 }

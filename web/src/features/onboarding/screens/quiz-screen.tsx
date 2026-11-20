@@ -1,269 +1,345 @@
-import { useState } from "react";
-import { View, StyleSheet, ScrollView } from "react-native";
-import { useRouter } from "expo-router";
+import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { useRouter, type Href } from "expo-router";
 import { FocusShell } from "@/features/shell/focus-shell";
-import { Stepper } from "@/ui/stepper";
+import { InlineError } from "@/ui/inline-error";
 import { Text } from "@/ui/text";
-import { Button } from "@/ui/button";
-import { Card } from "@/ui/card";
-import { Pill } from "@/ui/pill";
-import { PairPicker } from "../components/pair-picker";
-import { InterestPicker } from "../components/interest-picker";
-import { submitOnboarding } from "@/api/onboarding";
-import { CEFR_LEVELS, type CourseLevel } from "@/lib/languages";
+import { useTheme } from "@/theme/ThemeContext";
+import { currentAccount } from "@/api/auth";
+import type { AccountUser } from "@/api/schemas/auth";
+import { listStudyTracks } from "@/api/study";
+import type { StudyTrackChoice } from "@/api/schemas/study";
+import { useAreaCopy } from "@/lib/copy/area";
+import { ONBOARDING_COPY } from "@/lib/copy/onboarding";
+import { getJourney, openJourney, patchJourney } from "@/lib/journey";
 import { rememberProfile, useSession } from "@/lib/session";
-import { bindProgressLang } from "@/lib/progress";
-import { useCopy } from "@/lib/i18n";
+import { MAX_THEMES } from "@/lib/themes";
+import { PairPicker } from "../components/pair-picker";
+import { GoalPicker } from "../components/goal-picker";
+import { InterestPicker } from "../components/interest-picker";
+import { MinutesPicker } from "../components/minutes-picker";
+import { StepAction } from "../components/step-frame";
+import { useFocusScrollHeight } from "../components/use-focus-scroll-height";
+import {
+  canContinue,
+  initialJourneyFlowState,
+  journeyFlowReducer,
+  toCefrLevel,
+  type CefrLevel,
+  type JourneyFlowState,
+  type SaveErrorKind,
+} from "../model/journey-flow";
+import { errorMessage, saveErrorKind, trackLevel } from "../model/plan-input";
+import { savePlan } from "../save-plan";
 
-const TOTAL_STEPS = 3;
+/** Curso novo começa em A1 até o nivelamento dizer outra coisa. */
+const NEW_COURSE_LEVEL: CefrLevel = "A1";
 
+function sameChoices(a: JourneyFlowState, b: JourneyFlowState): boolean {
+  return (
+    a.target_lang === b.target_lang &&
+    a.through_lang === b.through_lang &&
+    a.goal === b.goal &&
+    a.goal_note === b.goal_note &&
+    a.minutes === b.minutes &&
+    a.interests.length === b.interests.length &&
+    a.interests.every((item, index) => item === b.interests[index])
+  );
+}
+
+type Loaded = { account: AccountUser; tracks: StudyTrackChoice[] };
+
+/**
+ * /quiz: editor de par, objetivo, temas e tempo diário, aberto a partir de "Você".
+ * Edita o que está na CONTA: carrega /auth/me e /study/tracks antes de abrir
+ * (o cache da sessão pode estar velho) e salva pela mesma rota do primeiro dia,
+ * voltando para /profile.
+ */
 export function QuizScreen() {
   const router = useRouter();
-  const copy = useCopy();
+  const t = useAreaCopy(ONBOARDING_COPY);
   const session = useSession();
+  const userId = session?.user.id ?? null;
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [loadError, setLoadError] = useState<SaveErrorKind | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
-  const [currentStep, setCurrentStep] = useState(0); // 0: Pair, 1: Level, 2: Interests
-  const [targetLang, setTargetLang] = useState(session?.user?.target_lang || "en");
-  const [throughLang, setThroughLang] = useState(session?.user?.native_lang || "pt");
-  const [level, setLevel] = useState<CourseLevel>(
-    (session?.user?.level as CourseLevel) || "A2",
-  );
-  const [interests, setInterests] = useState<string[]>(
-    session?.user?.interests || [],
-  );
-  const [goal, setGoal] = useState("");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [topics, setTopics] = useState<string[]>([]);
-
-  const handleToggleInterest = (theme: string) => {
-    setError(null);
-    setInterests((prev) =>
-      prev.includes(theme)
-        ? prev.filter((item) => item !== theme)
-        : [...prev, theme].slice(0, 10),
-    );
-  };
-
-  const handleNextStep = () => {
-    setError(null);
-    if (currentStep < TOTAL_STEPS - 1) {
-      setCurrentStep((prev) => prev + 1);
-    }
-  };
-
-  const handlePrevStep = () => {
-    setError(null);
-    if (currentStep > 0) {
-      setCurrentStep((prev) => prev - 1);
-    } else {
-      router.back();
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (interests.length === 0) {
-      setError("Selecione pelo menos 1 interesse para personalizar suas prosas.");
-      return;
-    }
-
-    if (!session?.token) {
-      router.push("/account");
-      return;
-    }
-
-    setPending(true);
-    setError(null);
-
-    try {
-      const result = await submitOnboarding(session.token, {
-        tracks: [
-          {
-            target_lang: targetLang,
-            through_lang: throughLang,
-            level,
-            active: true,
-          },
-        ],
-        interests,
-        level,
-        ...(goal.trim() ? { goal: goal.trim() } : {}),
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    setLoadError(null);
+    Promise.all([currentAccount(), listStudyTracks()])
+      .then(([account, tracks]) => {
+        if (!alive) return;
+        rememberProfile(account);
+        setLoaded({ account, tracks });
+      })
+      .catch((error: unknown) => {
+        if (alive) setLoadError(saveErrorKind(error));
       });
+    return () => {
+      alive = false;
+    };
+  }, [userId, attempt]);
 
-      rememberProfile({
-        target_lang: result.target_lang,
-        native_lang: result.native_lang,
-        interests,
-        level: (result.level as CourseLevel) || level,
-      });
+  if (!session) {
+    return null;
+  }
 
-      bindProgressLang(result.target_lang);
-
-      if (result.topics && result.topics.length > 0) {
-        setTopics(result.topics);
-      } else {
-        router.replace("/daily");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : (copy.createTopicsFailed ?? "Erro ao salvar preferências"));
-    } finally {
-      setPending(false);
-    }
-  };
-
-  const handleOpenTopic = (topic: string) => {
-    router.replace({ pathname: "/daily", params: { topic, personalized: "1" } });
-  };
-
-  // Se tópicos foram gerados, renderiza tela de sucesso com tópicos recomendados
-  if (topics.length > 0) {
-    return (
-      <FocusShell
-        onClose={() => router.replace("/daily")}
-        confirmExit={false}
-        testID="quiz-topics-screen"
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={{ gap: 20 }}>
-            <View style={{ gap: 8 }}>
-              <Text variant="title" tone="ink">
-                {copy.quizReadyTitle ?? "Suas trilhas personalizadas estão prontas"}
-              </Text>
-              <Text variant="body" tone="muted">
-                {copy.quizReadyDek ?? "Selecionamos estes tópicos iniciais alinhados aos seus temas e nível."}
-              </Text>
-            </View>
-
-            <View style={{ gap: 12 }}>
-              {topics.map((t, idx) => (
-                <Card
-                  key={idx}
-                  padding="md"
-                  onPress={() => handleOpenTopic(t)}
-                  testID={`quiz-topic-item-${idx}`}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                    <Text variant="body" weight="semibold" tone="ink">
-                      {t}
-                    </Text>
-                    <Pill label={level} tone="accent" />
-                  </View>
-                </Card>
-              ))}
-            </View>
-
-            <Button
-              variant="primary"
-              size="lg"
-              fullWidth
-              label={copy.navHome ?? "Começar a estudar"}
-              onPress={() => router.replace("/daily")}
-              testID="quiz-finish-button"
-            />
-          </View>
-        </ScrollView>
-      </FocusShell>
-    );
+  if (loaded && loaded.account.id === session.user.id) {
+    return <QuizEditor account={loaded.account} tracks={loaded.tracks} />;
   }
 
   return (
+    <FocusShell onClose={() => router.replace("/profile" as Href)} confirmExit={false} testID="quiz-screen-loading">
+      <View style={styles.loading}>
+        {loadError ? (
+          <InlineError
+            message={errorMessage(t, loadError)}
+            onRetry={() => setAttempt((value) => value + 1)}
+            retryLabel={t.retry}
+            testID="quiz-load-error"
+          />
+        ) : (
+          <Text variant="body" tone="muted" accessibilityRole="progressbar" testID="quiz-loading">
+            {t.quizLoading}
+          </Text>
+        )}
+      </View>
+    </FocusShell>
+  );
+}
+
+function QuizEditor({ account, tracks }: Loaded) {
+  const router = useRouter();
+  const t = useAreaCopy(ONBOARDING_COPY);
+  const { palette } = useTheme();
+
+  const initial = useMemo(() => {
+    const journey = getJourney();
+    const own = journey.userId === account.id;
+    return initialJourneyFlowState({
+      target_lang: account.target_lang,
+      through_lang: account.native_lang,
+      interests: account.interests && account.interests.length > 0 ? account.interests : own ? journey.interests : [],
+      goal: own ? journey.goal || null : null,
+      goal_note: own ? journey.goal_note : "",
+      minutes: own ? journey.minutes : undefined,
+    });
+  }, [account]);
+
+  const [state, dispatch] = useReducer(journeyFlowReducer, initial);
+  const savingRef = useRef(false);
+  const [footerHeight, setFooterHeight] = useState(0);
+  // O rodapé do FocusShell soma 12 + 12 de respiro e 1 de borda ao conteúdo medido.
+  const scrollHeight = useFocusScrollHeight(footerHeight > 0 ? footerHeight + 25 : 0);
+
+  const dirty = !sameChoices(state, initial);
+  const knownLevel = trackLevel(tracks, state.target_lang);
+  const sameCourse = state.target_lang === account.target_lang;
+  const level: CefrLevel = (sameCourse ? toCefrLevel(account.level) : null) ?? knownLevel ?? NEW_COURSE_LEVEL;
+  const newCourse = !sameCourse && knownLevel === null;
+  const valid = canContinue(state, "pair") && canContinue(state, "themes");
+
+  const leave = () => router.replace("/profile" as Href);
+
+  const handleSave = async () => {
+    if (savingRef.current || !valid) return;
+    savingRef.current = true;
+    dispatch({ type: "SAVE_START", level });
+    try {
+      await savePlan({
+        target_lang: state.target_lang,
+        through_lang: state.through_lang,
+        level,
+        interests: state.interests,
+        goal: state.goal,
+        goal_note: state.goal_note,
+      });
+      openJourney(account.id);
+      patchJourney({
+        target_lang: state.target_lang,
+        through_lang: state.through_lang,
+        goal: state.goal ?? "",
+        goal_note: state.goal_note,
+        interests: state.interests,
+        minutes: state.minutes,
+      });
+      dispatch({ type: "SAVE_OK" });
+      leave();
+    } catch (error) {
+      dispatch({ type: "SAVE_FAIL", error: saveErrorKind(error) });
+    } finally {
+      savingRef.current = false;
+    }
+  };
+
+  return (
     <FocusShell
-      headerCenter={
-        <View style={{ width: 140 }}>
-          <Stepper currentStep={currentStep + 1} totalSteps={TOTAL_STEPS} />
+      onClose={leave}
+      confirmExit={dirty && !state.pending}
+      exitTitle={t.quizExitTitle}
+      exitMessage={t.quizExitMessage}
+      testID="quiz-screen"
+      footer={
+        <View style={styles.footer} onLayout={(event) => setFooterHeight(Math.ceil(event.nativeEvent.layout.height))}>
+          {state.error ? (
+            <InlineError
+              message={errorMessage(t, state.error)}
+              onRetry={() => void handleSave()}
+              retryLabel={t.retry}
+              testID="quiz-save-error"
+            />
+          ) : null}
+          <View style={styles.footerActions}>
+            <View style={styles.footerCancel}>
+              <StepAction label={t.quizCancel} variant="ghost" onPress={leave} disabled={state.pending} testID="quiz-cancel" />
+            </View>
+            <View style={styles.footerSave}>
+              <StepAction
+                label={state.pending ? t.saving : t.quizSave}
+                onPress={() => void handleSave()}
+                disabled={state.pending || !valid}
+                testID="quiz-save"
+              />
+            </View>
+          </View>
         </View>
       }
-      onClose={handlePrevStep}
-      confirmExit={currentStep > 0}
-      exitTitle={copy.confirmExitTitle ?? "Deseja sair?"}
-      exitMessage={copy.confirmExitMessage ?? "As alterações não salvas serão descartadas."}
-      testID="quiz-screen"
     >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {currentStep === 0 && (
+      <ScrollView style={{ maxHeight: scrollHeight }} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Text variant="title" weight="bold" tone="ink" accessibilityRole="header" style={styles.title}>
+            {t.quizTitle}
+          </Text>
+          <Text variant="body" tone="muted">
+            {t.quizDek}
+          </Text>
+        </View>
+
+        <Section title={t.quizCourse} testID="quiz-section-course">
           <PairPicker
-            targetLang={targetLang}
-            throughLang={throughLang}
-            onChangeTarget={setTargetLang}
-            onChangeThrough={setThroughLang}
-            onNext={handleNextStep}
+            targetLang={state.target_lang}
+            throughLang={state.through_lang}
+            onChangeTarget={(lang) => dispatch({ type: "SET_TARGET_LANG", lang })}
+            onChangeThrough={(lang) => dispatch({ type: "SET_THROUGH_LANG", lang })}
+            disabled={state.pending}
           />
-        )}
-
-        {currentStep === 1 && (
-          <View style={styles.stepContainer} testID="quiz-level-step">
-            <View style={{ gap: 8 }}>
-              <Text variant="title" tone="ink">
-                {copy.quizLevelTitle ?? "Qual é seu nível estimado?"}
+          <View style={[styles.levelRow, { borderColor: palette.line, backgroundColor: palette.sunken }]}>
+            <Text variant="body" weight="semibold" tone="ink" testID="quiz-level">
+              {t.quizLevel(level)}
+            </Text>
+            {newCourse ? (
+              <Text variant="body-sm" tone="muted" testID="quiz-new-course">
+                {t.quizNewCourse}
               </Text>
-              <Text variant="body" tone="muted">
-                {copy.quizLevelDek ?? "Você pode ajustar a qualquer momento ou confirmar com um teste de nivelamento."}
-              </Text>
-            </View>
-
-            <View style={{ gap: 12 }}>
-              {CEFR_LEVELS.map((lvl) => {
-                const isSelected = level === lvl;
-                return (
-                  <Card
-                    key={lvl}
-                    padding="md"
-                    selected={isSelected}
-                    onPress={() => setLevel(lvl)}
-                    testID={`quiz-level-${lvl}`}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                      <Text variant="body" weight="semibold" tone="ink">
-                        Nível {lvl}
-                      </Text>
-                      <Pill label={lvl} tone={isSelected ? "accent" : "neutral"} />
-                    </View>
-                  </Card>
-                );
-              })}
-            </View>
-
-            <Button
-              variant="primary"
-              size="lg"
-              fullWidth
-              label={copy.nextStep ?? "Continuar"}
-              onPress={handleNextStep}
-              testID="quiz-level-next"
-            />
+            ) : null}
+            {!dirty ? (
+              <StepAction
+                label={t.quizRetake}
+                variant="secondary"
+                onPress={() => router.push("/placement" as Href)}
+                testID="quiz-retake-placement"
+              />
+            ) : null}
           </View>
-        )}
+        </Section>
 
-        {currentStep === 2 && (
-          <InterestPicker
-            interests={interests}
-            goal={goal}
-            onToggleInterest={handleToggleInterest}
-            onChangeGoal={setGoal}
-            onSubmit={handleSubmit}
-            pending={pending}
-            error={error}
+        <Section title={t.goalTitle} testID="quiz-section-goal">
+          <GoalPicker
+            goal={state.goal}
+            note={state.goal_note}
+            onChangeGoal={(goal) => dispatch({ type: "SET_GOAL", goal })}
+            onChangeNote={(note) => dispatch({ type: "SET_GOAL_NOTE", note })}
           />
-        )}
+        </Section>
+
+        <Section title={t.themesTitle} dek={t.themesDek(MAX_THEMES)} testID="quiz-section-themes">
+          <InterestPicker
+            interests={state.interests}
+            onToggleInterest={(interest) => dispatch({ type: "TOGGLE_INTEREST", interest })}
+            onAddInterest={(interest) => dispatch({ type: "ADD_INTEREST", interest })}
+            onRemoveInterest={(interest) => dispatch({ type: "REMOVE_INTEREST", interest })}
+          />
+        </Section>
+
+        <Section title={t.timeTitle} dek={t.timeDek} testID="quiz-section-time">
+          <MinutesPicker minutes={state.minutes} onChange={(minutes) => dispatch({ type: "SET_MINUTES", minutes })} />
+        </Section>
       </ScrollView>
     </FocusShell>
   );
 }
 
+function Section({ title, dek, children, testID }: { title: string; dek?: string; children: ReactNode; testID: string }) {
+  const { palette } = useTheme();
+  return (
+    <View style={[styles.section, { borderTopColor: palette.line }]} testID={testID}>
+      <View style={styles.sectionHead}>
+        <Text variant="heading-sm" weight="bold" tone="ink" accessibilityRole="header">
+          {title}
+        </Text>
+        {dek ? (
+          <Text variant="body-sm" tone="muted">
+            {dek}
+          </Text>
+        ) : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    paddingBottom: 32,
     maxWidth: 640,
     width: "100%",
     alignSelf: "center",
+    gap: 8,
   },
-  stepContainer: {
-    gap: 24,
+  header: {
+    gap: 8,
+    paddingBottom: 8,
+  },
+  title: {
+    fontSize: 26,
+    lineHeight: 32,
+  },
+  section: {
+    gap: 16,
+    paddingVertical: 20,
+    borderTopWidth: 1,
+  },
+  sectionHead: {
+    gap: 4,
+  },
+  loading: {
     width: "100%",
+    maxWidth: 640,
+    alignSelf: "center",
+    paddingVertical: 24,
+  },
+  levelRow: {
+    gap: 10,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  footer: {
+    gap: 10,
+  },
+  footerActions: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
+  footerCancel: {
+    flex: 1,
+  },
+  footerSave: {
+    flex: 2,
   },
 });

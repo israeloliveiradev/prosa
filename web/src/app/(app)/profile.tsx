@@ -1,732 +1,522 @@
-import React, { useState } from "react";
-import { router } from "expo-router";
-import { motion } from "framer-motion";
-import { TactileCard } from "@/components/tactile/tactile-card";
-import { TactileButton } from "@/components/tactile/tactile-button";
-import { useProsa, type Mentor } from "@/context/prosa-context";
-import { useTranslation } from "@/i18n/use-translation";
-import { tap } from "@/lib/haptics";
+import { Redirect, router, type Href } from "expo-router";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Pressable, Text, View, type ViewStyle } from "react-native";
+import { CefrHistory, CompetenceLine, MeasureBoard } from "@/components/home/measure-panel";
+import { Portrait } from "@/components/persona/portrait";
+import { fill, languageLabel } from "@/components/persona/talk-logic";
+import { VoicePicker } from "@/components/session/voice-picker";
 import { Flag } from "@/components/shell/flag";
-import { signOut, useSession } from "@/lib/session";
+import { TactileButton } from "@/components/tactile/tactile-button";
+import { TactileCard } from "@/components/tactile/tactile-card";
+import { CAST_SLOTS, mindsForSlot, type CastSlot, type MindId } from "@/design/minds";
 import {
-  Sparkles,
-  Award,
-  Flame,
-  Zap,
-  Brain,
-  Mic,
-  Globe,
-  Plus,
-  CheckCircle2,
-  Users,
-  Repeat,
-  Download,
-  Sliders,
-  ArrowRight,
-  Check,
-  LogOut,
-  Edit2,
-  Save,
-} from "lucide-react";
+  activateStudyTrack,
+  fetchCourseProfile,
+  listStudyTracks,
+  saveAccountSettings,
+  type StudyTrackChoice,
+} from "@/lib/api";
+import { canDoFor } from "@/lib/can-do";
+import { setCastSlot, useCast } from "@/lib/cast";
+import { useAreaCopy } from "@/lib/copy/area";
+import { PROFILE, accountLocale, mindLine, mindName, orderTracks, streakText, type ProfileCopy } from "@/lib/copy/profile";
+import { READING, themeLabel } from "@/lib/copy/reading";
+import { tap } from "@/lib/haptics";
+import { DISPLAY_LOCALES, LOCALE_BCP47, getLocale, givenName, setLocale, useLocale, type DisplayLocale } from "@/lib/i18n";
+import { CEFR_LEVELS, type CourseLevel } from "@/lib/languages";
+import { dropForeignGlosses, switchProgressLang } from "@/lib/progress";
+import { refreshSession, rememberProfile, signOut, useSession } from "@/lib/session";
 
-const GABRIEL_AVATAR = "/cast/bento.png";
-const DA_VINCI_AVATAR = "/cast/davinci.png";
-const FEYNMAN_AVATAR = "/cast/feynman.png";
-const CURIE_AVATAR = "/cast/curie.png";
-const EINSTEIN_AVATAR = "/cast/einstein.png";
+type SaveState = "saving" | "saved" | "failed" | "local";
 
-const MENTORS_LIST: Mentor[] = [
-  {
-    id: "davinci",
-    name: "Leonardo da Vinci",
-    title: "Sintaxe & Decomposição",
-    avatar: DA_VINCI_AVATAR,
-    level: 8,
-    quote: "“Dissecar a frase é como compreender as engrenagens de uma asa mecânica.”",
-  },
-  {
-    id: "feynman",
-    name: "Richard Feynman",
-    title: "Palácio & FSRS",
-    avatar: FEYNMAN_AVATAR,
-    level: 9,
-    quote: "“Se você não consegue explicar para uma criança, ainda não dominou a palavra.”",
-  },
-  {
-    id: "curie",
-    name: "Marie Curie",
-    title: "Fonética Acústica",
-    avatar: CURIE_AVATAR,
-    level: 7,
-    quote: "“Nada na linguagem deve ser temido, apenas gradualmente compreendido.”",
-  },
-  {
-    id: "einstein",
-    name: "Albert Einstein",
-    title: "Mentor Primário",
-    avatar: EINSTEIN_AVATAR,
-    level: 10,
-    quote: "“A imaginação é mais importante que o léxico estático; pense em seu idioma alvo.”",
-  },
-];
+const SLOT_LABEL: Record<CastSlot, keyof ProfileCopy> = {
+  reading: "roleReading",
+  memory: "roleMemory",
+  speech: "roleSpeech",
+  journal: "roleJournal",
+};
 
-const TARGET_COURSES = [
-  { code: "de", nativeName: "Deutsch", badgeColor: "#0D9488" },
-  { code: "en", nativeName: "English", badgeColor: "#0284C7" },
-  { code: "fr", nativeName: "Français", badgeColor: "#D97706" },
-  { code: "es", nativeName: "Español", badgeColor: "#EA580C" },
-  { code: "it", nativeName: "Italiano", badgeColor: "#10B981" },
-  { code: "ja", nativeName: "日本語", badgeColor: "#FB7185" },
-];
+const SKILL_LABEL = {
+  reading: "skillReading",
+  listening: "skillListening",
+  speaking: "skillSpeaking",
+  writing: "skillWriting",
+} as const;
 
-const ALL_LANGUAGES: Array<{ code: string; name: string; nativeName: string; flag: string }> = [
-  { code: "pt-BR", name: "Português", nativeName: "Português", flag: "br" },
-  { code: "en", name: "Inglês", nativeName: "English", flag: "gb" },
-  { code: "de", name: "Alemão", nativeName: "Deutsch", flag: "de" },
-  { code: "fr", name: "Francês", nativeName: "Français", flag: "fr" },
-  { code: "es", name: "Espanhol", nativeName: "Español", flag: "es" },
-  { code: "it", name: "Italiano", nativeName: "Italiano", flag: "it" },
-  { code: "ja", name: "Japonês", nativeName: "日本語", flag: "jp" },
-];
+function asLevel(value: string | undefined, fallback: CourseLevel): CourseLevel {
+  return CEFR_LEVELS.includes((value ?? "") as CourseLevel) ? (value as CourseLevel) : fallback;
+}
 
+/**
+ * O servidor guarda o idioma de interface só como pt/en; ao regravar a sessão ele voltaria para lá.
+ * Quem escolheu outro idioma neste aparelho continua nele depois de salvar algo na conta.
+ */
+async function keepingLocale<T>(work: () => Promise<T> | T): Promise<T> {
+  const chosen = getLocale();
+  try {
+    return await work();
+  } finally {
+    if (getLocale() !== chosen) {
+      setLocale(chosen);
+    }
+  }
+}
+
+function Section({ title, dek, action, children }: { title: string; dek?: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <TactileCard className="p-5" animateEntry={false}>
+      <View>
+        <View className="mb-4 flex-row flex-wrap items-start justify-between gap-3">
+          <View className="flex-1" style={{ minWidth: 200 }}>
+            <Text accessibilityRole="header" className="font-display text-lg font-extrabold text-[#111C2D]">
+              {title}
+            </Text>
+            {dek ? <Text className="mt-1 text-sm leading-5 text-[#64748B]">{dek}</Text> : null}
+          </View>
+          {action}
+        </View>
+        {children}
+      </View>
+    </TactileCard>
+  );
+}
+
+const PILL_TONES = {
+  teal: { borderColor: "#0F766E", backgroundColor: "#0D9488", color: "#FFFFFF" },
+  amber: { borderColor: "#FCD34D", backgroundColor: "#FEF3C7", color: "#78350F" },
+  neutral: { borderColor: "#E2E8F0", backgroundColor: "#F5F0E8", color: "#111C2D" },
+} as const;
+
+function Pill({ label, tone = "neutral" }: { label: string; tone?: keyof typeof PILL_TONES }) {
+  const colors = PILL_TONES[tone];
+  return (
+    <View className="rounded-lg border px-2.5 py-1" style={{ borderColor: colors.borderColor, backgroundColor: colors.backgroundColor }}>
+      <Text className="text-xs font-extrabold" style={{ color: colors.color }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function SaveNote({ state, copy }: { state: SaveState | undefined; copy: { saving: string; saved: string; failed: string; local?: string } }) {
+  if (!state) {
+    return null;
+  }
+  const text = state === "saving" ? copy.saving : state === "saved" ? copy.saved : state === "local" ? (copy.local ?? copy.saved) : copy.failed;
+  return (
+    <Text accessibilityLiveRegion="polite" className={`mt-2 text-sm ${state === "failed" ? "text-rose-700" : "text-[#64748B]"}`}>
+      {text}
+    </Text>
+  );
+}
+
+/** Você: progresso medido, "eu consigo", temas, idiomas, cursos, mentores, voz e atalhos. Sem números inventados. */
 export default function ProfileScreen() {
   const session = useSession();
-  const { t } = useTranslation();
-  const {
-    userName,
-    setUserName,
-    gems,
-    streak,
-    bestStreak,
-    targetLang,
-    supportLang,
-    uiLang,
-    activeMentor,
-    isPro,
-    courses,
-    activeCourse,
-    totalXp,
-    setTargetLang,
-    setSupportLang,
-    setUiLang,
-    syncSupportWithUi,
-    setActiveMentor,
-    startCourseFromScratch,
-  } = useProsa();
+  const locale = useLocale();
+  const t = useAreaCopy(PROFILE);
+  const reading = useAreaCopy(READING);
+  const { picks } = useCast();
+  const [tracks, setTracks] = useState<StudyTrackChoice[] | null>(null);
+  const [tracksFailed, setTracksFailed] = useState(false);
+  const [switching, setSwitching] = useState<string | null>(null);
+  const [switchFailed, setSwitchFailed] = useState(false);
+  const [goal, setGoal] = useState<string | null>(null);
+  const [localeState, setLocaleState] = useState<SaveState | undefined>(undefined);
+  const [mindState, setMindState] = useState<Partial<Record<CastSlot, SaveState>>>({});
+  const [leaving, setLeaving] = useState(false);
+  const token = session?.token;
+  const targetLang = session?.user?.target_lang ?? "en";
 
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [tempName, setTempName] = useState(userName);
-
-  const displayName = userName || session?.user?.display_name || "Estudante Polímata";
-  const userEmail = session?.user?.email || "estudante@prosa.io";
-  const userInitial = displayName[0]?.toUpperCase() ?? "P";
-
-  const globalLevel = Math.floor(totalXp / 250) + 1;
-  const xpInCurrentLevel = totalXp % 250;
-  const levelProgressPercent = Math.min(100, Math.round((xpInCurrentLevel / 250) * 100));
-
-  const startedCoursesCount = Object.values(courses).filter((c) => c.started).length;
-
-  const handleSaveName = () => {
-    if (tempName.trim()) {
-      setUserName(tempName.trim());
+  const loadTracks = useCallback(async () => {
+    if (!token) {
+      return;
     }
-    setIsEditingName(false);
-  };
-
-  const handleSelectTargetLang = (code: string) => {
-    void tap("light");
-    const course = courses[code];
-    if (!course?.started) {
-      startCourseFromScratch(code);
+    setTracksFailed(false);
+    try {
+      setTracks(await listStudyTracks(token));
+    } catch {
+      setTracksFailed(true);
     }
-    setTargetLang(code);
-  };
+  }, [token]);
 
-  const handleSelectSupportLang = (lang: string) => {
-    void tap("light");
-    setSupportLang(lang);
-  };
+  useEffect(() => {
+    void loadTracks();
+  }, [loadTracks]);
 
-  const handleSelectUiLang = (lang: string) => {
-    void tap("light");
-    setUiLang(lang);
-  };
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    let active = true;
+    setGoal(null);
+    void fetchCourseProfile(token, targetLang)
+      .then((course) => {
+        if (active) {
+          setGoal(typeof course?.profile?.goal === "string" ? course.profile.goal.trim() : "");
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [token, targetLang]);
 
-  const handleSelectMentor = (mentor: Mentor) => {
-    void tap("medium");
-    setActiveMentor(mentor);
-  };
+  if (!session || !token) {
+    return <Redirect href="/account" />;
+  }
 
-  const avgPhonetic = activeCourse.pronunciationScores.length
-    ? Math.round(
-        activeCourse.pronunciationScores.reduce((a, b) => a + b, 0) /
-          activeCourse.pronunciationScores.length
+  const user = session.user;
+  const tag = LOCALE_BCP47[locale];
+  const name = givenName(user.email, user.display_name);
+  const level = user.level ?? "A2";
+  const target = languageLabel(targetLang, tag);
+  const support = languageLabel(user.native_lang ?? "pt", tag);
+  const interests = (user.interests ?? []).filter((item) => item.trim().length > 0);
+  const streak = typeof user.streak_count === "number" && user.streak_count > 0 ? user.streak_count : 0;
+  const canDo = canDoFor(level);
+  const courseList = tracks
+    ? orderTracks(
+        tracks.length > 0
+          ? tracks
+          : [{ target_lang: targetLang, through_lang: user.native_lang ?? "pt", level, active: true }],
+        targetLang,
       )
-    : 92;
+    : [];
+
+  async function chooseLocale(next: DisplayLocale) {
+    if (next === locale) {
+      return;
+    }
+    void tap("light");
+    setLocale(next);
+    const stored = accountLocale(next);
+    if (!stored) {
+      setLocaleState("local");
+      return;
+    }
+    setLocaleState("saving");
+    try {
+      await saveAccountSettings(token!, { display_locale: stored });
+      await keepingLocale(() => rememberProfile({ display_locale: stored }));
+      setLocaleState("saved");
+    } catch {
+      setLocaleState("failed");
+    }
+  }
+
+  async function chooseMind(slot: CastSlot, id: MindId) {
+    if (picks[slot] === id || mindState[slot] === "saving") {
+      return;
+    }
+    void tap("light");
+    const previous = picks[slot];
+    setCastSlot(slot, id);
+    setMindState((current) => ({ ...current, [slot]: "saving" }));
+    try {
+      const key = `mind_${slot}` as const;
+      await saveAccountSettings(token!, { [key]: id });
+      await keepingLocale(() => refreshSession());
+      setCastSlot(slot, id);
+      setMindState((current) => ({ ...current, [slot]: "saved" }));
+    } catch {
+      setCastSlot(slot, previous);
+      setMindState((current) => ({ ...current, [slot]: "failed" }));
+    }
+  }
+
+  async function activate(track: StudyTrackChoice) {
+    if (switching || track.target_lang === targetLang) {
+      return;
+    }
+    setSwitching(track.target_lang);
+    setSwitchFailed(false);
+    try {
+      const saved = await activateStudyTrack(token!, {
+        target_lang: track.target_lang,
+        through_lang: track.through_lang,
+        level: track.level,
+      });
+      await keepingLocale(() =>
+        rememberProfile({
+          target_lang: saved.target_lang,
+          native_lang: saved.through_lang,
+          level: asLevel(saved.level, asLevel(track.level, "A2")),
+        }),
+      );
+      switchProgressLang(saved.target_lang);
+      dropForeignGlosses(saved.through_lang);
+      void tap("success");
+      await loadTracks();
+    } catch {
+      setSwitchFailed(true);
+    } finally {
+      setSwitching(null);
+    }
+  }
+
+  async function leave() {
+    if (leaving) {
+      return;
+    }
+    setLeaving(true);
+    try {
+      await signOut();
+    } finally {
+      router.replace("/account");
+    }
+  }
+
+  const links: Array<{ href: Href; title: string; detail: string }> = [
+    { href: "/memory", title: t.linkMemory, detail: t.linkMemoryDetail },
+    { href: "/dossier", title: t.linkDossier, detail: t.linkDossierDetail },
+    { href: "/life", title: t.linkLife, detail: t.linkLifeDetail },
+    { href: "/pairs", title: t.linkPairs, detail: t.linkPairsDetail },
+    { href: "/guide", title: t.linkGuide, detail: t.linkGuideDetail },
+    { href: "/settings", title: t.linkSettings, detail: t.linkSettingsDetail },
+  ];
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 lg:px-8 py-6 flex flex-col gap-8 pb-16">
-      {/* ======================================================== */}
-      {/* 1. TOP HERO CARD (PERFIL & CEFR MASTER BADGE)            */}
-      {/* ======================================================== */}
-      <TactileCard className="p-6 lg:p-8 relative overflow-hidden">
-        <div className="absolute -top-16 -right-16 w-64 h-64 bg-[#0D9488]/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-[#FEA619]/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-          {/* Esquerda: Identidade & Avatar */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-            <div className="relative group shrink-0">
-              <div className="w-24 h-24 rounded-2xl bg-[#0D9488] p-1 shadow-[0_4px_0_#0F766E] border border-stone-200 overflow-hidden flex items-center justify-center text-white font-black text-3xl">
-                {userInitial}
-              </div>
-              {isPro && (
-                <span className="absolute -bottom-2 -right-2 bg-gradient-to-r from-[#D97706] to-[#FEA619] text-white font-extrabold text-[11px] px-2.5 py-0.5 rounded-full shadow-[0_2px_0_#92400E] flex items-center gap-1">
-                  👑 PRO
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <div className="flex flex-wrap items-center gap-2.5">
-                {isEditingName ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={tempName}
-                      onChange={(e) => setTempName(e.target.value)}
-                      className="px-3 py-1 text-xl font-extrabold text-[#111C2D] bg-white border border-[#0D9488] rounded-xl shadow-inner focus:outline-none"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveName}
-                      className="p-2 rounded-xl bg-[#0D9488] text-white shadow-sm hover:opacity-95 cursor-pointer"
-                    >
-                      <Save size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-2xl sm:text-3xl font-extrabold text-[#111C2D] tracking-tight">
-                      {displayName}
-                    </h1>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTempName(displayName);
-                        setIsEditingName(true);
-                      }}
-                      className="p-1.5 rounded-lg text-stone-400 hover:text-[#0D9488] hover:bg-stone-100 transition-colors cursor-pointer"
-                      title="Editar nome de usuário"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                  </div>
-                )}
-
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FEA619]/20 text-[#684000] font-bold text-xs shadow-[0_2px_0_#FEA619]">
-                  <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
-                  <span>Membro Prosa Pro desde 2026</span>
-                </span>
-
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await signOut();
-                    router.replace("/account");
-                  }}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 shadow-sm transition-colors cursor-pointer"
-                >
-                  <LogOut size={12} />
-                  <span>Sair</span>
-                </button>
-              </div>
-
-              <p className="text-sm text-[#3D4947] flex items-center gap-2 font-medium">
-                <span className="font-bold text-[#0D9488]">Aprendiz Polímata</span>
-                <span>•</span>
-                <span>Liga Diamante · Divisão Humboldt</span>
-              </p>
-
-              {/* Barra de Progresso de Nível Dinâmica */}
-              <div className="mt-2 flex items-center gap-3 w-full sm:w-80">
-                <div className="flex-1 bg-[#F5F0E8] rounded-full h-3.5 p-0.5 shadow-[inset_0_2px_0_#CBD5E1]">
-                  <div
-                    className="bg-[#0D9488] rounded-full h-full shadow-[0_2px_0_#0F766E] transition-all duration-700"
-                    style={{ width: `${levelProgressPercent}%` }}
-                  />
-                </div>
-                <span className="text-xs font-extrabold text-[#111C2D] whitespace-nowrap">
-                  {totalXp} <span className="text-[#64748B] font-normal">/ {globalLevel * 250} XP (Nv {globalLevel})</span>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Direita: CEFR Master Badge & Radar Breakdown */}
-          <div className="w-full lg:w-auto bg-[#F5F0E8] rounded-2xl p-4 lg:p-5 shadow-[0_4px_0_#E2E8F0] flex flex-col gap-3 min-w-[290px]">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#3D4947]">
-                Classificação Global CEFR
-              </span>
-              <span className="px-2 py-0.5 rounded-md bg-[#10B981]/15 text-[#059669] font-extrabold text-[11px]">
-                Auditado
-              </span>
-            </div>
-
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black text-[#0D9488]">Nível {activeCourse.level}</span>
-              <span className="text-sm text-[#111C2D] font-bold">
-                {activeCourse.level === "A1"
-                  ? "Iniciante Elemental"
-                  : activeCourse.level === "A2"
-                  ? "Básico Autônomo"
-                  : activeCourse.level === "B1"
-                  ? "Intermediário Prático"
-                  : activeCourse.level === "B2"
-                  ? "Explorador Avançado"
-                  : "Mestre Fluente"}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5 pt-1">
-              <div className="bg-white p-2 rounded-xl shadow-[0_2px_0_#E2E8F0] flex flex-col">
-                <span className="text-[11px] text-[#64748B] font-semibold">Compreensão Oral</span>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs font-extrabold text-[#111C2D]">90%</span>
-                  <span className="w-2 h-2 rounded-full bg-[#06B6D4]" />
-                </div>
-              </div>
-
-              <div className="bg-white p-2 rounded-xl shadow-[0_2px_0_#E2E8F0] flex flex-col">
-                <span className="text-[11px] text-[#64748B] font-semibold">Leitura Sintática</span>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs font-extrabold text-[#111C2D]">92%</span>
-                  <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-                </div>
-              </div>
-
-              <div className="bg-white p-2 rounded-xl shadow-[0_2px_0_#E2E8F0] flex flex-col">
-                <span className="text-[11px] text-[#64748B] font-semibold">Precisão Fonética</span>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs font-extrabold text-[#111C2D]">{avgPhonetic}%</span>
-                  <span className="w-2 h-2 rounded-full bg-[#FF5722]" />
-                </div>
-              </div>
-
-              <div className="bg-white p-2 rounded-xl shadow-[0_2px_0_#E2E8F0] flex flex-col">
-                <span className="text-[11px] text-[#64748B] font-semibold">Gramática FSRS</span>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs font-extrabold text-[#111C2D]">88%</span>
-                  <span className="w-2 h-2 rounded-full bg-[#8B5CF6]" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+    <View className="w-full gap-6 pb-16" style={{ maxWidth: 992, alignSelf: "center", paddingHorizontal: 16 }}>
+      <TactileCard className="p-6" animateEntry={false}>
+        <View>
+          <View className="flex-row flex-wrap items-center gap-5">
+            <View
+              className="h-20 w-20 items-center justify-center rounded-2xl border bg-[#0D9488]"
+              style={{ borderColor: "#0F766E", boxShadow: "0 4px 0 #0F766E" } as ViewStyle}
+            >
+              <Text className="text-3xl font-black text-white">{(name.slice(0, 1) || "?").toUpperCase()}</Text>
+            </View>
+            <View className="flex-1 gap-1" style={{ minWidth: 220 }}>
+              <Text className="text-[11px] font-extrabold uppercase tracking-wider text-[#0D9488]">{t.kicker}</Text>
+              <Text accessibilityRole="header" className="font-display text-2xl font-extrabold text-[#111C2D]">
+                {name}
+              </Text>
+              <Text className="text-sm text-[#64748B]">{user.email}</Text>
+              <Text className="mt-1 text-sm text-[#3D4947]">{fill(t.studying, { target, support })}</Text>
+              <View className="mt-2 flex-row flex-wrap gap-2">
+                <Pill label={fill(t.levelBadge, { level })} tone="teal" />
+                <Pill label={user.plan === "pro" ? t.planPro : t.planFree} tone={user.plan === "pro" ? "amber" : "neutral"} />
+                {streak > 0 ? <Pill label={streakText(streak, t)} /> : null}
+              </View>
+            </View>
+          </View>
+        </View>
       </TactileCard>
 
-      {/* ======================================================== */}
-      {/* 2. 4 MAIN 3D TACTILE METRIC CARDS                        */}
-      {/* ======================================================== */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Stat 1: Ofensiva */}
-        <div className="bg-white rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 hover:shadow-[0_2px_0_#E2E8F0] hover:translate-y-[2px] transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <div className="w-10 h-10 rounded-xl bg-[#FF5722]/15 text-[#FF5722] flex items-center justify-center text-xl">
-              🔥
-            </div>
-            <span className="px-2 py-0.5 rounded-full bg-[#FF5722]/10 text-[#FF5722] font-bold text-[11px]">
-              Proteção Ativa
-            </span>
-          </div>
-          <div className="mt-4">
-            <div className="text-2xl font-black text-[#111C2D]">{streak} Dias</div>
-            <div className="text-xs uppercase font-extrabold text-[#64748B] mt-1">
-              Ofensiva Ininterrupta
-            </div>
-            <p className="text-xs text-[#64748B] mt-2">
-              Recorde pessoal: {bestStreak} dias · Sem risco de congelamento.
-            </p>
-          </div>
-        </div>
+      <Section title={t.progressTitle} dek={t.progressDek}>
+        <View className="gap-4">
+          <CompetenceLine targetLang={targetLang} />
+          <MeasureBoard targetLang={targetLang} showCefr={false} />
+        </View>
+      </Section>
 
-        {/* Stat 2: XP */}
-        <div className="bg-white rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 hover:shadow-[0_2px_0_#E2E8F0] hover:translate-y-[2px] transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <div className="w-10 h-10 rounded-xl bg-[#D97706]/15 text-[#D97706] flex items-center justify-center text-xl">
-              ⚡
-            </div>
-            <span className="px-2 py-0.5 rounded-full bg-[#FEA619]/20 text-[#684000] font-bold text-[11px]">
-              Top 4%
-            </span>
-          </div>
-          <div className="mt-4">
-            <div className="text-2xl font-black text-[#111C2D]">{totalXp} XP</div>
-            <div className="text-xs uppercase font-extrabold text-[#64748B] mt-1">
-              Pontuação Acumulada
-            </div>
-            <p className="text-xs text-[#64748B] mt-2">
-              Nível Global {globalLevel} · Zona de Promoção na Liga Diamante.
-            </p>
-          </div>
-        </div>
+      <Section
+        title={t.cefrTitle}
+        action={<TactileButton label={t.placementCta} variant="secondary" size="sm" onPress={() => router.push("/placement")} />}
+      >
+        <CefrHistory targetLang={targetLang} />
+      </Section>
 
-        {/* Stat 3: FSRS Cartas */}
-        <div className="bg-white rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 hover:shadow-[0_2px_0_#E2E8F0] hover:translate-y-[2px] transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <div className="w-10 h-10 rounded-xl bg-[#06B6D4]/15 text-[#06B6D4] flex items-center justify-center text-xl">
-              🃏
-            </div>
-            <span className="px-2 py-0.5 rounded-full bg-[#06B6D4]/10 text-[#06B6D4] font-bold text-[11px]">
-              FSRS v4.5
-            </span>
-          </div>
-          <div className="mt-4">
-            <div className="text-2xl font-black text-[#111C2D]">
-              {activeCourse.fsrsCards.length || 24} Cartas
-            </div>
-            <div className="text-xs uppercase font-extrabold text-[#64748B] mt-1">
-              Palácio de Memória
-            </div>
-            <p className="text-xs text-[#64748B] mt-2">
-              Retenção projetada de 91,4% para o curso {ALL_LANGUAGES.find((l) => l.code === targetLang)?.name || targetLang}.
-            </p>
-          </div>
-        </div>
+      <Section title={fill(t.canDoTitle, { level })} dek={t.canDoDek}>
+        <View className="gap-2">
+          {canDo.map((item) => (
+            <View key={item.id} className="flex-row items-start gap-3 rounded-xl bg-[#FDFBF7] px-4 py-3">
+              <View className="rounded-md bg-[#CCFBF1] px-2 py-0.5" style={{ minWidth: 80 }}>
+                <Text className="text-center text-[11px] font-extrabold uppercase text-[#0F766E]">{t[SKILL_LABEL[item.skill]]}</Text>
+              </View>
+              <Text className="flex-1 text-base leading-6 text-[#111C2D]">{t.canDo[item.id] ?? item.text.en}</Text>
+            </View>
+          ))}
+        </View>
+      </Section>
 
-        {/* Stat 4: Fonética Neural */}
-        <div className="bg-white rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 hover:shadow-[0_2px_0_#E2E8F0] hover:translate-y-[2px] transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <div className="w-10 h-10 rounded-xl bg-[#10B981]/15 text-[#10B981] flex items-center justify-center text-xl">
-              🎙️
-            </div>
-            <span className="px-2 py-0.5 rounded-full bg-[#10B981]/10 text-[#059669] font-bold text-[11px]">
-              {activeCourse.pronunciationScores.length || 3} Ensaios
-            </span>
-          </div>
-          <div className="mt-4">
-            <div className="text-2xl font-black text-[#111C2D]">{avgPhonetic}% Acerto</div>
-            <div className="text-xs uppercase font-extrabold text-[#64748B] mt-1">
-              Cadência &amp; Fonética
-            </div>
-            <p className="text-xs text-[#64748B] mt-2">
-              Calibrado via espectrograma acústico com Marie Curie.
-            </p>
-          </div>
-        </div>
-      </section>
+      <Section
+        title={t.themesTitle}
+        action={<TactileButton label={t.edit} variant="secondary" size="sm" onPress={() => router.push("/quiz")} />}
+      >
+        {interests.length > 0 ? (
+          <View className="flex-row flex-wrap gap-2">
+            {interests.map((item) => (
+              <Pill key={item} label={themeLabel(item, reading)} />
+            ))}
+          </View>
+        ) : (
+          <Text className="text-base text-[#64748B]">{t.themesEmpty}</Text>
+        )}
+        {goal !== null ? (
+          <View className="mt-4">
+            <Text className="text-xs font-extrabold uppercase tracking-wider text-[#3D4947]">{t.goalLabel}</Text>
+            <Text className={`mt-1 text-base leading-6 ${goal ? "text-[#111C2D]" : "text-[#64748B]"}`}>{goal || t.goalEmpty}</Text>
+          </View>
+        ) : null}
+      </Section>
 
-      {/* ======================================================== */}
-      {/* 3. THE TRIPLE-LANGUAGE SWITCHER (CENTRAL MATRIX)         */}
-      {/* ======================================================== */}
-      <TactileCard className="p-6 lg:p-8 flex flex-col gap-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2 border-b border-stone-200">
-          <div>
-            <div className="flex items-center gap-2">
-              <Globe className="w-6 h-6 text-[#0D9488]" />
-              <h2 className="text-xl sm:text-2xl font-extrabold text-[#111C2D]">
-                {t("profileTitle") || "Central de Fluência & Matriz de Idiomas"}
-              </h2>
-            </div>
-            <p className="text-xs sm:text-sm text-[#64748B] mt-1">
-              {t("profileSubtitle") || "Aprenda qualquer idioma através de outro com transferência sintática direta (Through-Language Matrix)."}
-            </p>
-          </div>
-
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F5F0E8] text-xs font-extrabold text-[#111C2D] shadow-[0_2px_0_#E2E8F0]">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-ping" />
-            <span>{uiLang === "en" ? "Polyglot Sync Active" : uiLang === "de" ? "Polyglotte Synchro Aktiv" : "Sincronização Poliglota Ativa"}</span>
-          </div>
-        </div>
-
-        {/* Pillars Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Pillar A: Idioma Alvo (6 cols) */}
-          <div className="lg:col-span-6 bg-[#F5F0E8] rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#0D9488] text-white text-xs flex items-center justify-center font-bold">
-                  A
-                </span>
-                <span className="font-extrabold text-sm text-[#111C2D]">
-                  {t("sectionA") || "Idioma Alvo (Em Estudo)"}
-                </span>
-              </div>
-              <span className="text-[11px] text-[#64748B] font-bold uppercase">
-                {startedCoursesCount} {uiLang === "en" ? "Courses Started" : uiLang === "de" ? "Kurse Gestartet" : "Cursos Iniciados"}
-              </span>
-            </div>
-
-            {/* Lista de Cursos com progresso isolado */}
-            <div className="flex flex-col gap-3">
-              {TARGET_COURSES.map((course) => {
-                const isActive = targetLang === course.code;
-                const cData = courses[course.code];
-                const isStarted = Boolean(cData?.started);
-                const completedLessons = cData?.completedNodeIds?.length || 0;
-                const totalLessons = 5;
-                const progressPercent = isStarted
-                  ? Math.round((completedLessons / totalLessons) * 100)
-                  : 0;
-                const flagCode = course.code === "en" ? "gb" : course.code === "ja" ? "jp" : course.code;
-
-                return (
-                  <motion.div
-                    key={course.code}
-                    whileTap={{ y: 2 }}
-                    onClick={() => handleSelectTargetLang(course.code)}
-                    className={`relative rounded-xl p-4 cursor-pointer transition-all flex items-center justify-between ${
-                      isActive
-                        ? "bg-white border-2 border-[#0D9488] shadow-[0_4px_0_#0F766E]"
-                        : "bg-white border border-stone-200/80 shadow-[0_4px_0_#CBD5E1] hover:bg-stone-50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Flag code={flagCode} size={32} />
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-base text-[#111C2D]">
-                            {ALL_LANGUAGES.find((l) => l.code === course.code)?.name || course.code}
-                          </span>
-                          <span className="text-xs text-[#64748B]">
-                            ({course.nativeName})
-                          </span>
-                          {isActive && (
-                            <span className="px-2 py-0.5 rounded bg-[#0D9488] text-white text-[10px] uppercase font-bold">
-                              Ativo
-                            </span>
-                          )}
-                          {!isStarted && (
-                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] uppercase font-bold">
-                              Novo
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-xs text-[#64748B] mt-0.5">
-                          {isStarted
-                            ? `Nível ${cData.level} · ${completedLessons} de ${totalLessons} lições (${cData.xp} XP)`
-                            : "Curso ainda não iniciado · Clique para começar do Zero"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <span
-                        className="text-xs font-black"
-                        style={{ color: course.badgeColor }}
-                      >
-                        {progressPercent}%
-                      </span>
-                      <div className="w-16 bg-[#F5F0E8] rounded-full h-1.5 mt-1 overflow-hidden">
-                        <div
-                          className="h-1.5 rounded-full"
-                          style={{
-                            width: `${progressPercent}%`,
-                            backgroundColor: course.badgeColor,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Pillar B & C: Apoio e Interface (6 cols) */}
-          <div className="lg:col-span-6 flex flex-col gap-6">
-            {/* Pillar B: Idioma de Apoio (All 7 languages) */}
-            <div className="bg-[#F5F0E8] rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#855300] text-white text-xs flex items-center justify-center font-bold">
-                    B
-                  </span>
-                  <span className="font-extrabold text-sm text-[#111C2D]">
-                    {t("sectionB") || "Idioma de Apoio (Base de Ensino)"}
-                  </span>
-                </div>
-                <span className="px-2 py-0.5 rounded-md bg-[#FFDDB8] text-[#2A1700] text-[11px] font-bold">
-                  {uiLang === "en" ? "Heuristic Pillar" : uiLang === "de" ? "Heuristische Basis" : "Pilar Heurístico"}
-                </span>
-              </div>
-
-              <p className="text-xs text-[#64748B]">
-                {t("sectionBSubtitle") || "Traduções, guias fonéticos e notas dos mentores serão transmitidas neste idioma."}
-              </p>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
-                {ALL_LANGUAGES.map((lang) => {
-                  const isActive = supportLang === lang.code;
-                  return (
-                    <button
-                      key={lang.code}
-                      type="button"
-                      onClick={() => handleSelectSupportLang(lang.code)}
-                      className={`flex items-center gap-2 p-2.5 rounded-xl text-left transition-all cursor-pointer ${
-                        isActive
-                          ? "bg-white border-2 border-[#855300] shadow-[0_3px_0_#653E00]"
-                          : "bg-white shadow-[0_2px_0_#CBD5E1] border border-stone-200/80 hover:bg-stone-50"
-                      }`}
-                    >
-                      <Flag code={lang.flag} size={20} />
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-[#111C2D] truncate">
-                          {lang.name}
-                        </div>
-                        <div className="text-[10px] text-[#64748B]">
-                          {isActive ? (uiLang === "en" ? "Active" : "Ativo") : (uiLang === "en" ? "Select" : "Selecionar")}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Pillar C: Interface do Aplicativo (All 7 languages) */}
-            <div className="bg-[#F5F0E8] rounded-2xl p-5 shadow-[0_4px_0_#E2E8F0] border border-stone-200/80 flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#8B5CF6] text-white text-xs flex items-center justify-center font-bold">
-                    C
-                  </span>
-                  <span className="font-extrabold text-sm text-[#111C2D]">
-                    {t("sectionC") || "Interface do Aplicativo (Menus & HUD)"}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    syncSupportWithUi();
-                    void tap("success");
-                  }}
-                  className="text-[10px] text-[#0D9488] font-bold hover:underline cursor-pointer"
-                >
-                  {t("syncSupportWithUi") || "Sincronizar com Apoio"}
-                </button>
-              </div>
-
-              <p className="text-xs text-[#64748B]">
-                {t("sectionCSubtitle") || "Menus, navegação, botões táteis e cabeçalhos serão exibidos no idioma selecionado."}
-              </p>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
-                {ALL_LANGUAGES.map((lang) => {
-                  const isActive = uiLang === lang.code;
-                  return (
-                    <button
-                      key={lang.code}
-                      type="button"
-                      onClick={() => handleSelectUiLang(lang.code)}
-                      className={`flex items-center gap-2 p-2.5 rounded-xl text-left transition-all cursor-pointer ${
-                        isActive
-                          ? "bg-[#0D9488] text-white shadow-[0_3px_0_#0F766E]"
-                          : "bg-white shadow-[0_2px_0_#CBD5E1] border border-stone-200/80 hover:bg-stone-50 text-[#111C2D]"
-                      }`}
-                    >
-                      <Flag code={lang.flag} size={20} />
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold truncate">
-                          {lang.name}
-                        </div>
-                        <div
-                          className={`text-[10px] ${
-                            isActive ? "text-teal-100" : "text-[#64748B]"
-                          }`}
-                        >
-                          {isActive ? "UI Ativa" : "Trocar"}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      </TactileCard>
-
-      {/* ======================================================== */}
-      {/* 4. SEU CONSELHO DE SÁBIOS (BARALHO DE MENTORES ATIVOS)   */}
-      {/* ======================================================== */}
-      <section className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Users className="w-6 h-6 text-[#855300]" />
-              <h2 className="text-xl sm:text-2xl font-extrabold text-[#111C2D]">
-                Seu Conselho de Sábios
-              </h2>
-            </div>
-            <p className="text-xs sm:text-sm text-[#64748B] mt-1">
-              Mentores ativos que concedem bônus cognitivos e corrigem seus exercícios em tempo real.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {MENTORS_LIST.map((mentor) => {
-            const isSelected = activeMentor?.id === mentor.id;
+      <Section title={t.languagesTitle}>
+        <Text className="text-sm font-bold text-[#3D4947]">{t.uiLanguage}</Text>
+        <View accessibilityRole="radiogroup" accessibilityLabel={t.uiLanguage} className="mt-2 flex-row flex-wrap gap-2">
+          {DISPLAY_LOCALES.map((code) => {
+            const selected = code === locale;
+            const here = languageLabel(code, tag);
+            const own = languageLabel(code, LOCALE_BCP47[code]);
+            const label = here.toLowerCase() === own.toLowerCase() ? own : `${own} · ${here}`;
             return (
-              <motion.div
-                key={mentor.id}
-                whileTap={{ y: 2 }}
-                onClick={() => handleSelectMentor(mentor)}
-                className={`rounded-2xl p-5 border cursor-pointer transition-all flex flex-col justify-between ${
-                  isSelected
-                    ? "bg-white border-2 border-[#0D9488] shadow-[0_6px_0_#0F766E]"
-                    : "bg-white border-stone-200 shadow-[0_4px_0_#CBD5E1] hover:bg-stone-50"
-                }`}
+              <Pressable
+                key={code}
+                accessibilityRole="radio"
+                accessibilityLabel={label}
+                accessibilityState={{ selected, checked: selected }}
+                onPress={() => void chooseLocale(code)}
+                className={`min-h-11 cursor-pointer items-center justify-center rounded-xl border px-4 ${selected ? "bg-[#0D9488]" : "bg-white"}`}
+                style={{ borderColor: selected ? "#0F766E" : "#E2E8F0", boxShadow: selected ? "0 3px 0 #0F766E" : "0 3px 0 #E2E8F0" } as ViewStyle}
               >
-                <div className="flex items-start gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-teal-50 border border-teal-200 overflow-hidden shrink-0">
-                    <img
-                      src={mentor.avatar}
-                      alt={mentor.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        const target = e.currentTarget as HTMLImageElement;
-                        if (!target.dataset.tried) {
-                          target.dataset.tried = "1";
-                          target.src = `/assets/assets${mentor.avatar}`;
-                        }
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm text-[#111C2D]">
-                      {mentor.name}
-                    </h3>
-                    <span className="text-xs text-[#0D9488] font-bold block">
-                      {mentor.title}
-                    </span>
-                    <span className="text-[10px] text-[#64748B]">
-                      Nv. {mentor.level} de Afinidade
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-stone-600 italic font-serif mt-3 pt-3 border-t border-stone-100">
-                  {mentor.quote}
-                </p>
-
-                <div className="mt-3 pt-2 flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-[#64748B] uppercase">
-                    {isSelected ? "Mentor Ativo" : "Selecionar"}
-                  </span>
-                  {isSelected && (
-                    <span className="w-2 h-2 rounded-full bg-[#0D9488]" />
-                  )}
-                </div>
-              </motion.div>
+                <Text className={`text-sm font-bold ${selected ? "text-white" : "text-[#111C2D]"}`}>{label}</Text>
+              </Pressable>
             );
           })}
-        </div>
-      </section>
-    </div>
+        </View>
+        <SaveNote
+          state={localeState}
+          copy={{ saving: t.mentorSaving, saved: t.uiLanguageSaved, failed: t.uiLanguageSaveFailed, local: t.uiLanguageLocal }}
+        />
+
+        <View className="mt-5 flex-row items-center gap-3 rounded-xl bg-[#FDFBF7] px-4 py-3">
+          <Flag code={user.native_lang ?? "pt"} size={28} />
+          <View className="flex-1">
+            <Text className="text-sm font-bold text-[#3D4947]">{`${t.supportLanguage}: ${support}`}</Text>
+            <Text className="text-sm text-[#64748B]">{fill(t.supportHint, { support })}</Text>
+          </View>
+        </View>
+
+        <View className="mt-5 flex-row flex-wrap items-center justify-between gap-3">
+          <Text className="text-sm font-bold text-[#3D4947]">{t.coursesTitle}</Text>
+          <TactileButton label={t.addLanguage} variant="secondary" size="sm" onPress={() => router.push("/quiz")} />
+        </View>
+        {tracksFailed ? (
+          <View accessibilityRole="alert" className="mt-3 gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4">
+            <Text className="text-base" style={{ color: "#9F1239" }}>
+              {t.coursesError}
+            </Text>
+            <View className="self-start">
+              <TactileButton label={t.retry} variant="secondary" size="sm" onPress={() => void loadTracks()} />
+            </View>
+          </View>
+        ) : null}
+        <View className="mt-3 gap-2">
+          {courseList.map((track) => {
+            const active = track.target_lang === targetLang;
+            const busy = switching === track.target_lang;
+            return (
+              <View
+                key={track.target_lang}
+                className="flex-row flex-wrap items-center gap-3 rounded-xl border px-4 py-3"
+                style={{ borderColor: active ? "#5EEAD4" : "#E2E8F0", backgroundColor: active ? "#F0FDFA" : "#FFFFFF" }}
+              >
+                <Flag code={track.target_lang} size={30} />
+                <View className="flex-1" style={{ minWidth: 160 }}>
+                  <Text className="text-base font-bold text-[#111C2D]">{languageLabel(track.target_lang, tag)}</Text>
+                  <Text className="text-sm text-[#64748B]">
+                    {`${fill(t.levelBadge, { level: track.level })} · ${fill(t.courseThrough, { lang: languageLabel(track.through_lang, tag) })}`}
+                  </Text>
+                </View>
+                {active ? (
+                  <Pill label={t.courseActive} tone="teal" />
+                ) : (
+                  <TactileButton
+                    label={busy ? t.mentorSaving : t.courseActivate}
+                    variant="secondary"
+                    size="sm"
+                    disabled={switching !== null}
+                    onPress={() => void activate(track)}
+                  />
+                )}
+              </View>
+            );
+          })}
+        </View>
+        {switchFailed ? (
+          <Text accessibilityRole="alert" className="mt-2 text-sm text-rose-700">
+            {t.courseSwitchFailed}
+          </Text>
+        ) : null}
+      </Section>
+
+      <Section title={t.mentorsTitle} dek={t.mentorsDek}>
+        <View className="gap-5">
+          {CAST_SLOTS.map((slot) => {
+            const chosen = picks[slot];
+            return (
+              <View key={slot}>
+                <Text className="text-xs font-extrabold uppercase tracking-wider text-[#0D9488]">{t[SLOT_LABEL[slot]] as string}</Text>
+                <View accessibilityRole="radiogroup" accessibilityLabel={t[SLOT_LABEL[slot]] as string} className="mt-2 flex-row flex-wrap gap-3">
+                  {mindsForSlot(slot).map((mind) => {
+                    const selected = mind.id === chosen;
+                    const mindLabel = mindName(mind.id, t);
+                    return (
+                      <Pressable
+                        key={mind.id}
+                        accessibilityRole="radio"
+                        accessibilityLabel={`${mindLabel}. ${mindLine(mind.id, t)}`}
+                        accessibilityState={{ selected, checked: selected, disabled: mindState[slot] === "saving" }}
+                        onPress={() => void chooseMind(slot, mind.id)}
+                        className="flex-1 cursor-pointer flex-row items-center gap-3 rounded-xl border p-2.5"
+                        style={
+                          {
+                            minWidth: 150,
+                            flexBasis: 160,
+                            borderColor: selected ? "#0F766E" : "#E2E8F0",
+                            backgroundColor: selected ? "#F0FDFA" : "#FFFFFF",
+                            boxShadow: selected ? "0 3px 0 #0F766E" : "0 3px 0 #E2E8F0",
+                          } as ViewStyle
+                        }
+                      >
+                        <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-lg bg-[#F5F0E8]">
+                          <Portrait who={mind.id} size={46} />
+                        </View>
+                        <View className="min-w-0 flex-1">
+                          <Text numberOfLines={1} className="text-sm font-extrabold text-[#111C2D]">
+                            {mindLabel}
+                          </Text>
+                          <Text numberOfLines={2} className="text-xs leading-4 text-[#64748B]">
+                            {mindLine(mind.id, t)}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <SaveNote state={mindState[slot]} copy={{ saving: t.mentorSaving, saved: t.mentorSaved, failed: t.mentorFailed }} />
+              </View>
+            );
+          })}
+        </View>
+      </Section>
+
+      <Section title={t.voiceTitle} dek={t.voiceDek}>
+        <VoicePicker language={targetLang} />
+      </Section>
+
+      <Section title={t.moreTitle}>
+        <View className="flex-row flex-wrap gap-3">
+          {links.map((link) => (
+            <Pressable
+              key={String(link.href)}
+              accessibilityRole="link"
+              accessibilityLabel={`${link.title}. ${link.detail}`}
+              onPress={() => router.push(link.href)}
+              className="flex-1 cursor-pointer rounded-xl border border-[#E2E8F0] bg-white px-4 py-3"
+              style={{ minWidth: 200, flexBasis: 240, boxShadow: "0 3px 0 #E2E8F0" } as ViewStyle}
+            >
+              <Text className="text-base font-extrabold text-[#111C2D]">{`${link.title} →`}</Text>
+              <Text className="mt-0.5 text-sm text-[#64748B]">{link.detail}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </Section>
+
+      <View className="self-start">
+        <TactileButton label={leaving ? t.signingOut : t.signOut} variant="crimson" disabled={leaving} onPress={() => void leave()} />
+      </View>
+    </View>
   );
 }

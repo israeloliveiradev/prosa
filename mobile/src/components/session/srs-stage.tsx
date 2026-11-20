@@ -4,6 +4,8 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import Svg, { Path } from "react-native-svg";
 import { GlassSheet } from "@/components/session/glass-sheet";
+import { Kicker, StageCard } from "@/components/session/stage-kit";
+import { TactileButton, type ButtonVariant } from "@/components/tactile/tactile-button";
 import { fetchMnemonic } from "@/lib/api";
 import { tap } from "@/lib/haptics";
 import { useCopy } from "@/lib/i18n";
@@ -17,13 +19,13 @@ import { useTheme } from "@/theme/ThemeContext";
 const GRADES: {
   quality: ReviewQuality;
   kind: "heavy" | "medium" | "light" | "success";
-  background: string;
-  color: string;
+  variant: ButtonVariant;
+  key: string;
 }[] = [
-  { quality: 0, kind: "heavy", background: "#F8D6DB", color: "#8E1B2C" },
-  { quality: 3, kind: "medium", background: "#F0D2CB", color: "#6B2D2A" },
-  { quality: 4, kind: "light", background: "#DCE6D4", color: "#24301E" },
-  { quality: 5, kind: "success", background: "#6B2D2A", color: "#FFF8F4" },
+  { quality: 0, kind: "heavy", variant: "crimson", key: "1" },
+  { quality: 3, kind: "medium", variant: "amber", key: "2" },
+  { quality: 4, kind: "light", variant: "secondary", key: "3" },
+  { quality: 5, kind: "success", variant: "primary", key: "4" },
 ];
 
 export function SrsStage({
@@ -69,6 +71,30 @@ export function SrsStage({
       AudioService.stopAndUnload();
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function" || done) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      if (event.key === " ") {
+        event.preventDefault();
+        setRevealed((value) => !value);
+        return;
+      }
+      const option = GRADES.find((item) => item.key === event.key);
+      if (option && revealed) {
+        event.preventDefault();
+        grade(option.quality, option.kind);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   async function openPalace() {
     if (!card) {
@@ -120,23 +146,28 @@ export function SrsStage({
   if (done) {
     const mastered = cards.filter((item) => item.status === "mastered").length;
     return (
-      <View className="border-t border-ink pt-6">
-        <Text className="font-label text-xs uppercase tracking-widest text-ember">{title}</Text>
-        <Text className="font-displayItalic mt-2 text-headline text-ink">{finished}</Text>
-        <Text className="mt-3 text-base leading-6 text-muted">
+      <StageCard>
+        <Kicker>{title}</Kicker>
+        <Text className="mt-2 font-display text-2xl leading-8 font-extrabold text-ink">{finished}</Text>
+        <Text className="mt-3 font-sans text-base leading-6 text-muted">
           {cards.length} {copy.cardsReviewed}. {mastered} {copy.masteredCount}.
         </Text>
-        {note ? <Text className="mt-4 text-base font-semibold text-ink">{note}</Text> : null}
-      </View>
+        {note ? <Text className="mt-4 font-sans text-base font-semibold text-ink">{note}</Text> : null}
+      </StageCard>
     );
   }
 
   return (
     <View>
-      <Text className="font-label text-xs uppercase tracking-widest text-ember">{title}</Text>
-      <Text className="mt-2 text-base text-muted">
-        {copy.cardOf} {cursor + 1} {copy.ofWord} {cards.length}
-      </Text>
+      <View className="flex-row items-center justify-between gap-3">
+        <Kicker>{title}</Kicker>
+        <Text className="font-sans text-sm font-bold text-muted" style={{ fontVariant: ["tabular-nums"] }}>
+          {copy.cardOf} {cursor + 1} {copy.ofWord} {cards.length}
+        </Text>
+      </View>
+      <View className="mt-2 h-2 overflow-hidden rounded-full" style={{ backgroundColor: palette.raised }}>
+        <View className="h-full rounded-full" style={{ width: `${(cursor / Math.max(1, cards.length)) * 100}%`, backgroundColor: palette.primary }} />
+      </View>
       <FlipCard
         key={`${cursor}-${card.front_phrase}`}
         card={card}
@@ -148,35 +179,34 @@ export function SrsStage({
           grade(quality, kind);
         }}
       />
-      {card.repetition_count > 3 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={copy.palaceMemory}
-          onPress={() => void openPalace()}
-          className="mt-3 min-h-12 cursor-pointer flex-row items-center justify-center gap-2 self-start rounded-full border border-line bg-card px-4"
-        >
-          <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-            <Path
-              d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3 11c.4.5.7 1.1.8 1.8h4.4c.1-.7.4-1.3.8-1.8A6 6 0 0 0 12 3Z"
-              stroke={palette.primary}
-              strokeWidth={1.5}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-            />
-          </Svg>
-          <Text className="font-label text-base text-ink">{copy.palace}</Text>
-        </Pressable>
-      ) : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={copy.flipCard}
-        accessibilityHint={copy.flipHint}
-        onPress={() => setRevealed((value) => !value)}
-        className="mt-3 min-h-12 cursor-pointer items-center justify-center self-start rounded-full border border-line bg-card px-5"
-      >
-        <Text className="font-label text-base text-ink">{copy.flipCard}</Text>
-      </Pressable>
-      <View className="mt-2 flex-row flex-wrap gap-2">
+      <View className="mt-4 flex-row flex-wrap items-center gap-2">
+        <TactileButton
+          variant="secondary"
+          size="md"
+          label={revealed ? copy.flipToWord : copy.flipCard}
+          onPress={() => setRevealed((value) => !value)}
+        />
+        {card.repetition_count > 3 ? (
+          <TactileButton
+            variant="secondary"
+            size="md"
+            onPress={() => void openPalace()}
+            icon={
+              <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3 11c.4.5.7 1.1.8 1.8h4.4c.1-.7.4-1.3.8-1.8A6 6 0 0 0 12 3Z"
+                  stroke={palette.primary}
+                  strokeWidth={1.8}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </Svg>
+            }
+            label={copy.palace}
+          />
+        ) : null}
+      </View>
+      <View className="mt-4 flex-row flex-wrap gap-2">
         {GRADES.map((gradeOption) => {
           const label =
             gradeOption.quality === 0
@@ -187,28 +217,28 @@ export function SrsStage({
                   ? copy.gradeGood
                   : copy.gradeEasy;
           return (
-          <Pressable
-            key={gradeOption.quality}
-            accessibilityRole="button"
-            accessibilityLabel={`${label}, ${gradeOption.quality}`}
-            accessibilityState={{ disabled: !revealed }}
-            disabled={!revealed}
-            onPress={() => grade(gradeOption.quality, gradeOption.kind)}
-            className={`min-h-12 min-w-[46%] flex-1 cursor-pointer items-center justify-center rounded-full px-3 ${gradeOption.quality === 5 ? "bg-ember" : ""}`}
-            style={gradeOption.quality === 5 ? { opacity: revealed ? 1 : 0.4 } : { backgroundColor: gradeOption.background, opacity: revealed ? 1 : 0.4 }}
-          >
-            <Text className={`text-base font-semibold ${gradeOption.quality === 5 ? "text-onEmber" : ""}`} style={gradeOption.quality === 5 ? undefined : { color: gradeOption.color }}>
-              {label}
-            </Text>
-          </Pressable>
+            <View key={gradeOption.quality} className="min-w-[46%] flex-1 md:min-w-0">
+              <TactileButton
+                variant={gradeOption.variant}
+                size="lg"
+                fullWidth
+                disabled={!revealed}
+                onPress={() => grade(gradeOption.quality, gradeOption.kind)}
+                label={label}
+              />
+            </View>
           );
         })}
       </View>
-      {note ? <Text className="mt-3 text-sm text-muted">{note}</Text> : null}
+      {note ? (
+        <Text accessibilityLiveRegion="polite" className="mt-3 font-sans text-sm text-muted">
+          {note}
+        </Text>
+      ) : null}
       <GlassSheet visible={palaceOpen} onClose={() => setPalaceOpen(false)} label={copy.palaceMemory}>
         {palaceBusy ? <ActivityIndicator color={palette.primary} /> : null}
-        {palaceText ? <Text className="mt-3 text-lg leading-8 text-ink">{palaceText}</Text> : null}
-        {palaceError ? <Text className="mt-3 text-base leading-6 text-muted">{palaceError}</Text> : null}
+        {palaceText ? <Text className="mt-3 font-sans text-lg leading-8 text-ink">{palaceText}</Text> : null}
+        {palaceError ? <Text className="mt-3 font-sans text-base leading-6 text-muted">{palaceError}</Text> : null}
       </GlassSheet>
     </View>
   );
@@ -271,10 +301,10 @@ function FlipCard({
     <GestureDetector gesture={gesture}>
       <Animated.View style={[styles.wrap, motion]}>
         <Animated.View pointerEvents="none" style={[styles.hint, styles.hintLeft, leftHint, { backgroundColor: palette.errorContainer }]}>
-          <Text className="font-label text-sm text-roseInk">{copy.gradeMissed}</Text>
+          <Text className="font-sans text-sm font-bold text-roseInk">{copy.gradeMissed}</Text>
         </Animated.View>
         <Animated.View pointerEvents="none" style={[styles.hint, styles.hintRight, rightHint, { backgroundColor: palette.secondaryContainer }]}>
-          <Text className="font-label text-sm text-moss">{copy.gradeEasy}</Text>
+          <Text className="font-sans text-sm font-bold text-moss">{copy.gradeEasy}</Text>
         </Animated.View>
         <Pressable
           accessibilityRole="button"
@@ -285,26 +315,23 @@ function FlipCard({
           style={[
             styles.card,
             {
-              backgroundColor: palette.surfaceBright,
-              borderColor: palette.outline,
-              shadowColor: palette.onSurface,
-              shadowOpacity: 0.14,
-              shadowRadius: 22,
-              shadowOffset: { width: 0, height: 12 },
+              backgroundColor: palette.card,
+              borderColor: palette.border,
+              borderBottomColor: palette.control,
             },
           ]}
         >
           <View style={[styles.stripe, { backgroundColor: palette.primary }]} />
-          <Text className="font-label text-xs uppercase tracking-widest text-ember">{revealed ? copy.cardBack : copy.cardFront}</Text>
+          <Text className="font-sans text-xs font-extrabold uppercase tracking-widest text-primary">{revealed ? copy.cardBack : copy.cardFront}</Text>
           {revealed ? (
             <>
-              <Text className="mt-4 w-full text-center font-displayItalic text-headline text-ink">{keepWords(card.back_translation)}</Text>
-              <Text className="mt-3 w-full text-center text-lg leading-7 text-ink">{keepWords(card.context_sentence)}</Text>
+              <Text className="mt-4 w-full text-center font-display text-2xl leading-8 font-extrabold text-ink">{card.back_translation}</Text>
+              <Text className="mt-3 w-full text-center font-serif text-lg leading-8 text-ink">{card.context_sentence}</Text>
             </>
           ) : (
-            <Text className="mt-6 w-full text-center font-displayItalic text-display text-ink">{keepWords(card.front_phrase)}</Text>
+            <Text className="mt-6 w-full text-center font-display text-4xl font-extrabold text-ink">{keepWords(card.front_phrase)}</Text>
           )}
-          <Text className="mt-6 w-full text-center text-sm leading-6 text-muted">
+          <Text className="mt-6 w-full text-center font-sans text-sm leading-6 text-muted">
             {revealed ? copy.tapForWord : copy.tapForTranslation}
           </Text>
         </Pressable>
@@ -320,14 +347,14 @@ const styles = StyleSheet.create({
   },
   card: {
     minHeight: 240,
-    borderRadius: 28,
-    borderWidth: 1,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderBottomWidth: 6,
     paddingHorizontal: 28,
     paddingVertical: 28,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    elevation: 6,
   },
   stripe: {
     position: "absolute",

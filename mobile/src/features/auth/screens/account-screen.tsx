@@ -1,716 +1,747 @@
-import { useEffect, useReducer, useRef, useState } from "react";
-import { View, Text, TextInput, Pressable, Image, ScrollView, Platform } from "react-native";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Image, Linking, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { router, useLocalSearchParams, type Href } from "expo-router";
-import { Logo } from "@/components/shell/logo";
-import { authFlowReducer, initialAuthFlowState } from "@/features/auth/model/auth-flow";
-import { toUserMessage } from "@/api/errors";
-import { useCopy } from "@/lib/i18n";
+import { confirmPasswordReset, fetchMailInbox, requestPasswordReset, resendAccountEmail } from "@/api/auth";
+import { TactileButton } from "@/components/tactile/tactile-button";
+import { TactileIcon } from "@/components/tactile/tactile-icon";
+import { TactileLogo } from "@/components/tactile/tactile-logo";
+import { tactile, ledge } from "@/components/tactile/tokens";
+import { LanguageChoice } from "@/features/auth/components/language-choice";
+import { LocaleMenu } from "@/features/auth/components/locale-menu";
+import { TactileField } from "@/features/auth/components/tactile-field";
+import {
+  STUDY_TARGETS,
+  SUPPORT_LANGS,
+  accountErrorMessage,
+  changePair,
+  classifySignIn,
+  cooldownLeft,
+  defaultPair,
+  isEmail,
+  passwordAccepted,
+  passwordStrengthOf,
+  secondFactorCode,
+  sixDigitCode,
+  type LanguagePair,
+} from "@/features/auth/model/account-model";
+import { holdEntry } from "@/features/auth/model/entry-hold";
+import { languageLabel } from "@/features/shell/model/shell-model";
+import { ACCOUNT_COPY, type AccountCopy } from "@/lib/copy/account";
+import { useAreaCopy } from "@/lib/copy/area";
 import { firstDayHref, syncFirstDay } from "@/lib/first-day";
-import { setPro } from "@/lib/progress";
-import { finishVerify, getSession, sendLoginCode, useSession } from "@/lib/session";
-import { fetchMailInbox, resendAccountEmail } from "@/lib/api";
-import { normalizeOtp } from "@/lib/otp";
-import { tap } from "@/lib/haptics";
+import { LOCALE_BCP47, useLocale } from "@/lib/i18n";
+import { finishSignIn, finishVerify, getSession, sendLoginCode, signIn, signUp } from "@/lib/session";
 
-const EINSTEIN_LIBRARY_IMG = "/einstein-reading.jpg";
+type Step =
+  | { kind: "signIn" }
+  | { kind: "signUp" }
+  | { kind: "code" }
+  | { kind: "verify"; email: string; via: "signUp" | "signIn" | "code" }
+  | { kind: "twoFactor"; ticket: string; methods: Array<"totp" | "email"> }
+  | { kind: "forgot" }
+  | { kind: "reset"; email: string };
+
+type FieldErrors = { email?: string; password?: string; code?: string };
+
+const CAST = ["einstein", "curie", "feynman", "davinci"] as const;
+
+function initialStep(mode: string | undefined, legacyCreate: string | undefined): Step {
+  if (mode === "signup" || legacyCreate === "1") {
+    return { kind: "signUp" };
+  }
+  if (mode === "code") {
+    return { kind: "code" };
+  }
+  if (mode === "forgot") {
+    return { kind: "forgot" };
+  }
+  return { kind: "signIn" };
+}
 
 export function AccountScreen() {
-  const copy = useCopy();
-  const session = useSession();
-  const params = useLocalSearchParams<{ email?: string }>();
-  const [activeTab, setActiveTab] = useState<"email" | "otp">("email");
+  const t = useAreaCopy(ACCOUNT_COPY);
+  const locale = useLocale();
+  const bcp47 = LOCALE_BCP47[locale];
+  const params = useLocalSearchParams<{ mode?: string; email?: string; criar?: string }>();
+  const { width } = useWindowDimensions();
+  const wide = width >= 960;
 
-  const [state, dispatch] = useReducer(
-    authFlowReducer,
-    initialAuthFlowState({
-      signedIn: Boolean(session),
-      initialMode: "signIn",
-      initialEmail: params.email ?? "",
-    }),
-  );
+  const [step, setStep] = useState<Step>(() => initialStep(params.mode, params.criar));
+  const [email, setEmail] = useState(typeof params.email === "string" ? params.email : "");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [pair, setPair] = useState<LanguagePair>(() => defaultPair(locale));
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [notice, setNotice] = useState<"codeSent" | "passwordSaved" | null>(null);
+  const [sentAt, setSentAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [inboxUrl, setInboxUrl] = useState<string | null>(null);
 
-  const otpInputsRef = useRef<Array<TextInput | null>>([]);
-  const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", "", "", ""]);
+  const nameFor = useCallback((code: string) => languageLabel(code, bcp47), [bcp47]);
+  const wait = cooldownLeft(sentAt, now);
 
   useEffect(() => {
-    if (session) {
-      router.replace("/");
-    }
-  }, [session]);
-
-  useEffect(() => {
+    let alive = true;
     void fetchMailInbox().then((url) => {
-      if (url) {
-        dispatch({ type: "SET_INBOX_URL", url });
+      if (alive) {
+        setInboxUrl(url);
       }
     });
+    return () => {
+      alive = false;
+      holdEntry(false);
+    };
   }, []);
 
   useEffect(() => {
-    if (state.resendCooldown <= 0) return;
-    const interval = setInterval(() => {
-      dispatch({ type: "TICK_COOLDOWN" });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [state.resendCooldown]);
-
-  const handleSendCode = async () => {
-    const cleanEmail = state.email.trim();
-    if (!cleanEmail || !cleanEmail.includes("@")) {
-      dispatch({
-        type: "SET_ERROR",
-        error: "Digite um endereço de e-mail válido.",
-      });
+    if (wait <= 0) {
       return;
     }
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [wait]);
 
-    void tap("medium");
-    dispatch({ type: "SET_PENDING", pending: true });
+  function go(next: Step) {
+    setStep(next);
+    setError(null);
+    setFieldErrors({});
+    setCode("");
+    if (next.kind !== "signIn") {
+      setNotice(null);
+    }
+  }
 
+  function markSent() {
+    const stamp = Date.now();
+    setSentAt(stamp);
+    setNow(stamp);
+    setNotice("codeSent");
+  }
+
+  /** Sessão aberta: espera a jornada do primeiro dia sincronizar e segue para /start ou /. */
+  async function enter() {
+    const opened = getSession();
+    if (!opened) {
+      holdEntry(false);
+      return;
+    }
     try {
-      await sendLoginCode(cleanEmail);
-      dispatch({ type: "REQUIRE_VERIFY", email: cleanEmail });
-      setActiveTab("otp");
+      await syncFirstDay(opened.token, opened.user);
+    } catch {
+      // Sem rede: o guarda de rota decide com o que o aparelho sabe.
+    }
+    holdEntry(false);
+    router.replace(firstDayHref(opened.user.id) as Href);
+  }
+
+  async function run(task: () => Promise<void>) {
+    setPending(true);
+    setError(null);
+    try {
+      await task();
     } catch (caught) {
-      dispatch({ type: "SET_ERROR", error: toUserMessage(caught, copy as any) });
-    } finally {
-      dispatch({ type: "SET_PENDING", pending: false });
-    }
-  };
-
-  const handleVerifyCode = async () => {
-    const code = normalizeOtp(otpDigits.join(""));
-    if (code.length !== 6) {
-      dispatch({ type: "SET_ERROR", error: "Digite os 6 dígitos do código recebido." });
-      return;
-    }
-
-    void tap("medium");
-    dispatch({ type: "SET_PENDING", pending: true });
-
-    try {
-      const user = await finishVerify(state.email, code);
-      setPro(user.plan === "pro");
-      const opened = getSession();
-      if (opened) {
-        await syncFirstDay(opened.token, opened.user);
-        router.replace(firstDayHref(opened.user.id) as Href);
-      } else {
-        router.replace("/");
+      holdEntry(false);
+      const message = accountErrorMessage(caught, t as unknown as Record<string, unknown>);
+      if (message === t.secondFactorExpired) {
+        go({ kind: "signIn" });
       }
-    } catch (caught) {
-      dispatch({ type: "SET_ERROR", error: toUserMessage(caught, copy as any) });
+      setError(message);
     } finally {
-      dispatch({ type: "SET_PENDING", pending: false });
+      setPending(false);
     }
-  };
+  }
 
-  const handleResend = async () => {
-    if (!state.email.includes("@")) return;
-    void tap("light");
-    dispatch({ type: "SET_PENDING", pending: true });
-
-    try {
-      await resendAccountEmail(state.email);
-      dispatch({ type: "TRIGGER_RESEND_COOLDOWN" });
-    } catch (caught) {
-      dispatch({ type: "SET_ERROR", error: toUserMessage(caught, copy as any) });
-    } finally {
-      dispatch({ type: "SET_PENDING", pending: false });
+  function checkEmail(errors: FieldErrors): boolean {
+    if (!isEmail(email)) {
+      errors.email = t.invalidEmail;
+      return false;
     }
-  };
+    return true;
+  }
 
-  const handleOtpChange = (text: string, index: number) => {
-    const val = text.replace(/[^0-9]/g, "").slice(-1);
-    const newDigits = [...otpDigits];
-    newDigits[index] = val;
-    setOtpDigits(newDigits);
-
-    if (val && index < 5) {
-      otpInputsRef.current[index + 1]?.focus();
+  function submitSignIn() {
+    const errors: FieldErrors = {};
+    checkEmail(errors);
+    if (!passwordAccepted(password)) {
+      errors.password = t.shortPassword;
     }
-  };
-
-  const handleOtpKeyPress = (e: any, index: number) => {
-    if (e.nativeEvent.key === "Backspace" && !otpDigits[index] && index > 0) {
-      otpInputsRef.current[index - 1]?.focus();
+    setFieldErrors(errors);
+    if (errors.email || errors.password) {
+      return;
     }
-  };
+    void run(async () => {
+      holdEntry(true);
+      const result = await signIn(email.trim(), password);
+      const outcome = classifySignIn(result, email.trim());
+      if (outcome.kind === "session") {
+        setPassword("");
+        await enter();
+        return;
+      }
+      holdEntry(false);
+      setPassword("");
+      if (outcome.kind === "verify") {
+        go({ kind: "verify", email: outcome.email, via: "signIn" });
+        markSent();
+        return;
+      }
+      go({ kind: "twoFactor", ticket: outcome.ticket, methods: outcome.methods });
+    });
+  }
+
+  function submitSignUp() {
+    const errors: FieldErrors = {};
+    checkEmail(errors);
+    if (!passwordAccepted(password)) {
+      errors.password = t.shortPassword;
+    }
+    setFieldErrors(errors);
+    if (errors.email || errors.password) {
+      return;
+    }
+    void run(async () => {
+      holdEntry(true);
+      const result = await signUp({
+        email: email.trim(),
+        password,
+        native_lang: pair.support,
+        target_lang: pair.target,
+        display_locale: locale,
+      });
+      const outcome = classifySignIn(result, email.trim());
+      setPassword("");
+      if (outcome.kind === "session") {
+        await enter();
+        return;
+      }
+      holdEntry(false);
+      if (outcome.kind === "verify") {
+        go({ kind: "verify", email: outcome.email, via: "signUp" });
+        markSent();
+      }
+    });
+  }
+
+  function submitCodeRequest() {
+    const errors: FieldErrors = {};
+    checkEmail(errors);
+    setFieldErrors(errors);
+    if (errors.email) {
+      return;
+    }
+    void run(async () => {
+      const challenge = await sendLoginCode(email.trim());
+      go({ kind: "verify", email: challenge.email || email.trim(), via: "code" });
+      markSent();
+    });
+  }
+
+  function submitVerify(target: string) {
+    if (code.length !== 6) {
+      setFieldErrors({ code: t.sixDigits });
+      return;
+    }
+    setFieldErrors({});
+    void run(async () => {
+      holdEntry(true);
+      await finishVerify(target, code);
+      await enter();
+    });
+  }
+
+  function resend(target: string, via: "signUp" | "signIn" | "code") {
+    void run(async () => {
+      if (via === "code") {
+        await sendLoginCode(target);
+      } else {
+        await resendAccountEmail(target);
+      }
+      markSent();
+    });
+  }
+
+  function submitTwoFactor(ticket: string) {
+    if (!code) {
+      setFieldErrors({ code: t.codeRequired });
+      return;
+    }
+    setFieldErrors({});
+    void run(async () => {
+      holdEntry(true);
+      await finishSignIn(ticket, code);
+      await enter();
+    });
+  }
+
+  function submitForgot() {
+    const errors: FieldErrors = {};
+    checkEmail(errors);
+    setFieldErrors(errors);
+    if (errors.email) {
+      return;
+    }
+    void run(async () => {
+      await requestPasswordReset(email.trim());
+      go({ kind: "reset", email: email.trim() });
+      markSent();
+    });
+  }
+
+  function submitReset(target: string) {
+    const errors: FieldErrors = {};
+    if (code.length !== 6) {
+      errors.code = t.sixDigits;
+    }
+    if (!passwordAccepted(password)) {
+      errors.password = t.shortPassword;
+    }
+    setFieldErrors(errors);
+    if (errors.code || errors.password) {
+      return;
+    }
+    void run(async () => {
+      await confirmPasswordReset(target, code, password);
+      setPassword("");
+      setSentAt(null);
+      go({ kind: "signIn" });
+      setNotice("passwordSaved");
+    });
+  }
+
+  const strength = password ? passwordStrengthOf(password) : null;
+  const strengthText = strength === "strong" ? t.passwordStrong : strength === "ok" ? t.passwordOk : strength === "weak" ? t.passwordWeak : null;
+
+  const heading = useMemo(() => headingFor(step, t), [step, t]);
+
+  const emailField = (
+    <TactileField
+      testID="account-email"
+      label={t.emailLabel}
+      kind="email"
+      value={email}
+      onChangeText={(value) => {
+        setEmail(value);
+        setFieldErrors((current) => ({ ...current, email: undefined }));
+      }}
+      placeholder={t.emailPlaceholder}
+      autoComplete="email"
+      textContentType="emailAddress"
+      error={fieldErrors.email}
+      returnKeyType="next"
+    />
+  );
+
+  const codeField = (onSubmit: () => void) => (
+    <TactileField
+      testID="account-code"
+      label={t.codeLabel}
+      kind="code"
+      value={code}
+      onChangeText={(value) => {
+        setCode(sixDigitCode(value));
+        setFieldErrors((current) => ({ ...current, code: undefined }));
+      }}
+      placeholder="000000"
+      maxLength={6}
+      autoComplete="one-time-code"
+      textContentType="oneTimeCode"
+      error={fieldErrors.code}
+      onSubmitEditing={onSubmit}
+      returnKeyType="go"
+    />
+  );
+
+  let body: ReactNode = null;
+  if (step.kind === "signIn") {
+    body = (
+      <>
+        {emailField}
+        <TactileField
+          testID="account-password"
+          label={t.passwordLabel}
+          kind="password"
+          value={password}
+          onChangeText={(value) => {
+            setPassword(value);
+            setFieldErrors((current) => ({ ...current, password: undefined }));
+          }}
+          placeholder={t.passwordPlaceholder}
+          autoComplete="current-password"
+          textContentType="password"
+          error={fieldErrors.password}
+          showLabel={t.showPassword}
+          hideLabel={t.hidePassword}
+          onSubmitEditing={submitSignIn}
+          returnKeyType="go"
+        />
+        <Primary testID="account-submit" label={pending ? t.opening : t.signInAction} disabled={pending} onPress={submitSignIn} />
+        <LinkRow>
+          <TextLink testID="account-use-code" label={t.useCode} onPress={() => go({ kind: "code" })} />
+          <TextLink testID="account-forgot" label={t.forgotLink} onPress={() => go({ kind: "forgot" })} muted />
+        </LinkRow>
+      </>
+    );
+  } else if (step.kind === "signUp") {
+    body = (
+      <>
+        {emailField}
+        <TactileField
+          testID="account-password"
+          label={t.passwordLabel}
+          kind="password"
+          value={password}
+          onChangeText={(value) => {
+            setPassword(value);
+            setFieldErrors((current) => ({ ...current, password: undefined }));
+          }}
+          placeholder={t.passwordPlaceholder}
+          autoComplete="new-password"
+          textContentType="newPassword"
+          error={fieldErrors.password}
+          hint={strengthText}
+          showLabel={t.showPassword}
+          hideLabel={t.hidePassword}
+        />
+        <LanguageChoice
+          testID="account-target"
+          label={t.targetLabel}
+          options={STUDY_TARGETS}
+          value={pair.target}
+          onChange={(value) => setPair((current) => changePair(current, "target", value))}
+          nameFor={nameFor}
+        />
+        <LanguageChoice
+          testID="account-support"
+          label={t.supportLabel}
+          hint={t.supportHint}
+          options={SUPPORT_LANGS}
+          value={pair.support}
+          onChange={(value) => setPair((current) => changePair(current, "support", value))}
+          nameFor={nameFor}
+        />
+        <Primary testID="account-submit" label={pending ? t.sending : t.signUpAction} disabled={pending} onPress={submitSignUp} />
+      </>
+    );
+  } else if (step.kind === "code") {
+    body = (
+      <>
+        {emailField}
+        <Primary testID="account-submit" label={pending ? t.sending : t.sendCodeAction} disabled={pending} onPress={submitCodeRequest} />
+        <LinkRow>
+          <TextLink testID="account-use-password" label={t.usePassword} onPress={() => go({ kind: "signIn" })} />
+        </LinkRow>
+      </>
+    );
+  } else if (step.kind === "verify") {
+    const current = step;
+    body = (
+      <>
+        {codeField(() => submitVerify(current.email))}
+        <Primary testID="account-submit" label={pending ? t.opening : t.verifyAction} disabled={pending} onPress={() => submitVerify(current.email)} />
+        <LinkRow>
+          <TextLink
+            testID="account-resend"
+            label={wait > 0 ? t.resendIn(wait) : t.resend}
+            disabled={pending || wait > 0}
+            onPress={() => resend(current.email, current.via)}
+          />
+          <TextLink label={current.via === "signIn" ? t.backToSignIn : t.back} onPress={() => go({ kind: current.via === "signUp" ? "signUp" : current.via === "code" ? "code" : "signIn" })} muted />
+        </LinkRow>
+      </>
+    );
+  } else if (step.kind === "twoFactor") {
+    const current = step;
+    body = (
+      <>
+        <TactileField
+          testID="account-second-factor"
+          label={t.secondFactorLabel}
+          value={code}
+          onChangeText={(value) => {
+            setCode(secondFactorCode(value));
+            setFieldErrors({});
+          }}
+          autoComplete="one-time-code"
+          textContentType="oneTimeCode"
+          autoCapitalize="none"
+          autoCorrect={false}
+          error={fieldErrors.code}
+          hint={t.twoFactorRecovery}
+          onSubmitEditing={() => submitTwoFactor(current.ticket)}
+          returnKeyType="go"
+        />
+        <Primary testID="account-submit" label={pending ? t.opening : t.twoFactorAction} disabled={pending} onPress={() => submitTwoFactor(current.ticket)} />
+        <LinkRow>
+          <TextLink label={t.backToSignIn} onPress={() => go({ kind: "signIn" })} muted />
+        </LinkRow>
+      </>
+    );
+  } else if (step.kind === "forgot") {
+    body = (
+      <>
+        {emailField}
+        <Primary testID="account-submit" label={pending ? t.sending : t.resetSendAction} disabled={pending} onPress={submitForgot} />
+        <LinkRow>
+          <TextLink label={t.backToSignIn} onPress={() => go({ kind: "signIn" })} muted />
+        </LinkRow>
+      </>
+    );
+  } else {
+    const current = step;
+    body = (
+      <>
+        {codeField(() => submitReset(current.email))}
+        <TactileField
+          testID="account-new-password"
+          label={t.newPasswordLabel}
+          kind="password"
+          value={password}
+          onChangeText={(value) => {
+            setPassword(value);
+            setFieldErrors((errors) => ({ ...errors, password: undefined }));
+          }}
+          placeholder={t.passwordPlaceholder}
+          autoComplete="new-password"
+          textContentType="newPassword"
+          error={fieldErrors.password}
+          hint={strengthText}
+          showLabel={t.showPassword}
+          hideLabel={t.hidePassword}
+          onSubmitEditing={() => submitReset(current.email)}
+        />
+        <Primary testID="account-submit" label={pending ? t.saving : t.resetSaveAction} disabled={pending} onPress={() => submitReset(current.email)} />
+        <LinkRow>
+          <TextLink label={wait > 0 ? t.resendIn(wait) : t.resend} disabled={pending || wait > 0} onPress={() => {
+            void run(async () => {
+              await requestPasswordReset(current.email);
+              markSent();
+            });
+          }} />
+          <TextLink label={t.backToSignIn} onPress={() => go({ kind: "signIn" })} muted />
+        </LinkRow>
+      </>
+    );
+  }
+
+  const showTabs = step.kind === "signIn" || step.kind === "signUp" || step.kind === "code";
+  const waitingMail = step.kind === "verify" || step.kind === "reset" || (step.kind === "twoFactor" && step.methods.includes("email"));
+
+  const card = (
+    <View
+      testID="account-card"
+      style={{
+        width: "100%",
+        maxWidth: 480,
+        backgroundColor: tactile.surface,
+        borderRadius: 24,
+        borderWidth: 2,
+        borderColor: tactile.border,
+        boxShadow: ledge(tactile.border, 6),
+        padding: width < 420 ? 20 : 28,
+        gap: 18,
+      } as object}
+    >
+      {showTabs ? (
+        <View accessibilityRole="tablist" style={{ flexDirection: "row", gap: 6, padding: 5, borderRadius: 16, backgroundColor: tactile.raised }}>
+          <Tab testID="account-tab-signin" label={t.tabSignIn} active={step.kind !== "signUp"} onPress={() => go({ kind: "signIn" })} />
+          <Tab testID="account-tab-signup" label={t.tabSignUp} active={step.kind === "signUp"} onPress={() => go({ kind: "signUp" })} />
+        </View>
+      ) : null}
+
+      <View style={{ gap: 6 }}>
+        <Text accessibilityRole="header" aria-level={1} style={{ fontFamily: tactile.font, fontSize: 26, lineHeight: 32, fontWeight: "800", color: tactile.ink, letterSpacing: -0.4 }}>
+          {heading.title}
+        </Text>
+        <Text style={{ fontFamily: tactile.font, fontSize: 15, lineHeight: 22, color: tactile.muted }}>{heading.dek}</Text>
+      </View>
+
+      {notice ? (
+        <Banner tone="success" testID="account-notice">
+          {notice === "codeSent" ? t.codeSent : t.passwordSaved}
+        </Banner>
+      ) : null}
+      {error ? (
+        <Banner tone="error" testID="account-error">
+          {error}
+        </Banner>
+      ) : null}
+
+      {body}
+
+      {waitingMail && inboxUrl ? (
+        <Pressable
+          accessibilityRole="link"
+          onPress={() => void Linking.openURL(inboxUrl)}
+          style={{ flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "center", paddingVertical: 6, cursor: "pointer" } as object}
+        >
+          <TactileIcon name="mail" size={16} color={tactile.muted} />
+          <Text style={{ fontFamily: tactile.font, fontSize: 13, fontWeight: "700", color: tactile.muted, textDecorationLine: "underline" }}>{t.openInbox}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+
+  const hero = (
+    <View style={{ flex: wide ? 1 : undefined, width: wide ? undefined : "100%", maxWidth: 520, gap: 18 }}>
+      <View style={{ flexDirection: "row" }}>
+        {CAST.map((who, index) => (
+          <Image
+            key={who}
+            source={{ uri: `/cast/${who}.png` }}
+            accessibilityIgnoresInvertColors
+            style={{
+              width: wide ? 64 : 48,
+              height: wide ? 64 : 48,
+              borderRadius: 999,
+              borderWidth: 3,
+              borderColor: tactile.surface,
+              backgroundColor: tactile.raised,
+              marginLeft: index === 0 ? 0 : -12,
+            }}
+          />
+        ))}
+      </View>
+      <Text style={{ fontFamily: tactile.font, fontSize: 12, fontWeight: "800", letterSpacing: 1.2, textTransform: "uppercase", color: tactile.primaryInk }}>{t.kicker}</Text>
+      <Text style={{ fontFamily: tactile.serif, fontSize: wide ? 40 : 28, lineHeight: wide ? 46 : 34, fontWeight: "600", color: tactile.ink }}>{t.heroTitle}</Text>
+      <Text style={{ fontFamily: tactile.font, fontSize: 16, lineHeight: 24, color: tactile.body }}>{t.heroDek}</Text>
+      {wide ? (
+        <View style={{ gap: 12, marginTop: 4 }}>
+          {[t.heroPoint1, t.heroPoint2, t.heroPoint3].map((point) => (
+            <View key={point} style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
+              <View style={{ marginTop: 2, width: 22, height: 22, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: tactile.primarySoft }}>
+                <TactileIcon name="check" size={14} color={tactile.primary} strokeWidth={3} />
+              </View>
+              <Text style={{ flex: 1, fontFamily: tactile.font, fontSize: 15, lineHeight: 22, color: tactile.body }}>{point}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
 
   return (
-    <View className="flex-1 bg-[#FDFBF7]">
-      {/* Top Header & Brand Identity */}
-      <View className="w-full border-b-2 border-[#E2E8F0] bg-white/90 z-30">
-        <View className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex-row items-center justify-between">
-          {/* Esquerda: Monograma Oficial Prosa */}
-          <View className="flex-row items-center gap-3">
-            <Pressable onPress={() => router.push("/")} className="cursor-pointer">
-              <Logo />
-            </Pressable>
-            <View className="hidden sm:flex flex-row items-center gap-2">
-              <View className="px-2.5 py-0.5 rounded-full bg-[#F5F0E8] border border-[#CBD5E1]">
-                <Text className="text-[11px] font-bold text-[#64748B]">
-                  Acesso Sem Senha • Magic Link & OTP
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Direita: Mentores Ativos & Idioma */}
-          <View className="flex-row items-center gap-3">
-            <View className="hidden lg:flex flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-white border-2 border-[#E2E8F0] shadow-[0_2px_0_#CBD5E1]">
-              <View className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
-              <Text className="text-xs font-bold text-[#111C2D]">16 Mentores Históricos Ativos</Text>
-            </View>
-            <View className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border-2 border-[#E2E8F0] shadow-[0_2px_0_#CBD5E1]">
-              <Text className="text-xs font-bold text-[#111C2D]">Português (Brasil) 🇧🇷</Text>
-            </View>
-          </View>
-        </View>
+    <View testID="account-screen" style={{ flex: 1, backgroundColor: tactile.bg, minHeight: "100%" } as object}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: tactile.border, backgroundColor: tactile.surface }}>
+        <TactileLogo size={34} />
+        <LocaleMenu label={t.uiLanguage} />
       </View>
-
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
-        className="w-full"
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={{ maxWidth: 1200, width: "100%", marginHorizontal: "auto", paddingHorizontal: 24, paddingVertical: 36 }}>
-          <View
-            style={{
-              display: "flex",
-              flexDirection: "row",
-              flexWrap: "wrap",
-              gap: 32,
-              alignItems: "center",
-              justifyContent: "center",
-              width: "100%",
-            }}
-          >
-            {/* Coluna Esquerda: Albert Einstein Polímata (5 Cols) */}
-            <View
-              style={{
-                flex: 5,
-                minWidth: 340,
-                display: "flex",
-                flexDirection: "column",
-                gap: 20,
-              }}
-            >
-              {/* Balão de Fala do Einstein */}
-              <View
-                style={{
-                  position: "relative",
-                  backgroundColor: "#FFFFFF",
-                  borderRadius: 20,
-                  padding: 22,
-                  borderWidth: 2,
-                  borderColor: "#E2E8F0",
-                  boxShadow: "0 4px 0 #E2E8F0",
-                }}
-              >
-                <View
-                  style={{
-                    display: "flex",
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: 12,
-                  }}
-                >
-                  <View style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={{ fontSize: 18 }}>🧠</Text>
-                    <Text style={{ fontSize: 16, fontWeight: "800", color: "#111C2D" }}>Albert Einstein</Text>
-                  </View>
-                  <View
-                    style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 3,
-                      borderRadius: 9999,
-                      backgroundColor: "#F5F0E8",
-                      borderWidth: 1,
-                      borderColor: "#CBD5E1",
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#855300" }}>
-                      Mentor Polímata • Nv 10
-                    </Text>
-                  </View>
-                </View>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    color: "#111C2D",
-                    fontStyle: "italic",
-                    lineHeight: 24,
-                  }}
-                >
-                  “Sem senhas para esquecer! O tempo é relativo, mas a frustração com senhas perdidas é absoluta. Digite seu e-mail e enviaremos seu código de acesso instantâneo.”
-                </Text>
-              </View>
-
-              {/* Cartão Ilustrado da Biblioteca de Einstein */}
-              <View
-                style={{
-                  backgroundColor: "#FFFFFF",
-                  borderRadius: 24,
-                  padding: 16,
-                  borderWidth: 2,
-                  borderColor: "#E2E8F0",
-                  boxShadow: "0 4px 0 #E2E8F0",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 16,
-                }}
-              >
-                <View
-                  style={{
-                    position: "relative",
-                    borderRadius: 18,
-                    overflow: "hidden",
-                    aspectRatio: 4 / 3,
-                    backgroundColor: "#F5F0E8",
-                    borderWidth: 2,
-                    borderColor: "#E2E8F0",
-                  }}
-                >
-                  <Image
-                    source={{ uri: EINSTEIN_LIBRARY_IMG }}
-                    style={{ width: "100%", height: "100%" }}
-                    resizeMode="cover"
-                  />
-                  <View
-                    style={{
-                      position: "absolute",
-                      top: 12,
-                      left: 12,
-                      backgroundColor: "rgba(255, 255, 255, 0.95)",
-                      paddingHorizontal: 12,
-                      paddingVertical: 5,
-                      borderRadius: 9999,
-                      borderWidth: 2,
-                      borderColor: "#E2E8F0",
-                      boxShadow: "0 2px 0 #CBD5E1",
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <Text style={{ fontSize: 12 }}>🔒</Text>
-                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#00685F" }}>
-                      Segurança Criptográfica & Zero Senhas
-                    </Text>
-                  </View>
-                </View>
-
-                {/* 3 Micro-Vantagens */}
-                <View style={{ display: "flex", flexDirection: "row", gap: 8, paddingTop: 4 }}>
-                  <View
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                      padding: 10,
-                      borderRadius: 14,
-                      backgroundColor: "#F5F0E8",
-                      borderWidth: 1,
-                      borderColor: "#E2E8F0",
-                    }}
-                  >
-                    <Text style={{ fontSize: 14 }}>⚡</Text>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#111C2D" }}>Acesso em 5s</Text>
-                  </View>
-                  <View
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                      padding: 10,
-                      borderRadius: 14,
-                      backgroundColor: "#F5F0E8",
-                      borderWidth: 1,
-                      borderColor: "#E2E8F0",
-                    }}
-                  >
-                    <Text style={{ fontSize: 14 }}>🔒</Text>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#111C2D" }}>E2E Cripto</Text>
-                  </View>
-                  <View
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                      padding: 10,
-                      borderRadius: 14,
-                      backgroundColor: "#F5F0E8",
-                      borderWidth: 1,
-                      borderColor: "#E2E8F0",
-                    }}
-                  >
-                    <Text style={{ fontSize: 14 }}>🧠</Text>
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#111C2D" }}>FSRS na Nuvem</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            {/* Coluna Direita: Hub Interativo Sem Senha (7 Cols) */}
-            <View
-              style={{
-                flex: 7,
-                minWidth: 380,
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-              }}
-            >
-              {/* Seletor de Etapas 1 e 2 */}
-              <View
-                style={{
-                  backgroundColor: "#F5F0E8",
-                  padding: 6,
-                  borderRadius: 18,
-                  borderWidth: 2,
-                  borderColor: "#E2E8F0",
-                  display: "flex",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <Pressable
-                  onPress={() => setActiveTab("email")}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    paddingHorizontal: 16,
-                    borderRadius: 14,
-                    display: "flex",
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    backgroundColor: activeTab === "email" ? "#FFFFFF" : "transparent",
-                    borderWidth: activeTab === "email" ? 2 : 0,
-                    borderColor: "#E2E8F0",
-                    boxShadow: activeTab === "email" ? "0 3px 0 #CBD5E1" : "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: activeTab === "email" ? "#00685F" : "#CBD5E1",
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: "800", color: "#FFFFFF" }}>1</Text>
-                  </View>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "800",
-                      color: activeTab === "email" ? "#00685F" : "#64748B",
-                    }}
-                  >
-                    1. Digitar E-mail
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setActiveTab("otp")}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    paddingHorizontal: 16,
-                    borderRadius: 14,
-                    display: "flex",
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    backgroundColor: activeTab === "otp" ? "#FFFFFF" : "transparent",
-                    borderWidth: activeTab === "otp" ? 2 : 0,
-                    borderColor: "#E2E8F0",
-                    boxShadow: activeTab === "otp" ? "0 3px 0 #CBD5E1" : "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: activeTab === "otp" ? "#10B981" : "#CBD5E1",
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: "800", color: "#FFFFFF" }}>2</Text>
-                  </View>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "800",
-                      color: activeTab === "otp" ? "#10B981" : "#64748B",
-                    }}
-                  >
-                    2. Código 6 Dígitos
-                  </Text>
-                </Pressable>
-              </View>
-
-              {/* Superfície Principal do Card */}
-              <View
-                style={{
-                  backgroundColor: "#FFFFFF",
-                  borderRadius: 24,
-                  padding: 28,
-                  borderWidth: 2,
-                  borderColor: "#E2E8F0",
-                  boxShadow: "0 6px 0 #E2E8F0",
-                }}
-              >
-                {/* Erro global */}
-                {state.error ? (
-                  <View className="mb-4 p-3 rounded-2xl bg-red-50 border border-red-200">
-                    <Text className="text-xs font-bold text-red-600">{state.error}</Text>
-                  </View>
-                ) : null}
-
-                {activeTab === "email" ? (
-                  /* ETAPA 1: SOLICITAR CÓDIGO */
-                  <View className="flex-col gap-5">
-                    <View>
-                      <View className="inline-flex flex-row items-center gap-1.5 px-3 py-1 rounded-full bg-[#E6F4F1] border border-[#00685F]/30 self-start mb-2">
-                        <Text className="text-xs">🔑</Text>
-                        <Text className="text-[11px] font-extrabold text-[#00685F] uppercase">
-                          Fluxo 100% Sem Senhas
-                        </Text>
-                      </View>
-                      <Text className="text-2xl sm:text-3xl font-extrabold text-[#111C2D] tracking-tight">
-                        Entrar sem senha no Prosa
-                      </Text>
-                      <Text className="text-sm text-[#64748B] mt-1">
-                        Digite seu e-mail corporativo ou pessoal para receber uma chave de acesso única.
-                      </Text>
-                    </View>
-
-                    {/* Campo de E-mail Único (Fluxo Sem Senha Puro) */}
-                    <View style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "800",
-                          letterSpacing: 1,
-                          textTransform: "uppercase",
-                          color: "#111C2D",
-                        }}
-                      >
-                        Seu Endereço de E-mail
-                      </Text>
-                      <View
-                        style={{
-                          display: "flex",
-                          flexDirection: "row",
-                          alignItems: "center",
-                          paddingHorizontal: 16,
-                          paddingVertical: 14,
-                          backgroundColor: "#FFFFFF",
-                          borderWidth: 2,
-                          borderColor: "#CBD5E1",
-                          borderRadius: 16,
-                          boxShadow: "inset 0 2px 0 #E2E8F0",
-                        }}
-                      >
-                        <Text style={{ fontSize: 18, marginRight: 12 }}>✉️</Text>
-                        <TextInput
-                          value={state.email}
-                          onChangeText={(text) => dispatch({ type: "SET_FIELD", field: "email", value: text })}
-                          placeholder="seu.email@exemplo.com"
-                          placeholderTextColor="#94A3B8"
-                          keyboardType="email-address"
-                          autoCapitalize="none"
-                          style={{
-                            flex: 1,
-                            fontSize: 16,
-                            fontWeight: "700",
-                            color: "#111C2D",
-                            outlineStyle: "none" as any,
-                          }}
-                        />
-                      </View>
-                    </View>
-
-                    <Text style={{ fontSize: 12, color: "#64748B", marginTop: -2 }}>
-                      🔒 Enviaremos um código de 6 dígitos para o seu e-mail. Sem senha necessária.
-                    </Text>
-
-                    {/* Botão Chunky 3D Teal */}
-                    <Pressable
-                      onPress={handleSendCode}
-                      disabled={state.pending}
-                      style={{
-                        width: "100%",
-                        paddingVertical: 16,
-                        paddingHorizontal: 24,
-                        borderRadius: 16,
-                        backgroundColor: "#00685F",
-                        boxShadow: "0 4px 0 #0F766E",
-                        display: "flex",
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        cursor: "pointer",
-                        marginTop: 8,
-                      }}
-                    >
-                      <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>
-                        {state.pending ? "Enviando código..." : "Receber Código de Acesso ➔"}
-                      </Text>
-                    </Pressable>
-
-                    {/* Modo Degustação */}
-                    <Pressable
-                      onPress={() => router.push("/")}
-                      style={{
-                        alignItems: "center",
-                        justifyContent: "center",
-                        paddingTop: 8,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: "700", color: "#64748B" }}>
-                        Entrar como Convidado (Modo Degustação) 🧭
-                      </Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  /* ETAPA 2: DIGITAR CÓDIGO DE 6 DÍGITOS */
-                  <View className="flex-col gap-5">
-                    <View>
-                      <View className="inline-flex flex-row items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-[#10B981]/30 self-start mb-2">
-                        <Text className="text-xs">✉️</Text>
-                        <Text className="text-[11px] font-extrabold text-[#059669] uppercase">
-                          Código Enviado com Sucesso
-                        </Text>
-                      </View>
-                      <Text className="text-2xl sm:text-3xl font-extrabold text-[#111C2D] tracking-tight">
-                        Verifique sua caixa de entrada
-                      </Text>
-                      <View className="flex-row items-center gap-2 mt-2 p-2.5 px-3 rounded-xl bg-[#F5F0E8] border border-[#E2E8F0] self-start">
-                        <Text className="text-xs text-[#64748B]">Enviado para:</Text>
-                        <Text className="text-xs font-bold text-[#111C2D]">{state.email}</Text>
-                        <Pressable onPress={() => setActiveTab("email")}>
-                          <Text className="text-xs font-bold text-[#00685F] underline ml-1">
-                            [Editar]
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </View>
-
-                    {/* 6 Chunky Rounded Digit Inputs */}
-                    <View className="flex-col gap-2">
-                      <Text className="text-xs font-bold tracking-wider text-[#111C2D] uppercase">
-                        Digite o Código de 6 Dígitos
-                      </Text>
-                      <View className="flex-row justify-between gap-2 sm:gap-3">
-                        {Array.from({ length: 6 }).map((_, i) => (
-                          <TextInput
-                            key={i}
-                            ref={(el) => {
-                              otpInputsRef.current[i] = el;
-                            }}
-                            value={otpDigits[i]}
-                            onChangeText={(text) => handleOtpChange(text, i)}
-                            onKeyPress={(e) => handleOtpKeyPress(e, i)}
-                            maxLength={1}
-                            keyboardType="number-pad"
-                            className="flex-1 h-14 sm:h-16 text-center text-2xl font-black bg-white border-2 border-[#10B981] rounded-2xl shadow-[0_3px_0_#10B981] text-[#111C2D]"
-                          />
-                        ))}
-                      </View>
-                    </View>
-
-                    {/* Timer Countdown Widget */}
-                    <View className="flex-row items-center justify-between p-3.5 rounded-2xl bg-[#F5F0E8] border border-[#E2E8F0]">
-                      <View className="flex-row items-center gap-2">
-                        <Text className="text-base">⏱️</Text>
-                        <Text className="text-xs font-bold text-[#111C2D]">
-                          Reenviar código em{" "}
-                          <Text className="text-[#FF5722] font-extrabold">
-                            00:{state.resendCooldown < 10 ? `0${state.resendCooldown}` : state.resendCooldown}
-                          </Text>
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={handleResend}
-                        disabled={state.resendCooldown > 0}
-                      >
-                        <Text
-                          className={`text-xs font-bold ${
-                            state.resendCooldown > 0 ? "text-[#94A3B8]" : "text-[#00685F]"
-                          }`}
-                        >
-                          Reenviar agora
-                        </Text>
-                      </Pressable>
-                    </View>
-
-                    {/* Botão Chunky 3D Emerald */}
-                    <Pressable
-                      onPress={handleVerifyCode}
-                      disabled={state.pending}
-                      className="w-full py-4 px-6 rounded-2xl bg-[#10B981] shadow-[0_4px_0_#059669] active:translate-y-1 active:shadow-[0_1px_0_#059669] flex-row items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Text className="text-white text-base font-extrabold">
-                        {state.pending ? "Verificando..." : "Confirmar e Entrar no Prosa ➔"}
-                      </Text>
-                    </Pressable>
-
-                    {/* Links de Apoio */}
-                    <View className="flex-row items-center justify-center gap-3 pt-1">
-                      <Text className="text-xs text-[#64748B]">Não recebeu?</Text>
-                      <Text className="text-xs font-bold text-[#00685F]">Verificar pasta de spam</Text>
-                      <Text className="text-xs text-[#CBD5E1]">•</Text>
-                      <Text className="text-xs font-bold text-[#059669]">Reenviar via WhatsApp</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+        <View
+          style={{
+            flex: 1,
+            width: "100%",
+            maxWidth: 1120,
+            marginHorizontal: "auto",
+            paddingHorizontal: width < 420 ? 16 : 24,
+            paddingVertical: wide ? 56 : 28,
+            flexDirection: wide ? "row" : "column",
+            alignItems: wide ? "center" : "stretch",
+            justifyContent: "center",
+            gap: wide ? 56 : 24,
+          } as object}
+        >
+          {hero}
+          <View style={{ alignItems: "center", width: wide ? undefined : "100%" }}>{card}</View>
         </View>
       </ScrollView>
+    </View>
+  );
+}
 
-      {/* Footer */}
-      <View className="w-full py-4 px-4 border-t-2 border-[#E2E8F0] bg-white/70">
-        <View className="max-w-7xl mx-auto flex-col sm:flex-row items-center justify-between gap-2">
-          <Text className="text-xs text-[#64748B]">
-            Prosa Learning Systems © 2025 • Método polímata de transferência sintática direta
-          </Text>
-          <View className="flex-row items-center gap-4">
-            <Text className="text-xs font-bold text-[#64748B]">Termos</Text>
-            <Text className="text-xs text-[#CBD5E1]">•</Text>
-            <Text className="text-xs font-bold text-[#64748B]">Privacidade Zero-Knowledge</Text>
-            <Text className="text-xs text-[#CBD5E1]">•</Text>
-            <Text className="text-xs font-bold text-[#64748B]">Suporte Acadêmico</Text>
-          </View>
-        </View>
-      </View>
+function headingFor(step: Step, t: AccountCopy): { title: string; dek: string } {
+  switch (step.kind) {
+    case "signUp":
+      return { title: t.signUpTitle, dek: t.signUpDek };
+    case "code":
+      return { title: t.codeTitle, dek: t.codeDek };
+    case "verify":
+      return { title: t.verifyTitle, dek: t.verifyDek(step.email) };
+    case "twoFactor":
+      return {
+        title: t.twoFactorTitle,
+        dek: step.methods.includes("totp") && step.methods.includes("email") ? t.twoFactorBoth : step.methods.includes("email") ? t.twoFactorEmail : t.twoFactorTotp,
+      };
+    case "forgot":
+      return { title: t.forgotTitle, dek: t.forgotDek };
+    case "reset":
+      return { title: t.resetTitle, dek: t.resetDek(step.email) };
+    default:
+      return { title: t.signInTitle, dek: t.signInDek };
+  }
+}
+
+function Primary({ label, onPress, disabled, testID }: { label: string; onPress: () => void; disabled: boolean; testID: string }) {
+  return (
+    <View testID={testID}>
+      <TactileButton label={label} onPress={onPress} disabled={disabled} size="lg" fullWidth />
+    </View>
+  );
+}
+
+function Tab({ label, active, onPress, testID }: { label: string; active: boolean; onPress: () => void; testID: string }) {
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={{
+        flex: 1,
+        alignItems: "center",
+        paddingVertical: 10,
+        borderRadius: 12,
+        backgroundColor: active ? tactile.surface : "transparent",
+        boxShadow: active ? `0 3px 0 ${tactile.borderStrong}` : "none",
+        cursor: "pointer",
+      } as object}
+    >
+      <Text style={{ fontFamily: tactile.font, fontSize: 14, fontWeight: "800", color: active ? tactile.primaryInk : tactile.muted }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function LinkRow({ children }: { children: ReactNode }) {
+  return <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8 }}>{children}</View>;
+}
+
+function TextLink({ label, onPress, muted = false, disabled = false, testID }: { label: string; onPress: () => void; muted?: boolean; disabled?: boolean; testID?: string }) {
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      hitSlop={6}
+      style={{ paddingVertical: 8, cursor: disabled ? "default" : "pointer" } as object}
+    >
+      <Text style={{ fontFamily: tactile.font, fontSize: 14, fontWeight: "700", color: disabled ? tactile.faint : muted ? tactile.muted : tactile.primaryInk }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function Banner({ tone, children, testID }: { tone: "error" | "success"; children: ReactNode; testID: string }) {
+  const error = tone === "error";
+  return (
+    <View
+      testID={testID}
+      accessibilityRole={error ? "alert" : "text"}
+      accessibilityLiveRegion={error ? "assertive" : "polite"}
+      style={{
+        flexDirection: "row",
+        gap: 10,
+        alignItems: "flex-start",
+        padding: 12,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: error ? "#FECACA" : "#A7F3D0",
+        backgroundColor: error ? tactile.dangerSoft : tactile.successSoft,
+      }}
+    >
+      <TactileIcon name={error ? "alert" : "check"} size={18} color={error ? tactile.danger : tactile.success} />
+      <Text style={{ flex: 1, fontFamily: tactile.font, fontSize: 14, lineHeight: 20, fontWeight: "600", color: error ? tactile.danger : tactile.success }}>{children}</Text>
     </View>
   );
 }

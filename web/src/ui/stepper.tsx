@@ -3,6 +3,8 @@ import { View, StyleSheet, type ViewProps } from "react-native";
 import { Text } from "./text";
 import { Progress } from "./progress";
 import { useThemeTokens } from "../theme/ThemeContext";
+import { useAreaCopy } from "../lib/copy/area";
+import { SHELL_COPY } from "../lib/copy/shell";
 
 export interface StepperProps extends ViewProps {
   currentStep: number; // 1-indexed
@@ -20,11 +22,12 @@ export function Stepper({
   ...props
 }: StepperProps) {
   const { spacing } = useThemeTokens();
+  const shell = useAreaCopy(SHELL_COPY);
   const safeTotal = Math.max(1, totalSteps);
   const safeCurrent = Math.min(safeTotal, Math.max(1, currentStep));
   const progressPercent = Math.round((safeCurrent / safeTotal) * 100);
 
-  const stepLabel = label || `Passo ${safeCurrent} de ${safeTotal}`;
+  const stepLabel = label || shell.stepOf(safeCurrent, safeTotal);
 
   return (
     <View testID={testID} style={[styles.container, style]} {...props}>

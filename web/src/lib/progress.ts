@@ -1,18 +1,41 @@
 import { useSyncExternalStore } from "react";
 import { syncReviews } from "@/lib/api";
+import { BADGE_CODES, PROGRESS_COPY } from "@/lib/copy/progress";
+import { applyFsrs, dueCards, isDue, isNewCard, isReviewQuality, seedFromSm2, type ReviewQuality } from "@/lib/fsrs";
 import { kv } from "@/lib/kv";
-import { resetXp } from "@/lib/xp";
 import {
   finishReconstruction,
   scheduleReconstruction,
   type ReconstructionAnchor,
 } from "@/lib/reconstruction";
 import { getSession } from "@/lib/session";
-import type { ReviewQuality } from "@/lib/sm2";
 import { cardsForThrough } from "@/lib/through-lang";
 import type { LessonPayload, LessonRequest, SessionCard } from "@/lib/types";
+import { awardXp, bindXpLang, hydrateXp, resetXp } from "@/lib/xp";
+import { isIsoDate, lastIsoDates, shiftIsoDate } from "@/lib/xp-rules";
 
+/**
+ * Progresso local, isolado por idioma-alvo (uma "faixa" por curso), persistido no kv e
+ * sobrevivendo ao F5. Cartões agendados com FSRS (`@/lib/fsrs`), revisões sincronizadas
+ * com `POST /api/v1/srs/sync`, ofensiva honesta derivada dos dias com sessão completa.
+ */
 const STORAGE_KEY = "prosa.progress.v1";
+const PENDING_LANE = "pending";
+/** Dias de sessão guardados por curso (a melhor ofensiva fica gravada à parte). */
+const MAX_SESSION_DAYS = 400;
+/** Dias de tempo de estudo guardados por curso. */
+const STUDY_RETENTION_DAYS = 60;
+/** No máximo 4 horas contadas por dia: um relógio esquecido aberto não vira estudo. */
+const MAX_STUDY_SECONDS_PER_DAY = 4 * 60 * 60;
+/** Cartões vencidos que entram antes da lição. */
+const DUE_IN_QUEUE = 12;
+/** Cartões nunca revisados (de lições antigas ou salvos da leitura) que entram por sessão. */
+const NEW_IN_QUEUE = 4;
+const MAX_PENDING_REVIEWS = 200;
+/** Janela em que uma nota já gravada pelo chamador é reconhecida como a mesma nota. */
+const ALREADY_GRADED_MS = 5_000;
+const SYNC_BATCH = 50;
+const SYNC_ROUNDS = 4;
 
 export interface LessonHistoryItem {
   date: string;
@@ -27,11 +50,16 @@ export interface PendingReview {
   back_translation: string;
   context_sentence: string;
   quality: ReviewQuality;
+  /** Quando a nota foi dada (ISO). Opcional: filas antigas não têm. */
+  reviewed_at?: string;
 }
 
 export interface ProgressState {
+  /** Ofensiva atual do curso ativo: dias seguidos com sessão completa, terminando hoje ou ontem. */
   streakCount: number;
+  /** Último dia (calendário local) com sessão completa neste curso. */
   lastLessonDate: string | null;
+  /** @deprecated Não existe economia de congelamento; sempre 0. */
   streakFreezeCount: number;
   badges: string[];
   cards: SessionCard[];
@@ -47,22 +75,25 @@ export interface ProgressState {
   reconstructionNext: ReconstructionAnchor | null;
   cognateKeys: string[];
   skills: { reading: number; listening: number } | null;
+  /** Dias (YYYY-MM-DD, calendário local) com sessão completa, em ordem crescente. */
+  sessionDays: string[];
+  /** Maior ofensiva já feita neste curso. */
+  bestStreak: number;
+  /** Segundos de estudo por dia: data -> chave da atividade -> segundos. */
+  studyLog: Record<string, Record<string, number>>;
 }
 
-export const BADGES = [
-  { code: "first_flame", name: "Primeira fogueira", description: "Conclua uma lição de 20 minutos." },
-  { code: "streak_3", name: "Três dias", description: "Mantenha a ofensiva por 3 dias." },
-  { code: "streak_7", name: "Semana inteira", description: "Mantenha a ofensiva por 7 dias." },
-  { code: "words_10", name: "Dez palavras", description: "Domine 10 palavras no SM-2." },
-  { code: "clear_voice", name: "Voz clara", description: "Acerte 90% ou mais numa frase falada." },
-  { code: "journal_kept", name: "Diário aberto", description: "Envie o diário do dia." },
-] as const;
+export const BADGES = BADGE_CODES.map((code) => ({
+  code,
+  name: PROGRESS_COPY.pt.badges[code].name,
+  description: PROGRESS_COPY.pt.badges[code].description,
+}));
 
 function emptyProgress(): ProgressState {
   return {
     streakCount: 0,
     lastLessonDate: null,
-    streakFreezeCount: 1,
+    streakFreezeCount: 0,
     badges: [],
     cards: [],
     pendingReviews: [],
@@ -77,8 +108,125 @@ function emptyProgress(): ProgressState {
     reconstructionNext: null,
     cognateKeys: [],
     skills: null,
+    sessionDays: [],
+    bestStreak: 0,
+    studyLog: {},
   };
 }
+
+// ---------------------------------------------------------------------------
+// Datas e ofensiva (funções puras)
+// ---------------------------------------------------------------------------
+
+export function isoDate(now = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+export function daysBetween(from: string, to: string): number {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+    return 0;
+  }
+  return Math.round((end - start) / 86_400_000);
+}
+
+/** Datas válidas, sem repetição, em ordem crescente. */
+export function normalizeDays(days: readonly unknown[]): string[] {
+  return [...new Set(days.filter(isIsoDate))].sort();
+}
+
+/**
+ * Ofensiva atual: dias seguidos com sessão completa terminando hoje, ou ontem se a sessão
+ * de hoje ainda não aconteceu. Um dia sem sessão zera a contagem, sem outra penalidade.
+ */
+export function streakFromDays(days: readonly string[], today: string): number {
+  const done = new Set(days);
+  let cursor = done.has(today) ? today : shiftIsoDate(today, -1);
+  let count = 0;
+  while (done.has(cursor)) {
+    count += 1;
+    cursor = shiftIsoDate(cursor, -1);
+  }
+  return count;
+}
+
+/** Maior sequência de dias seguidos dentro da lista. */
+export function bestStreakFromDays(days: readonly string[]): number {
+  const sorted = normalizeDays(days);
+  let best = 0;
+  let run = 0;
+  let previous: string | null = null;
+  for (const day of sorted) {
+    run = previous !== null && daysBetween(previous, day) === 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+    previous = day;
+  }
+  return best;
+}
+
+/** Os últimos 7 dias (do mais antigo para hoje): houve sessão completa naquele dia. */
+export function weekFromDays(days: readonly string[], today: string): boolean[] {
+  const done = new Set(days);
+  return lastIsoDates(today, 7).map((day) => done.has(day));
+}
+
+export interface StreakSummary {
+  current: number;
+  best: number;
+  doneToday: boolean;
+  /** Últimos 7 dias, do mais antigo para hoje. */
+  week: boolean[];
+  /** As datas de `week`, na mesma ordem. */
+  weekDays: string[];
+  lastDay: string | null;
+}
+
+export function streakSummary(days: readonly string[], today: string, storedBest = 0): StreakSummary {
+  const clean = normalizeDays(days);
+  const current = streakFromDays(clean, today);
+  return {
+    current,
+    best: Math.max(storedBest, current, bestStreakFromDays(clean)),
+    doneToday: clean.includes(today),
+    week: weekFromDays(clean, today),
+    weekDays: lastIsoDates(today, 7),
+    lastDay: clean.length > 0 ? clean[clean.length - 1]! : null,
+  };
+}
+
+/**
+ * @deprecated Mantida por compatibilidade; a ofensiva agora vem de `sessionDays`.
+ * Sem congelamento: dia seguido soma 1, mesmo dia mantém, qualquer falta recomeça em 1.
+ */
+export function nextStreak(
+  state: Pick<ProgressState, "streakCount" | "lastLessonDate" | "streakFreezeCount">,
+  today: string,
+): Pick<ProgressState, "streakCount" | "lastLessonDate" | "streakFreezeCount"> {
+  if (state.lastLessonDate === today) {
+    return { streakCount: state.streakCount, lastLessonDate: today, streakFreezeCount: 0 };
+  }
+  if (state.lastLessonDate && daysBetween(state.lastLessonDate, today) === 1) {
+    return { streakCount: state.streakCount + 1, lastLessonDate: today, streakFreezeCount: 0 };
+  }
+  return { streakCount: 1, lastLessonDate: today, streakFreezeCount: 0 };
+}
+
+/** Segundos de estudo registrados no dia. */
+export function studySecondsOn(studyLog: ProgressState["studyLog"], date: string): number {
+  const day = studyLog[date];
+  if (!day) {
+    return 0;
+  }
+  const total = Object.values(day).reduce((sum, value) => sum + value, 0);
+  return Math.min(MAX_STUDY_SECONDS_PER_DAY, total);
+}
+
+// ---------------------------------------------------------------------------
+// Leitura do armazenamento
+// ---------------------------------------------------------------------------
 
 function skillPercent(item: { correct: number; total: number } | undefined): number | null {
   if (!item || item.total <= 0) {
@@ -119,33 +267,34 @@ function isCard(value: unknown): value is SessionCard {
   );
 }
 
-function parseProgress(raw: string): ProgressState {
-  try {
-    const value = JSON.parse(raw) as Partial<ProgressState>;
-    const base = emptyProgress();
-    return {
-      ...base,
-      streakCount: Math.max(0, numberOr(value.streakCount, 0)),
-      lastLessonDate: typeof value.lastLessonDate === "string" ? value.lastLessonDate : null,
-      streakFreezeCount: Math.max(0, numberOr(value.streakFreezeCount, 1)),
-      badges: Array.isArray(value.badges) ? value.badges.filter((item) => typeof item === "string") : [],
-      cards: Array.isArray(value.cards) ? value.cards.filter(isCard) : [],
-      pendingReviews: Array.isArray(value.pendingReviews) ? value.pendingReviews.filter(isPending) : [],
-      lessonDate: typeof value.lessonDate === "string" ? value.lessonDate : null,
-      topic: typeof value.topic === "string" ? value.topic : null,
-      cachedLesson: isLesson(value.cachedLesson) ? value.cachedLesson : null,
-      history: Array.isArray(value.history) ? value.history.filter(isHistory) : [],
-      pro: value.pro === true,
-      speakingBest: Math.max(0, Math.min(100, numberOr(value.speakingBest, 0))),
-      journalCount: Math.max(0, numberOr(value.journalCount, 0)),
-      reconstruction: isAnchor(value.reconstruction) ? value.reconstruction : null,
-      reconstructionNext: isAnchor(value.reconstructionNext) ? value.reconstructionNext : null,
-      cognateKeys: Array.isArray(value.cognateKeys) ? value.cognateKeys.filter((item) => typeof item === "string").slice(0, 5) : [],
-      skills: readSkills(value.skills),
-    };
-  } catch {
-    return emptyProgress();
+function validTime(value: unknown): string | undefined {
+  return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : undefined;
+}
+
+/** Normaliza os campos de agendamento e leva cartões do tempo do SM-2 para o FSRS. */
+function readCard(card: SessionCard): SessionCard {
+  const { stability, difficulty, due, reviewed_at, ...rest } = card;
+  const clean: SessionCard = {
+    ...rest,
+    repetition_count: Math.max(0, Math.round(numberOr(card.repetition_count, 0))),
+    interval_days: Math.max(0, Math.round(numberOr(card.interval_days, 0))),
+    ease_factor: numberOr(card.ease_factor, 2.5),
+  };
+  if (typeof stability === "number" && Number.isFinite(stability) && stability > 0) {
+    clean.stability = stability;
   }
+  if (typeof difficulty === "number" && Number.isFinite(difficulty) && difficulty > 0) {
+    clean.difficulty = difficulty;
+  }
+  const dueAt = validTime(due);
+  if (dueAt) {
+    clean.due = dueAt;
+  }
+  const reviewedAt = validTime(reviewed_at);
+  if (reviewedAt) {
+    clean.reviewed_at = reviewedAt;
+  }
+  return seedFromSm2(clean);
 }
 
 function isPending(value: unknown): value is PendingReview {
@@ -156,7 +305,9 @@ function isPending(value: unknown): value is PendingReview {
   return (
     typeof review.client_id === "string" &&
     typeof review.front_phrase === "string" &&
-    (review.quality === 0 || review.quality === 3 || review.quality === 4 || review.quality === 5)
+    typeof review.back_translation === "string" &&
+    typeof review.context_sentence === "string" &&
+    isReviewQuality(review.quality)
   );
 }
 
@@ -196,89 +347,48 @@ function isLesson(value: unknown): value is LessonPayload {
   return typeof lesson.title === "string" && typeof lesson.story_text === "string" && Array.isArray(lesson.vocabulary);
 }
 
-export function isoDate(now = new Date()): string {
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
-export function daysBetween(from: string, to: string): number {
-  const start = Date.parse(`${from}T00:00:00Z`);
-  const end = Date.parse(`${to}T00:00:00Z`);
-  if (Number.isNaN(start) || Number.isNaN(end)) {
-    return 0;
+function readStudyLog(value: unknown): ProgressState["studyLog"] {
+  if (!value || typeof value !== "object") {
+    return {};
   }
-  return Math.round((end - start) / 86_400_000);
-}
-
-export function nextStreak(
-  state: Pick<ProgressState, "streakCount" | "lastLessonDate" | "streakFreezeCount">,
-  today: string,
-): Pick<ProgressState, "streakCount" | "lastLessonDate" | "streakFreezeCount"> {
-  if (state.lastLessonDate === today) {
-    return {
-      streakCount: state.streakCount,
-      lastLessonDate: today,
-      streakFreezeCount: state.streakFreezeCount,
-    };
-  }
-  if (!state.lastLessonDate) {
-    return { streakCount: 1, lastLessonDate: today, streakFreezeCount: state.streakFreezeCount };
-  }
-  const gap = daysBetween(state.lastLessonDate, today);
-  if (gap === 1) {
-    return { streakCount: state.streakCount + 1, lastLessonDate: today, streakFreezeCount: state.streakFreezeCount };
-  }
-  if (gap === 2 && state.streakFreezeCount > 0) {
-    return { streakCount: state.streakCount + 1, lastLessonDate: today, streakFreezeCount: state.streakFreezeCount - 1 };
-  }
-  return { streakCount: 1, lastLessonDate: today, streakFreezeCount: state.streakFreezeCount };
-}
-
-function withBadges(state: ProgressState): ProgressState {
-  const badges = new Set(state.badges);
-  if (state.lastLessonDate) {
-    badges.add("first_flame");
-  }
-  if (state.streakCount >= 3) {
-    badges.add("streak_3");
-  }
-  if (state.streakCount >= 7) {
-    badges.add("streak_7");
-  }
-  if (state.cards.filter((card) => card.status === "mastered").length >= 10) {
-    badges.add("words_10");
-  }
-  if (state.speakingBest >= 90) {
-    badges.add("clear_voice");
-  }
-  if (state.journalCount > 0) {
-    badges.add("journal_kept");
-  }
-  return { ...state, badges: [...badges] };
-}
-
-function mergeCards(existing: SessionCard[], incoming: SessionCard[]): SessionCard[] {
-  const byPhrase = new Map(existing.map((card) => [card.front_phrase.toLowerCase(), card]));
-  for (const card of incoming) {
-    const key = card.front_phrase.toLowerCase();
-    if (!byPhrase.has(key)) {
-      byPhrase.set(key, card);
+  const result: ProgressState["studyLog"] = {};
+  for (const [date, day] of Object.entries(value as Record<string, unknown>)) {
+    if (!isIsoDate(date) || !day || typeof day !== "object") {
+      continue;
+    }
+    const entries = Object.entries(day as Record<string, unknown>).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]) && entry[1] > 0,
+    );
+    if (entries.length > 0) {
+      result[date] = Object.fromEntries(entries.map(([key, seconds]) => [key, Math.min(MAX_STUDY_SECONDS_PER_DAY, Math.round(seconds))]));
     }
   }
-  return [...byPhrase.values()];
+  return result;
 }
 
 type LaneState = Omit<ProgressState, "pro" | "streakCount" | "lastLessonDate" | "streakFreezeCount">;
 
-interface ProgressBag {
-  version: 2;
-  pro: boolean;
-  streakCount: number;
-  lastLessonDate: string | null;
-  streakFreezeCount: number;
-  activeLang: string;
-  lanes: Record<string, LaneState>;
+function readLane(input: unknown): LaneState {
+  const value = (input && typeof input === "object" ? input : {}) as Partial<ProgressState>;
+  const sessionDays = normalizeDays(Array.isArray(value.sessionDays) ? value.sessionDays : []).slice(-MAX_SESSION_DAYS);
+  return {
+    badges: Array.isArray(value.badges) ? value.badges.filter((item) => typeof item === "string") : [],
+    cards: Array.isArray(value.cards) ? value.cards.filter(isCard).map(readCard) : [],
+    pendingReviews: Array.isArray(value.pendingReviews) ? value.pendingReviews.filter(isPending) : [],
+    lessonDate: typeof value.lessonDate === "string" ? value.lessonDate : null,
+    topic: typeof value.topic === "string" ? value.topic : null,
+    cachedLesson: isLesson(value.cachedLesson) ? value.cachedLesson : null,
+    history: Array.isArray(value.history) ? value.history.filter(isHistory) : [],
+    speakingBest: Math.max(0, Math.min(100, numberOr(value.speakingBest, 0))),
+    journalCount: Math.max(0, numberOr(value.journalCount, 0)),
+    reconstruction: isAnchor(value.reconstruction) ? value.reconstruction : null,
+    reconstructionNext: isAnchor(value.reconstructionNext) ? value.reconstructionNext : null,
+    cognateKeys: Array.isArray(value.cognateKeys) ? value.cognateKeys.filter((item) => typeof item === "string").slice(0, 5) : [],
+    skills: readSkills(value.skills),
+    sessionDays,
+    bestStreak: Math.max(0, Math.round(numberOr(value.bestStreak, 0)), bestStreakFromDays(sessionDays)),
+    studyLog: readStudyLog(value.studyLog),
+  };
 }
 
 function takeLane(state: ProgressState): LaneState {
@@ -290,76 +400,93 @@ function emptyLane(): LaneState {
   return takeLane(emptyProgress());
 }
 
+interface ProgressBag {
+  version: 3;
+  pro: boolean;
+  activeLang: string;
+  lanes: Record<string, LaneState>;
+}
+
 function emptyBag(): ProgressBag {
-  return {
-    version: 2,
-    pro: false,
-    streakCount: 0,
-    lastLessonDate: null,
-    streakFreezeCount: 1,
-    activeLang: "pending",
-    lanes: { pending: emptyLane() },
-  };
+  return { version: 3, pro: false, activeLang: PENDING_LANE, lanes: { [PENDING_LANE]: emptyLane() } };
 }
 
-function parseLane(value: unknown): LaneState {
-  return takeLane(parseProgress(JSON.stringify({ ...emptyProgress(), ...(value && typeof value === "object" ? value : {}) })));
+/**
+ * Formatos antigos guardavam a ofensiva fora das faixas (com congelamento). Só o último dia
+ * com sessão é um fato conhecido: ele vira o primeiro dia da faixa ativa, e a contagem antiga
+ * fica como melhor ofensiva.
+ */
+function adoptLegacyStreak(lane: LaneState, legacy: { streakCount?: unknown; lastLessonDate?: unknown }): LaneState {
+  const last = isIsoDate(legacy.lastLessonDate) ? legacy.lastLessonDate : null;
+  const count = Math.max(0, Math.round(numberOr(legacy.streakCount, 0)));
+  if (!last && count === 0) {
+    return lane;
+  }
+  const sessionDays = last ? normalizeDays([...lane.sessionDays, last]) : lane.sessionDays;
+  return { ...lane, sessionDays, bestStreak: Math.max(lane.bestStreak, count, bestStreakFromDays(sessionDays)) };
 }
 
-function parseBag(raw: string): ProgressBag {
+export function parseProgressBag(raw: string): ProgressBag {
+  let value: Record<string, unknown>;
   try {
-    const value = JSON.parse(raw) as Partial<ProgressBag> & Partial<ProgressState>;
-    if (value && value.version === 2 && value.lanes && typeof value.lanes === "object") {
-      const lanes: Record<string, LaneState> = {};
-      for (const [lang, lane] of Object.entries(value.lanes)) {
-        lanes[lang] = parseLane(lane);
-      }
-      if (Object.keys(lanes).length === 0) {
-        lanes.pending = emptyLane();
-      }
-      return {
-        version: 2,
-        pro: value.pro === true,
-        streakCount: Math.max(0, numberOr(value.streakCount, 0)),
-        lastLessonDate: typeof value.lastLessonDate === "string" ? value.lastLessonDate : null,
-        streakFreezeCount: Math.max(0, numberOr(value.streakFreezeCount, 1)),
-        activeLang: typeof value.activeLang === "string" && value.activeLang ? value.activeLang : "pending",
-        lanes,
-      };
-    }
+    value = JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return emptyBag();
   }
-  const legacy = parseProgress(raw);
+  if (!value || typeof value !== "object") {
+    return emptyBag();
+  }
+  if ((value.version === 2 || value.version === 3) && value.lanes && typeof value.lanes === "object") {
+    const lanes: Record<string, LaneState> = {};
+    for (const [lang, lane] of Object.entries(value.lanes as Record<string, unknown>)) {
+      lanes[lang] = readLane(lane);
+    }
+    const activeLang = typeof value.activeLang === "string" && value.activeLang ? value.activeLang : PENDING_LANE;
+    if (!lanes[activeLang]) {
+      lanes[activeLang] = emptyLane();
+    }
+    if (value.version === 2) {
+      lanes[activeLang] = adoptLegacyStreak(lanes[activeLang]!, value);
+    }
+    return { version: 3, pro: value.pro === true, activeLang, lanes };
+  }
+  // v1: um único estado sem faixas.
   return {
-    version: 2,
-    pro: legacy.pro,
-    streakCount: legacy.streakCount,
-    lastLessonDate: legacy.lastLessonDate,
-    streakFreezeCount: legacy.streakFreezeCount,
-    activeLang: "pending",
-    lanes: { pending: takeLane(legacy) },
+    version: 3,
+    pro: value.pro === true,
+    activeLang: PENDING_LANE,
+    lanes: { [PENDING_LANE]: adoptLegacyStreak(readLane(value), value) },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Store
+// ---------------------------------------------------------------------------
 
 const serverProgress = emptyProgress();
 let bag = emptyBag();
 let snapshot = composeView(bag);
 const listeners = new Set<() => void>();
 
-function composeView(next: ProgressBag): ProgressState {
+function composeView(next: ProgressBag, today = isoDate()): ProgressState {
   const lane = next.lanes[next.activeLang] ?? emptyLane();
+  const streak = streakSummary(lane.sessionDays, today, lane.bestStreak);
   return {
     ...lane,
     pro: next.pro,
-    streakCount: next.streakCount,
-    lastLessonDate: next.lastLessonDate,
-    streakFreezeCount: next.streakFreezeCount,
+    streakCount: streak.current,
+    lastLessonDate: streak.lastDay,
+    streakFreezeCount: 0,
+    bestStreak: streak.best,
   };
 }
 
 function view(): ProgressState {
   return snapshot;
+}
+
+function notify(): void {
+  listeners.forEach((listener) => listener());
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -381,7 +508,7 @@ function emit(): void {
     debounceTimer = null;
     kv.set(STORAGE_KEY, JSON.stringify(bag));
   }, 250);
-  listeners.forEach((listener) => listener());
+  notify();
 }
 
 function update(recipe: (current: ProgressState) => ProgressState): void {
@@ -393,33 +520,51 @@ function update(recipe: (current: ProgressState) => ProgressState): void {
   bag = {
     ...bag,
     pro: next.pro,
-    streakCount: next.streakCount,
-    lastLessonDate: next.lastLessonDate,
-    streakFreezeCount: next.streakFreezeCount,
     lanes: { ...bag.lanes, [bag.activeLang]: takeLane(next) },
   };
   emit();
 }
 
-export function hydrateProgress(): void {
-  const raw = kv.getString(STORAGE_KEY);
-  if (raw) {
-    bag = parseBag(raw);
+function updateLane(lang: string, recipe: (lane: LaneState) => LaneState): void {
+  const lane = bag.lanes[lang];
+  if (!lane) {
+    return;
   }
+  const next = recipe(lane);
+  if (next === lane) {
+    return;
+  }
+  bag = { ...bag, lanes: { ...bag.lanes, [lang]: next } };
+  emit();
+}
+
+export function hydrateProgress(): void {
+  // Nada escrito em memória pode se perder ao reler o disco.
+  flushProgressDebounce();
+  const raw = kv.getString(STORAGE_KEY);
+  bag = raw ? parseProgressBag(raw) : emptyBag();
   snapshot = composeView(bag);
+  hydrateXp();
+  bindXpLang(bag.activeLang);
+  notify();
 }
 
 export function getProgress(): ProgressState {
   return snapshot;
 }
 
+/** Curso (idioma-alvo) ao qual o progresso está apontado. */
+export function activeProgressLang(): string {
+  return bag.activeLang;
+}
+
 export function switchProgressLang(lang: string): void {
   const key = lang.trim().toLowerCase();
-  if (!key || key === bag.activeLang) {
-    if (!bag.lanes[key]) {
-      bag = { ...bag, lanes: { ...bag.lanes, [key]: emptyLane() } };
-      emit();
-    }
+  if (!key) {
+    return;
+  }
+  if (key === bag.activeLang) {
+    bindXpLang(key);
     return;
   }
   const lanes = { ...bag.lanes };
@@ -427,6 +572,7 @@ export function switchProgressLang(lang: string): void {
     lanes[key] = emptyLane();
   }
   bag = { ...bag, activeLang: key, lanes };
+  bindXpLang(key);
   emit();
 }
 
@@ -437,15 +583,16 @@ export function bindProgressLang(lang: string): void {
   }
   const lanes = { ...bag.lanes };
   let changed = false;
-  if (lanes.pending && key !== "pending" && !lanes[key]) {
-    lanes[key] = lanes.pending;
-    delete lanes.pending;
+  if (lanes[PENDING_LANE] && key !== PENDING_LANE && !lanes[key]) {
+    lanes[key] = lanes[PENDING_LANE]!;
+    delete lanes[PENDING_LANE];
     changed = true;
   }
   if (!lanes[key]) {
     lanes[key] = emptyLane();
     changed = true;
   }
+  bindXpLang(key);
   if (bag.activeLang === key && !changed) {
     return;
   }
@@ -453,14 +600,16 @@ export function bindProgressLang(lang: string): void {
   emit();
 }
 
-export function laneStats(lang: string): { learning: number; mastered: number; words: number } {
+export function laneStats(lang: string): { learning: number; mastered: number; words: number; due: number } {
   const lane = bag.lanes[lang.trim().toLowerCase()];
   if (!lane) {
-    return { learning: 0, mastered: 0, words: 0 };
+    return { learning: 0, mastered: 0, words: 0, due: 0 };
   }
   const mastered = lane.cards.filter((card) => card.status === "mastered").length;
   const learning = lane.cards.filter((card) => card.status !== "mastered").length;
-  return { learning, mastered, words: lane.cards.length };
+  const now = Date.now();
+  const due = lane.cards.filter((card) => isDue(card, now)).length;
+  return { learning, mastered, words: lane.cards.length, due };
 }
 
 export function subscribeProgress(listener: () => void): () => void {
@@ -472,21 +621,100 @@ export function useProgress(): ProgressState {
   return useSyncExternalStore(subscribeProgress, getProgress, () => serverProgress);
 }
 
-export function cardsForLesson(lessonCards: SessionCard[], stored: SessionCard[]): SessionCard[] {
-  const byPhrase = new Map(stored.map((card) => [card.front_phrase.toLowerCase(), card]));
-  return lessonCards.map((card) => byPhrase.get(card.front_phrase.toLowerCase()) ?? card);
+// ---------------------------------------------------------------------------
+// Cartões e FSRS
+// ---------------------------------------------------------------------------
+
+function phraseKey(card: Pick<SessionCard, "front_phrase">): string {
+  return card.front_phrase.trim().toLowerCase();
 }
 
-export function mergeServerCards(local: SessionCard[], remote: SessionCard[]): SessionCard[] {
-  const byPhrase = new Map(local.map((card) => [card.front_phrase.toLowerCase(), card]));
-  for (const card of remote) {
-    const key = card.front_phrase.toLowerCase();
-    const existing = byPhrase.get(key);
-    byPhrase.set(key, existing ? { ...existing, ...card, id: card.id || existing.id } : card);
+function reviewedTime(card: SessionCard): number {
+  const at = card.reviewed_at ? Date.parse(card.reviewed_at) : Number.NaN;
+  return Number.isFinite(at) ? at : Number.NEGATIVE_INFINITY;
+}
+
+/** Campos de agendamento de um cartão (o que o FSRS mexe). */
+function schedulingOf(card: SessionCard): Partial<SessionCard> {
+  const fields: Partial<SessionCard> = {
+    repetition_count: card.repetition_count,
+    interval_days: card.interval_days,
+    ease_factor: card.ease_factor,
+    status: card.status,
+  };
+  if (card.stability !== undefined) fields.stability = card.stability;
+  if (card.difficulty !== undefined) fields.difficulty = card.difficulty;
+  if (card.due !== undefined) fields.due = card.due;
+  if (card.reviewed_at !== undefined) fields.reviewed_at = card.reviewed_at;
+  return fields;
+}
+
+/** Insere ou substitui pelo texto da frase, sem deixar uma cópia antiga apagar uma revisão mais nova. */
+function upsertCards(existing: SessionCard[], incoming: SessionCard[]): SessionCard[] {
+  const byPhrase = new Map(existing.map((card) => [phraseKey(card), card]));
+  for (const card of incoming) {
+    const key = phraseKey(card);
+    const stored = byPhrase.get(key);
+    if (stored && reviewedTime(stored) > reviewedTime(card)) {
+      byPhrase.set(key, { ...card, ...schedulingOf(stored) });
+    } else {
+      byPhrase.set(key, card);
+    }
   }
   return [...byPhrase.values()];
 }
 
+function mergeCards(existing: SessionCard[], incoming: SessionCard[]): SessionCard[] {
+  const byPhrase = new Map(existing.map((card) => [phraseKey(card), card]));
+  for (const card of incoming) {
+    const key = phraseKey(card);
+    if (!byPhrase.has(key)) {
+      byPhrase.set(key, card);
+    }
+  }
+  return [...byPhrase.values()];
+}
+
+export function cardsForLesson(lessonCards: SessionCard[], stored: SessionCard[]): SessionCard[] {
+  const byPhrase = new Map(stored.map((card) => [phraseKey(card), card]));
+  return lessonCards.map((card) => byPhrase.get(phraseKey(card)) ?? card);
+}
+
+/**
+ * Junta os cartões do servidor (`GET /srs/cards`) com os locais. O servidor é a referência,
+ * exceto quando o cartão local tem revisões que ainda não subiram (mais repetições): aí o
+ * agendamento local fica, para a fila não voltar no tempo.
+ */
+export function mergeServerCards(local: SessionCard[], remote: SessionCard[]): SessionCard[] {
+  const byPhrase = new Map(local.map((card) => [phraseKey(card), card]));
+  for (const card of remote) {
+    const key = phraseKey(card);
+    const existing = byPhrase.get(key);
+    if (!existing) {
+      byPhrase.set(key, card);
+    } else if (existing.repetition_count > card.repetition_count) {
+      byPhrase.set(key, { ...existing, ...card, ...schedulingOf(existing), id: card.id || existing.id });
+    } else {
+      byPhrase.set(key, { ...existing, ...card, id: card.id || existing.id });
+    }
+  }
+  return [...byPhrase.values()];
+}
+
+/** Quantos cartões estão vencidos agora. */
+export function dueCount(cards: readonly SessionCard[], now = Date.now()): number {
+  return cards.filter((card) => isDue(card, now)).length;
+}
+
+/** Fila de revisão do curso ativo: vencidos, o mais atrasado primeiro. */
+export function dueQueue(now = Date.now()): SessionCard[] {
+  return dueCards(view().cards, now);
+}
+
+/**
+ * Fila da etapa de revisão: até 12 cartões vencidos (ordenados pelo vencimento, o mais
+ * atrasado primeiro), alguns cartões nunca revisados de antes, e o vocabulário da lição.
+ */
 export function reviewQueue(
   lessonCards: SessionCard[],
   stored: SessionCard[],
@@ -496,15 +724,12 @@ export function reviewQueue(
   const held = throughLang ? cardsForThrough(stored, throughLang) : stored;
   const incoming = throughLang ? cardsForThrough(lessonCards, throughLang) : lessonCards;
   const lesson = cardsForLesson(incoming, held);
-  const keys = new Set(lesson.map((card) => card.front_phrase.toLowerCase()));
-  const due = held.filter((card) => {
-    if (keys.has(card.front_phrase.toLowerCase()) || !card.due) {
-      return false;
-    }
-    const at = Date.parse(card.due);
-    return Number.isFinite(at) && at <= now;
-  });
-  return [...due.slice(0, 12), ...lesson];
+  const keys = new Set(lesson.map(phraseKey));
+  const outside = held.filter((card) => !keys.has(phraseKey(card)));
+  const due = dueCards(outside, now).slice(0, DUE_IN_QUEUE);
+  const room = Math.max(0, Math.min(NEW_IN_QUEUE, DUE_IN_QUEUE - due.length));
+  const fresh = outside.filter(isNewCard).slice(0, room);
+  return [...due, ...fresh, ...lesson];
 }
 
 export function dropForeignGlosses(throughLang: string): void {
@@ -558,36 +783,163 @@ export function rememberLesson(
 }
 
 export function persistDeck(lessonCards: SessionCard[]): void {
-  update((current) => {
-    const byPhrase = new Map(current.cards.map((card) => [card.front_phrase.toLowerCase(), card]));
-    for (const card of lessonCards) {
-      byPhrase.set(card.front_phrase.toLowerCase(), card);
-    }
-    return withBadges({ ...current, cards: [...byPhrase.values()] });
-  });
+  update((current) => withBadges({ ...current, cards: upsertCards(current.cards, lessonCards) }));
 }
 
-export function enqueueReview(card: SessionCard, quality: ReviewQuality): void {
-  const clientId = `rev_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+const SYNC_LIMITS = { front: 240, back: 240, context: 500 } as const;
+const CLIENT_ID = /^[a-zA-Z0-9_-]{8,80}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function newClientId(): string {
+  const random = globalThis.crypto?.randomUUID?.().replace(/-/g, "").slice(0, 12) ?? Math.random().toString(36).slice(2, 10);
+  return `rev_${Date.now().toString(36)}${random}`;
+}
+
+/** A revisão no formato aceito por `/srs/sync`, ou `null` se não há como enviá-la. */
+function wireReview(review: PendingReview): PendingReview | null {
+  const front = review.front_phrase.trim().slice(0, SYNC_LIMITS.front);
+  const back = review.back_translation.trim().slice(0, SYNC_LIMITS.back);
+  const context = (review.context_sentence.trim() || front).slice(0, SYNC_LIMITS.context);
+  if (!front || !back || !CLIENT_ID.test(review.client_id) || !isReviewQuality(review.quality)) {
+    return null;
+  }
+  return {
+    client_id: review.client_id,
+    front_phrase: front,
+    back_translation: back,
+    context_sentence: context,
+    quality: review.quality,
+    ...(review.reviewed_at ? { reviewed_at: review.reviewed_at } : {}),
+  };
+}
+
+/** Chave do XP de revisão: 1 XP por cartão por dia (`awardXp("card", cardXpKey(...))`). */
+export function cardXpKey(card: Pick<SessionCard, "front_phrase">, date = isoDate()): string {
+  return `${date}:${phraseKey(card)}`;
+}
+
+/**
+ * Registra uma nota já aplicada ao cartão (o chamador agendou com `applyFsrs` e gravou com
+ * `persistDeck`) na fila de sincronização com `/srs/sync`. Não paga XP: quem usa este caminho
+ * paga com `awardXp("card", cardXpKey(card))`. `reviewCard` faz tudo de uma vez.
+ */
+export function enqueueReview(card: SessionCard, quality: ReviewQuality, now = Date.now()): void {
+  if (!isReviewQuality(quality) || !card.front_phrase.trim()) {
+    return;
+  }
+  const review = wireReview({
+    client_id: newClientId(),
+    front_phrase: card.front_phrase,
+    back_translation: card.back_translation,
+    context_sentence: card.context_sentence,
+    quality,
+    reviewed_at: new Date(now).toISOString(),
+  });
+  if (!review) {
+    return;
+  }
   update((current) => ({
     ...current,
-    pendingReviews: [
-      ...current.pendingReviews,
-      {
-        client_id: clientId,
-        front_phrase: card.front_phrase,
-        back_translation: card.back_translation,
-        context_sentence: card.context_sentence,
-        quality,
-      },
-    ].slice(-200),
+    pendingReviews: [...current.pendingReviews, review].slice(-MAX_PENDING_REVIEWS),
   }));
   publishSync("queued");
   void flushReviews();
 }
 
+/**
+ * Revisão FSRS completa de um cartão do curso ativo: agenda (estabilidade, dificuldade,
+ * vencimento), grava, põe na fila de sincronização e paga o XP do cartão. Retorna o cartão
+ * agendado. Se o cartão gravado tem uma revisão mais nova que a cópia recebida, parte dele.
+ */
+export function reviewCard(card: SessionCard, quality: ReviewQuality, now = Date.now()): SessionCard {
+  const stored = view().cards.find((item) => phraseKey(item) === phraseKey(card));
+  // O chamador já gravou esta mesma nota (ex.: `persistDeck` com o resultado do SrsStage)
+  // há instantes: o cartão gravado tem exatamente uma revisão a mais. Não agenda de novo.
+  const alreadyGraded =
+    stored !== undefined &&
+    stored.repetition_count === card.repetition_count + 1 &&
+    reviewedTime(stored) > reviewedTime(card) &&
+    now - reviewedTime(stored) >= 0 &&
+    now - reviewedTime(stored) < ALREADY_GRADED_MS;
+  const base = stored && reviewedTime(stored) >= reviewedTime(card) ? { ...card, ...schedulingOf(stored) } : card;
+  const graded = alreadyGraded && stored ? stored : applyFsrs(base, quality, now);
+  if (!alreadyGraded) {
+    update((current) => withBadges({ ...current, cards: upsertCards(current.cards, [graded]) }));
+  }
+  const day = isoDate(new Date(now));
+  awardXp("card", cardXpKey(graded, day), day);
+  enqueueReview(graded, quality, now);
+  return graded;
+}
+
+// ---------------------------------------------------------------------------
+// Sessão, ofensiva, tempo de estudo e marcas
+// ---------------------------------------------------------------------------
+
+function withBadges(state: ProgressState): ProgressState {
+  const badges = new Set(state.badges);
+  const best = Math.max(state.bestStreak, bestStreakFromDays(state.sessionDays));
+  if (state.sessionDays.length > 0) {
+    badges.add("first_flame");
+  }
+  if (best >= 3) {
+    badges.add("streak_3");
+  }
+  if (best >= 7) {
+    badges.add("streak_7");
+  }
+  if (state.cards.filter((card) => card.status === "mastered").length >= 10) {
+    badges.add("words_10");
+  }
+  if (state.speakingBest >= 90) {
+    badges.add("clear_voice");
+  }
+  if (state.journalCount > 0) {
+    badges.add("journal_kept");
+  }
+  return { ...state, badges: [...badges] };
+}
+
+/** Marca o dia como sessão completa neste curso; é isso que conta para a ofensiva. */
 export function markSessionComplete(today = isoDate()): void {
-  update((current) => withBadges({ ...current, ...nextStreak(current, today) }));
+  if (!isIsoDate(today)) {
+    return;
+  }
+  update((current) => {
+    if (current.sessionDays.includes(today)) {
+      return current;
+    }
+    const sessionDays = normalizeDays([...current.sessionDays, today]).slice(-MAX_SESSION_DAYS);
+    const bestStreak = Math.max(current.bestStreak, bestStreakFromDays(sessionDays));
+    return withBadges({ ...current, sessionDays, bestStreak });
+  });
+}
+
+/**
+ * Soma tempo de estudo real ao dia. Com `key`, guarda o MAIOR valor visto para aquela
+ * atividade (passe o tempo decorrido total da sessão quantas vezes quiser, sem contar em
+ * dobro); sem `key`, soma `seconds` ao dia.
+ */
+export function recordStudyTime(seconds: number, options: { date?: string; key?: string } = {}): void {
+  const date = options.date ?? isoDate();
+  if (!isIsoDate(date) || !Number.isFinite(seconds) || seconds <= 0) {
+    return;
+  }
+  const amount = Math.min(MAX_STUDY_SECONDS_PER_DAY, Math.round(seconds));
+  const key = options.key?.trim() || "_";
+  update((current) => {
+    const day = current.studyLog[date] ?? {};
+    const previous = day[key] ?? 0;
+    const value = options.key ? Math.max(previous, amount) : Math.min(MAX_STUDY_SECONDS_PER_DAY, previous + amount);
+    if (value === previous) {
+      return current;
+    }
+    const oldest = shiftIsoDate(date, -STUDY_RETENTION_DAYS);
+    const studyLog = Object.fromEntries(
+      Object.entries({ ...current.studyLog, [date]: { ...day, [key]: value } }).filter(([logged]) => logged >= oldest),
+    );
+    return { ...current, studyLog };
+  });
 }
 
 export function recordSpeaking(score: number): void {
@@ -628,7 +980,7 @@ export function completeReconstruction(today = isoDate()): void {
 }
 
 export function setPro(pro: boolean): void {
-  update((current) => ({ ...current, pro }));
+  update((current) => (current.pro === pro ? current : { ...current, pro }));
 }
 
 export function clearLocalProgress(): void {
@@ -640,13 +992,18 @@ export function clearLocalProgress(): void {
   resetXp();
   snapshot = composeView(bag);
   kv.set(STORAGE_KEY, JSON.stringify(bag));
-  listeners.forEach((listener) => listener());
+  publishSync("device");
+  notify();
 }
 
-export function applyRemoteFreeze(count: number): void {
-  const next = Math.max(0, Math.floor(count));
-  update((current) => (current.streakFreezeCount === next ? current : { ...current, streakFreezeCount: next }));
+/** @deprecated Não existe congelamento de ofensiva; mantida só para quem ainda chama. */
+export function applyRemoteFreeze(_count: number): void {
+  // Ofensiva honesta: nada a aplicar.
 }
+
+// ---------------------------------------------------------------------------
+// Sincronização das revisões
+// ---------------------------------------------------------------------------
 
 export type SyncPhase = "device" | "queued" | "sent" | "paused";
 
@@ -673,34 +1030,77 @@ export function useSyncPhase(): SyncSnapshot {
 
 let flushing = false;
 
+/**
+ * Envia as revisões pendentes do curso ativo para `/srs/sync`. O servidor aplica no
+ * idioma-alvo atual da conta, então só envia quando a faixa ativa é esse idioma.
+ */
 export async function flushReviews(): Promise<void> {
   const session = getSession();
-  if (!session) {
+  if (!session || !UUID.test(session.user.id)) {
     publishSync("device");
     return;
   }
-  if (view().pendingReviews.length === 0) {
+  const lane = bag.activeLang;
+  if ((bag.lanes[lane]?.pendingReviews.length ?? 0) === 0) {
     publishSync("sent");
     return;
   }
-  if (flushing) {
+  if (flushing || lane !== (session.user.target_lang ?? "").trim().toLowerCase()) {
     publishSync("queued");
     return;
   }
   flushing = true;
   publishSync("queued");
-  const batch = view().pendingReviews.slice(0, 50);
   try {
-    const synced = await syncReviews(session.token, session.user.id, batch);
-    const done = new Set(synced);
-    update((current) => ({
-      ...current,
-      pendingReviews: current.pendingReviews.filter((review) => !done.has(review.client_id)),
-    }));
+    for (let round = 0; round < SYNC_ROUNDS; round += 1) {
+      const pending = bag.lanes[lane]?.pendingReviews ?? [];
+      const unsendable = new Set(pending.filter((review) => wireReview(review) === null).map((review) => review.client_id));
+      const batch = pending
+        .map(wireReview)
+        .filter((review): review is PendingReview => review !== null)
+        .slice(0, SYNC_BATCH);
+      if (batch.length === 0) {
+        if (unsendable.size > 0) {
+          updateLane(lane, (current) => ({
+            ...current,
+            pendingReviews: current.pendingReviews.filter((review) => !unsendable.has(review.client_id)),
+          }));
+        }
+        break;
+      }
+      const synced = await syncReviews(session.token, session.user.id, batch);
+      const done = new Set([...synced, ...unsendable]);
+      updateLane(lane, (current) => {
+        const pendingReviews = current.pendingReviews.filter((review) => !done.has(review.client_id));
+        return pendingReviews.length === current.pendingReviews.length ? current : { ...current, pendingReviews };
+      });
+      if (synced.length === 0) {
+        break;
+      }
+    }
     publishSync(view().pendingReviews.length === 0 ? "sent" : "queued");
   } catch {
     publishSync("paused");
   } finally {
     flushing = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Inicialização
+// ---------------------------------------------------------------------------
+
+hydrateProgress();
+
+// F5 / fechar a aba dentro dos 250 ms do debounce não pode perder a última nota.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("pagehide", flushProgressDebounce);
+  window.addEventListener("beforeunload", flushProgressDebounce);
+}
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      flushProgressDebounce();
+    }
+  });
 }

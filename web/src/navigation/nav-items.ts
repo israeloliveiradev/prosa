@@ -1,89 +1,28 @@
-import type { IconName } from "@/ui/icon";
+import type { TactileIconName } from "@/components/tactile/tactile-icon";
+import type { ShellCopy } from "@/lib/copy/shell";
+
+type LabelKey = { [K in keyof ShellCopy]: ShellCopy[K] extends string ? K : never }[keyof ShellCopy];
 
 export interface NavItemConfig {
   id: string;
-  path: string;
-  icon: IconName;
-  labelKey: string;
-  defaultLabel: string;
-  enLabel: string;
-  adminOnly?: boolean;
+  path: "/" | "/path" | "/news" | "/talk" | "/profile" | "/settings" | "/guide";
+  icon: TactileIconName;
+  labelKey: LabelKey;
 }
 
 /**
- * Destinos primários (máximo 5) exibidos na barra de abas do celular
- * e no topo da navegação da sidebar no desktop.
+ * Os cinco destinos do aplicativo: barra lateral no desktop/tablet, abas embaixo no celular.
  */
 export const PRIMARY_NAV_ITEMS: readonly NavItemConfig[] = [
-  {
-    id: "home",
-    path: "/",
-    icon: "home",
-    labelKey: "navHome",
-    defaultLabel: "Início",
-    enLabel: "Home",
-  },
-  {
-    id: "practice",
-    path: "/practice",
-    icon: "practice",
-    labelKey: "navPractice",
-    defaultLabel: "Prática",
-    enLabel: "Practice",
-  },
-  {
-    id: "memory",
-    path: "/memory",
-    icon: "memory",
-    labelKey: "navMemory",
-    defaultLabel: "Memória",
-    enLabel: "Memory",
-  },
-  {
-    id: "news",
-    path: "/news",
-    icon: "news",
-    labelKey: "navNews",
-    defaultLabel: "Notícias",
-    enLabel: "News",
-  },
-  {
-    id: "profile",
-    path: "/profile",
-    icon: "user",
-    labelKey: "navProfile",
-    defaultLabel: "Você",
-    enLabel: "You",
-  },
-] as const;
+  { id: "today", path: "/", icon: "sun", labelKey: "navToday" },
+  { id: "path", path: "/path", icon: "route", labelKey: "navPath" },
+  { id: "reading", path: "/news", icon: "book", labelKey: "navReading" },
+  { id: "talk", path: "/talk", icon: "chat", labelKey: "navTalk" },
+  { id: "you", path: "/profile", icon: "user", labelKey: "navYou" },
+];
 
-/**
- * Destinos secundários exibidos no rodapé da sidebar e nos menus de suporte.
- */
+/** Destinos de apoio, no menu da conta. */
 export const SECONDARY_NAV_ITEMS: readonly NavItemConfig[] = [
-  {
-    id: "settings",
-    path: "/settings",
-    icon: "settings",
-    labelKey: "navSettings",
-    defaultLabel: "Ajustes",
-    enLabel: "Settings",
-  },
-  {
-    id: "guide",
-    path: "/guide",
-    icon: "book",
-    labelKey: "navGuide",
-    defaultLabel: "Como usar",
-    enLabel: "Guide",
-  },
-  {
-    id: "admin",
-    path: "/admin",
-    icon: "shield",
-    labelKey: "navAdmin",
-    defaultLabel: "Administração",
-    enLabel: "Admin",
-    adminOnly: true,
-  },
-] as const;
+  { id: "settings", path: "/settings", icon: "sliders", labelKey: "menuSettings" },
+  { id: "guide", path: "/guide", icon: "help", labelKey: "menuGuide" },
+];

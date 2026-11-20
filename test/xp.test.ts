@@ -67,16 +67,19 @@ describe("xp rules and calculations", () => {
     const day1 = "2026-10-08";
     const day2 = "2026-10-09";
 
-    const res1 = applyAward(state, "speech", "speech-best", day1);
+    const res1 = applyAward(state, "speech", `${day1}:speech`, day1);
     assert.equal(res1.gained, 5);
     state = res1.state;
 
     // Repetido no mesmo dia
-    const res2 = applyAward(state, "speech", "speech-best", day1);
+    const res2 = applyAward(state, "speech", `${day1}:speech`, day1);
     assert.equal(res2.gained, 0);
 
-    // No dia seguinte
-    const res3 = applyAward(state, "speech", "speech-best", day2);
+    // A mesma ação (mesma chave) não paga de novo em outro dia
+    assert.equal(applyAward(state, "speech", `${day1}:speech`, day2).gained, 0);
+
+    // No dia seguinte, a ação nova daquele dia paga
+    const res3 = applyAward(state, "speech", `${day2}:speech`, day2);
     assert.equal(res3.gained, 5);
     state = res3.state;
 

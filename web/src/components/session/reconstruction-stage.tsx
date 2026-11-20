@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from "expo-audio";
+import { IconMic } from "@/components/session/session-icons";
+import { Kicker, Notice, StageCard } from "@/components/session/stage-kit";
+import { TactileButton } from "@/components/tactile/tactile-button";
 import { reconstructStory, transcribeSpeech } from "@/lib/api";
+import { fill, SESSION_COPY } from "@/lib/copy/session";
+import { useAreaCopy } from "@/lib/copy/area";
 import { tap } from "@/lib/haptics";
 import { useCopy } from "@/lib/i18n";
 import type { ReconstructionAnchor } from "@/lib/reconstruction";
@@ -16,14 +21,15 @@ export function ReconstructionStage({
   onCards,
 }: {
   anchor: ReconstructionAnchor;
-  onCompleted: () => void;
+  /** Chamado uma vez, quando a comparação fecha a escada de correção. */
+  onCompleted: (report: ReconstructionReport) => void;
   onCards?: (cards: RepairCard[]) => void;
 }) {
   const { palette } = useTheme();
   const copy = useCopy();
+  const local = useAreaCopy(SESSION_COPY);
   const session = useSession();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recordingRef = useRef(false);
   const finishedRef = useRef(false);
   const [text, setText] = useState("");
   const [tryIndex, setTryIndex] = useState(1);
@@ -38,7 +44,6 @@ export function ReconstructionStage({
 
   useEffect(() => {
     return () => {
-      recordingRef.current = false;
       void stopIfRecording(recorderRef.current);
     };
   }, []);
@@ -48,7 +53,6 @@ export function ReconstructionStage({
       return;
     }
     if (recording) {
-      recordingRef.current = false;
       setRecording(false);
       setPending(true);
       setError(null);
@@ -56,32 +60,35 @@ export function ReconstructionStage({
         await stopIfRecording(recorder);
         const uri = recorder.uri;
         if (!uri) {
-          throw new Error("A gravação não foi salva.");
+          throw new Error(local.recordingLost);
         }
         const spoken = await transcribeSpeech(uri, anchor.targetLang);
         if (!spoken) {
-          throw new Error("Não ouvi fala nessa gravação.");
+          throw new Error(local.noSpeechHeard);
         }
         setText((current) => (current.trim() ? `${current.trim()} ${spoken}` : spoken));
         void tap("light");
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Não foi possível transcrever a fala.");
+        setError(caught instanceof Error ? caught.message : local.transcribeFailed);
       } finally {
         setPending(false);
       }
       return;
     }
-    const permission = await requestRecordingPermissionsAsync();
-    if (!permission.granted) {
-      setError("Precisamos do microfone para ditar a história.");
-      return;
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setError(local.micNeeded);
+        return;
+      }
+      setError(null);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setRecording(true);
+      void tap("light");
+    } catch {
+      setError(local.micNeeded);
     }
-    setError(null);
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    recordingRef.current = true;
-    setRecording(true);
-    void tap("light");
   }
 
   async function submit() {
@@ -107,11 +114,11 @@ export function ReconstructionStage({
         setTryIndex((current) => Math.min(4, current + 1));
       } else if (!finishedRef.current) {
         finishedRef.current = true;
-        onCompleted();
+        onCompleted(report);
       }
       void tap(report.score >= 80 ? "success" : "medium");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Não foi possível comparar a história.");
+      setError(caught instanceof Error ? caught.message : local.rebuildFailed);
     } finally {
       setPending(false);
     }
@@ -120,58 +127,46 @@ export function ReconstructionStage({
   const locked = pending || text.trim().length === 0;
 
   return (
-    <View className="mb-8">
-      <Text className="font-label text-xs uppercase tracking-widest text-ember">Reconstrução</Text>
-      <Text className="font-displayItalic mt-2 text-headline leading-10 text-ink">Reescreva a história. Só a tradução está aqui.</Text>
-      <View accessibilityLabel="Tradução para reescrever" className="mt-4 rounded-[28px] bg-card px-5 py-5">
-        <Text className="text-lg leading-7 text-ink">{anchor.translation}</Text>
-      </View>
-      <Text className="mt-4 font-label text-sm text-muted">Sua reescrita</Text>
-      <TextInput
-        value={text}
-        onChangeText={setText}
-        editable={!finished}
-        multiline
-        textAlignVertical="top"
-        placeholder="Escreva de novo, no idioma que você estuda"
-        placeholderTextColor={palette.onSurfaceVariant}
-        accessibilityLabel="Reescrita da história"
-        className="mt-2 min-h-40 rounded-[28px] bg-card px-5 py-4 text-lg leading-7 text-ink"
-      />
-      <View className="mt-4 flex-row flex-wrap gap-2">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ selected: recording, busy: pending }}
-          disabled={pending || finished}
-          onPress={() => {
-            void dictate();
-          }}
-          className={`min-h-12 items-center justify-center rounded-full px-6 ${recording ? "bg-ember" : "bg-line"} ${pending || finished ? "opacity-60" : ""}`}
-        >
-          <Text className={`text-base font-semibold ${recording ? "text-onEmber" : "text-ink"}`}>
-            {recording ? "Parar e transcrever" : "Ditar"}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: locked || finished, busy: pending }}
-          disabled={locked || finished}
-          onPress={() => {
-            void submit();
-          }}
-          className={`min-h-12 items-center justify-center rounded-full px-6 ${locked || finished ? "bg-line" : "bg-ember"}`}
-        >
-          <Text className={`text-base font-semibold ${locked || finished ? "text-muted" : "text-onEmber"}`}>
-            {pending && !recording ? "Comparando..." : tryIndex > 1 ? copy.journalRetry : "Comparar"}
-          </Text>
-        </Pressable>
-      </View>
-      {error ? (
-        <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" className="mt-3 text-base text-roseInk">
-          {error}
-        </Text>
-      ) : null}
-      {result?.cards && result.cards.length > 0 ? <Text className="mt-3 text-base text-moss">{copy.repairCardSaved}</Text> : null}
+    <View className="gap-4">
+      <StageCard>
+        <Kicker tone="accent">{local.rebuildKicker}</Kicker>
+        <Text className="mt-2 font-display text-2xl leading-8 font-extrabold text-ink">{local.rebuildTitle}</Text>
+        <View accessibilityLabel={local.rebuildSource} className="mt-4 rounded-2xl px-4 py-4" style={{ backgroundColor: palette.raised }}>
+          <Text className="font-serif text-lg leading-8 text-ink">{anchor.translation}</Text>
+        </View>
+        <Text className="mt-4 font-sans text-sm font-bold text-muted">{local.rebuildYours}</Text>
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          editable={!finished}
+          multiline
+          textAlignVertical="top"
+          placeholder={local.rebuildPlaceholder}
+          placeholderTextColor={palette.faint}
+          accessibilityLabel={local.rebuildYours}
+          className="mt-2 min-h-40 rounded-2xl px-4 py-3 font-serif text-lg leading-8 text-ink"
+          style={{ backgroundColor: palette.card, borderWidth: 2, borderColor: palette.border }}
+        />
+        <View className="mt-4 flex-row flex-wrap gap-2">
+          <TactileButton
+            variant={recording ? "crimson" : "secondary"}
+            size="md"
+            disabled={(pending && !recording) || finished}
+            onPress={() => void dictate()}
+            icon={<IconMic color={recording ? palette.onPrimary : palette.primary} size={15} />}
+            label={recording ? local.rebuildStopDictate : local.rebuildDictate}
+          />
+          <TactileButton
+            variant="primary"
+            size="md"
+            disabled={locked || finished}
+            onPress={() => void submit()}
+            label={pending && !recording ? local.rebuildComparing : tryIndex > 1 ? copy.journalRetry : local.rebuildCompare}
+          />
+        </View>
+        {error ? <Notice>{error}</Notice> : null}
+        {result?.cards && result.cards.length > 0 ? <Notice tone="success">{copy.repairCardSaved}</Notice> : null}
+      </StageCard>
       {result ? <ReconstructionReportView result={result} story={anchor.storyText} /> : null}
     </View>
   );
@@ -179,35 +174,36 @@ export function ReconstructionStage({
 
 function ReconstructionReportView({ result, story }: { result: ReconstructionReport; story: string }) {
   const copy = useCopy();
+  const local = useAreaCopy(SESSION_COPY);
   return (
-    <View className="mt-6 rounded-[28px] border border-line bg-card px-5 py-5">
-      <Text className="font-label text-sm text-ember">Nota {result.score}</Text>
-      <Text className="mt-4 font-label text-sm text-ink">Erros gramaticais</Text>
-      {result.grammar.length === 0 ? <Text className="mt-2 text-base text-muted">Nenhum erro gramatical direto.</Text> : null}
+    <StageCard>
+      <Kicker>{fill(local.score, { score: result.score })}</Kicker>
+      <Text className="mt-4 font-sans text-sm font-extrabold text-ink">{local.rebuildGrammar}</Text>
+      {result.grammar.length === 0 ? <Text className="mt-2 font-sans text-base text-muted">{local.rebuildNoGrammar}</Text> : null}
       {result.grammar.map((item, index) => (
         <View key={`${item.original}-${index}`} className="mt-3">
-          <Text className="text-base text-muted">{item.original}</Text>
-          {item.corrected ? <Text className="mt-1 font-label text-base text-ink">{item.corrected}</Text> : null}
-          {item.reason ? <Text className="mt-1 text-sm leading-5 text-muted">{item.reason}</Text> : null}
-          {!item.corrected && !item.reason ? <Text className="mt-1 text-sm leading-5 text-ink">{copy.journalRewrite}</Text> : null}
+          <Text className="font-sans text-base text-muted">{item.original}</Text>
+          {item.corrected ? <Text className="mt-1 font-sans text-base font-bold text-ink">{item.corrected}</Text> : null}
+          {item.reason ? <Text className="mt-1 font-sans text-sm leading-5 text-muted">{item.reason}</Text> : null}
+          {!item.corrected && !item.reason ? <Text className="mt-1 font-sans text-sm leading-5 text-ink">{copy.journalRewrite}</Text> : null}
         </View>
       ))}
-      <Text className="mt-5 font-label text-sm text-ink">Tradução ao pé da letra</Text>
-      {result.literals.length === 0 ? <Text className="mt-2 text-base text-muted">Nenhuma expressão traduzida palavra por palavra.</Text> : null}
+      <Text className="mt-5 font-sans text-sm font-extrabold text-ink">{local.rebuildLiteral}</Text>
+      {result.literals.length === 0 ? <Text className="mt-2 font-sans text-base text-muted">{local.rebuildNoLiteral}</Text> : null}
       {result.literals.map((item, index) => (
         <View key={`${item.phrase}-${index}`} className="mt-3">
-          <Text className="text-base text-muted">{item.phrase}</Text>
-          {item.native_alternative ? <Text className="mt-1 font-label text-base text-ink">{item.native_alternative}</Text> : null}
-          {item.reason ? <Text className="mt-1 text-sm leading-5 text-muted">{item.reason}</Text> : null}
-          {!item.native_alternative && !item.reason ? <Text className="mt-1 text-sm leading-5 text-ink">{copy.journalRewrite}</Text> : null}
+          <Text className="font-sans text-base text-muted">{item.phrase}</Text>
+          {item.native_alternative ? <Text className="mt-1 font-sans text-base font-bold text-ink">{item.native_alternative}</Text> : null}
+          {item.reason ? <Text className="mt-1 font-sans text-sm leading-5 text-muted">{item.reason}</Text> : null}
+          {!item.native_alternative && !item.reason ? <Text className="mt-1 font-sans text-sm leading-5 text-ink">{copy.journalRewrite}</Text> : null}
         </View>
       ))}
       {result.step === "correction" || result.step == null ? (
         <View>
-          <Text className="mt-5 font-label text-sm text-ink">História original</Text>
-          <Text className="mt-2 text-base leading-7 text-ink">{story}</Text>
+          <Text className="mt-5 font-sans text-sm font-extrabold text-ink">{local.rebuildOriginal}</Text>
+          <Text className="mt-2 font-serif text-lg leading-8 text-ink">{story}</Text>
         </View>
       ) : null}
-    </View>
+    </StageCard>
   );
 }

@@ -34,6 +34,25 @@ export function findVocabulary(vocabulary: VocabularyEntry[], token: string): Vo
   });
 }
 
+/**
+ * Palavra do texto que merece destaque de vocabulário: igual a uma entrada de
+ * uma palavra, ou parte (com 4+ letras) de uma expressão. Evita sublinhar todo
+ * "the"/"de" só porque aparece numa expressão como "the same".
+ */
+export function isLessonWord(vocabulary: VocabularyEntry[], token: string): boolean {
+  const normalized = normalizeWord(token);
+  if (!normalized) {
+    return false;
+  }
+  return vocabulary.some((entry) => {
+    const parts = entry.word.split(/\s+/).map(normalizeWord).filter((part) => part.length > 0);
+    if (parts.length <= 1) {
+      return normalizeWord(entry.word) === normalized;
+    }
+    return [...normalized].length >= 4 && parts.includes(normalized);
+  });
+}
+
 export function displayWord(token: string): string {
   return normalizeWord(token) || token.trim();
 }
@@ -128,6 +147,43 @@ export function speechLocale(language: string): string {
     pt: "pt-BR",
     es: "es-ES",
     fr: "fr-FR",
+    de: "de-DE",
+    it: "it-IT",
+    ja: "ja-JP",
+    ru: "ru-RU",
   };
-  return locales[language] ?? language;
+  return locales[language.trim().toLowerCase().slice(0, 2)] ?? language;
+}
+
+export const DEFAULT_TOPIC = "everyday life";
+
+/**
+ * Tema da lição do dia: o pedido na URL, senão o tema já aberto hoje,
+ * senão um dos interesses do aluno (gira por dia), senão o tema padrão da API.
+ */
+export function chooseTopic(input: { param?: string | null; cached?: string | null; interests?: readonly string[] | null; date: string }): string {
+  const asked = input.param?.trim();
+  if (asked) {
+    return asked.slice(0, 120);
+  }
+  const cached = input.cached?.trim();
+  if (cached) {
+    return cached;
+  }
+  const interests = (input.interests ?? []).map((item) => item.trim()).filter((item) => item.length > 0);
+  if (interests.length > 0) {
+    const day = Number(input.date.replace(/\D/g, ""));
+    return interests[(Number.isFinite(day) ? day : 0) % interests.length]!;
+  }
+  return DEFAULT_TOPIC;
+}
+
+/** Tempo mínimo de leitura antes de "lido até o fim" contar (≈240 palavras/min, nunca menos de 15 s). */
+export function readingFloorSeconds(wordCount: number): number {
+  return Math.max(15, Math.round(Math.max(0, wordCount) / 4));
+}
+
+/** Data ISO (AAAA-MM-DD) válida vinda da URL, ou o fallback. */
+export function sessionDate(param: unknown, fallback: string): string {
+  return typeof param === "string" && /^\d{4}-\d{2}-\d{2}$/.test(param) ? param : fallback;
 }

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from "expo-audio";
+import { IconMic } from "@/components/session/session-icons";
+import { Kicker, Notice, StageCard } from "@/components/session/stage-kit";
+import { TactileButton } from "@/components/tactile/tactile-button";
 import { evaluateJournal, transcribeSpeech } from "@/lib/api";
 import { fluencyLaps, fluencyScore, recurringSlips, type FluencyScore } from "@/lib/fluency-432";
 import { tap } from "@/lib/haptics";
@@ -19,6 +22,7 @@ export function FluencyStage({
   level,
   onScored,
   onCards,
+  onTrouble,
 }: {
   title: string;
   story: string;
@@ -27,6 +31,7 @@ export function FluencyStage({
   level: LessonRequest["level"];
   onScored?: (wpm: number) => void;
   onCards?: (cards: RepairCard[]) => void;
+  onTrouble?: () => void;
 }) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const session = useSession();
@@ -81,22 +86,29 @@ export function FluencyStage({
         }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : ui.hvptVoiceFailed);
+        onTrouble?.();
       } finally {
         setPending(false);
       }
       return;
     }
-    const permission = await requestRecordingPermissionsAsync();
-    if (!permission.granted) {
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setError(ui.hvptMic);
+        onTrouble?.();
+        return;
+      }
+      setError(null);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      started.current = Date.now();
+      setRecording(true);
+      void tap("light");
+    } catch {
       setError(ui.hvptMic);
-      return;
+      onTrouble?.();
     }
-    setError(null);
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    started.current = Date.now();
-    setRecording(true);
-    void tap("light");
   }
 
   async function finish() {
@@ -121,31 +133,28 @@ export function FluencyStage({
   }
 
   return (
-    <View className="mb-8 rounded-[28px] border border-line bg-card px-5 py-5">
-      <Text className="font-label text-xs uppercase tracking-widest text-ember">{ui.speech}</Text>
-      <Text className="font-displayItalic mt-2 text-headline leading-10 text-ink">{ui.fluencyTitle}</Text>
-      <Text className="mt-2 text-base leading-6 text-muted">{ui.fluencyHint}</Text>
-      <Text className="mt-3 text-base text-ink">
+    <StageCard tone="raised">
+      <Kicker tone="accent">{ui.speech}</Kicker>
+      <Text className="mt-2 font-display text-2xl leading-8 font-extrabold text-ink">{ui.fluencyTitle}</Text>
+      <Text className="mt-2 font-sans text-base leading-6 text-muted">{ui.fluencyHint}</Text>
+      <Text className="mt-3 font-sans text-base font-semibold text-ink">
         {ui.fluencyLap.replace("{lap}", String(index + 1)).replace("{minutes}", String(lap.seconds / 60))}
       </Text>
-      <Text className="mt-2 text-base leading-7 text-ink">{story}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ busy: pending, disabled: pending || Boolean(slips) }}
-        disabled={pending || Boolean(slips)}
-        onPress={() => {
-          void toggle();
-        }}
-        className={`mt-4 min-h-12 items-center justify-center rounded-full px-4 ${recording ? "bg-roseSoft" : "bg-ember"}`}
-      >
-        <Text className={`text-base font-semibold ${recording ? "text-roseInk" : "text-onEmber"}`}>
-          {pending ? ui.scoring : recording ? ui.fluencyStop : slips ? ui.fluencyRepair : index === 0 ? ui.fluencyStart : ui.fluencyNext}
-        </Text>
-      </Pressable>
+      <Text className="mt-2 font-serif text-lg leading-8 text-ink">{story}</Text>
+      <View className="mt-4 flex-row">
+        <TactileButton
+          variant={recording ? "crimson" : "amber"}
+          size="lg"
+          disabled={pending || Boolean(slips)}
+          onPress={() => void toggle()}
+          icon={<IconMic color={recording ? "#FFFFFF" : "#2A1700"} size={16} />}
+          label={pending ? ui.scoring : recording ? ui.fluencyStop : slips ? ui.fluencyRepair : index === 0 ? ui.fluencyStart : ui.fluencyNext}
+        />
+      </View>
       {scores.length > 0 ? (
         <View className="mt-4 gap-2">
           {scores.map((score, offset) => (
-            <Text key={offset} className="text-base text-ink">
+            <Text key={offset} className="font-sans text-base text-ink" style={{ fontVariant: ["tabular-nums"] }}>
               {offset + 1}. {ui.fluencyWpm.replace("{wpm}", String(score.wpm))} · {ui.fluencyPauses.replace("{count}", String(score.pauses))}
             </Text>
           ))}
@@ -153,23 +162,19 @@ export function FluencyStage({
       ) : null}
       {slips ? (
         <View className="mt-4 gap-2">
-          <Text className="font-label text-sm text-muted">{ui.fluencyRepair}</Text>
+          <Kicker tone="muted">{ui.fluencyRepair}</Kicker>
           {slips.length === 0 ? (
-            <Text className="text-base text-moss">{ui.fluencyEmpty}</Text>
+            <Text className="font-sans text-base text-ink">{ui.fluencyEmpty}</Text>
           ) : (
             slips.map((slip) => (
-              <Text key={slip} className="text-base leading-6 text-ink">
+              <Text key={slip} className="font-sans text-base leading-6 text-ink">
                 {slip}
               </Text>
             ))
           )}
         </View>
       ) : null}
-      {error ? (
-        <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" className="mt-3 text-base text-roseInk">
-          {error}
-        </Text>
-      ) : null}
-    </View>
+      {error ? <Notice>{error}</Notice> : null}
+    </StageCard>
   );
 }

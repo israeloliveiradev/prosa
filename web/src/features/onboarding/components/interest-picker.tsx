@@ -1,129 +1,183 @@
-import { View, Pressable, StyleSheet, Platform } from "react-native";
+import { useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { Text } from "@/ui/text";
-import { Button } from "@/ui/button";
 import { Field } from "@/ui/field";
-import { InlineError } from "@/ui/inline-error";
+import { Icon } from "@/ui/icon";
+import { TactileButton } from "@/components/tactile/tactile-button";
 import { useTheme } from "@/theme/ThemeContext";
-import { radius } from "@/design/tokens";
-import { useCopy } from "@/lib/i18n";
-import { NEWS_THEMES } from "@/lib/themes";
+import { useAreaCopy } from "@/lib/copy/area";
+import { ONBOARDING_COPY } from "@/lib/copy/onboarding";
+import {
+  MAX_THEMES,
+  MAX_THEME_LENGTH,
+  NEWS_THEMES,
+  addTheme,
+  hasTheme,
+  isNewsTheme,
+  presetFromLabel,
+  themeLabel,
+} from "@/lib/themes";
+import { TactileOption } from "./tactile-option";
 
 export interface InterestPickerProps {
   interests: string[];
-  goal: string;
   onToggleInterest: (theme: string) => void;
-  onChangeGoal: (goal: string) => void;
-  onSubmit: () => void;
-  pending: boolean;
-  error: string | null;
+  onAddInterest: (theme: string) => void;
+  onRemoveInterest: (theme: string) => void;
 }
 
-export function InterestPicker({
-  interests,
-  goal,
-  onToggleInterest,
-  onChangeGoal,
-  onSubmit,
-  pending,
-  error,
-}: InterestPickerProps) {
+type Notice = "full" | "duplicate" | null;
+
+/**
+ * Os 8 temas fixos como chips (rótulo traduzido, ID canônico) e temas livres
+ * escritos pelo aluno. De 1 a 12 no total.
+ */
+export function InterestPicker({ interests, onToggleInterest, onAddInterest, onRemoveInterest }: InterestPickerProps) {
+  const t = useAreaCopy(ONBOARDING_COPY);
   const { palette } = useTheme();
-  const copy = useCopy();
+  const [draft, setDraft] = useState("");
+  const [notice, setNotice] = useState<Notice>(null);
+
+  const full = interests.length >= MAX_THEMES;
+  const custom = interests.filter((item) => !isNewsTheme(item));
+
+  const handleToggle = (theme: string) => {
+    if (!hasTheme(interests, theme) && full) {
+      setNotice("full");
+      return;
+    }
+    setNotice(null);
+    onToggleInterest(theme);
+  };
+
+  const handleAdd = () => {
+    const preset = presetFromLabel(draft, t.themes);
+    const candidate = preset ?? draft;
+    const result = addTheme(interests, candidate);
+    if (result.status === "empty") return;
+    if (result.status === "full" || result.status === "duplicate") {
+      setNotice(result.status);
+      return;
+    }
+    setNotice(null);
+    setDraft("");
+    onAddInterest(candidate);
+  };
+
+  const handleRemove = (theme: string) => {
+    setNotice(null);
+    onRemoveInterest(theme);
+  };
 
   return (
     <View style={styles.container} testID="onboarding-interest-picker">
-      <View style={{ gap: 8 }}>
-        <Text variant="title" weight="semibold" tone="ink" accessibilityRole="header" style={{ fontSize: 26, lineHeight: 32 }}>
-          {copy.startInterestTitle ?? "Do que você vive."}
-        </Text>
-        <Text variant="body" tone="muted" style={{ fontSize: 16, lineHeight: 24 }}>
-          {copy.startInterestDek ??
-            "A notícia, a cena e o palácio nascem daqui. Escolha o que é seu de verdade."}
-        </Text>
-      </View>
+      <Text variant="label" weight="semibold" tone={full ? "accent" : "muted"} testID="onboarding-themes-count">
+        {t.themesCount(interests.length, MAX_THEMES)}
+      </Text>
 
-      <View style={styles.chipGrid}>
-        {NEWS_THEMES.map((theme) => {
-          const isSelected = interests.includes(theme);
+      <View style={styles.chips}>
+        {NEWS_THEMES.map((theme, index) => {
+          const selected = interests.includes(theme);
           return (
-            <Pressable
+            <TactileOption
               key={theme}
-              accessibilityRole="checkbox"
-              accessibilityLabel={theme}
-              accessibilityState={{ checked: isSelected }}
-              onPress={() => onToggleInterest(theme)}
-              testID={`theme-${theme}`}
-              style={[
-                styles.chip,
-                {
-                  backgroundColor: isSelected ? palette.active : palette.sheet,
-                  borderColor: isSelected ? palette.primary : palette.border,
-                  borderWidth: isSelected ? 1.5 : 1,
-                  ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
-                },
-              ]}
-            >
-              <Text
-                variant="body"
-                weight={isSelected ? "semibold" : "regular"}
-                tone="ink"
-                style={{ fontSize: 15 }}
-              >
-                {theme}
-              </Text>
-            </Pressable>
+              compact
+              role="checkbox"
+              title={themeLabel(theme, t.themes)}
+              selected={selected}
+              onPress={() => handleToggle(theme)}
+              disabled={!selected && full}
+              leading={selected ? <Icon name="check" size={16} color={palette.primary} /> : null}
+              testID={`theme-preset-${index + 1}`}
+            />
           );
         })}
       </View>
 
-      <View style={{ gap: 6 }}>
-        <Field
-          label={copy.startGoalLabel ?? "Uma meta de estudo (opcional)"}
-          placeholder={copy.startGoalHint ?? "Falar no trabalho, viajar, ler notícias…"}
-          value={goal}
-          onChangeText={onChangeGoal}
-          testID="onboarding-goal-input"
-        />
-      </View>
-
-      {error ? (
-        <InlineError message={error} testID="onboarding-error" />
+      {custom.length > 0 ? (
+        <View style={styles.group}>
+          <Text variant="label" weight="semibold" tone="muted">
+            {t.yourThemes}
+          </Text>
+          <View style={styles.chips}>
+            {custom.map((theme, index) => (
+              <TactileOption
+                key={theme}
+                compact
+                role="checkbox"
+                title={theme}
+                selected
+                onPress={() => handleRemove(theme)}
+                accessibilityLabel={t.removeTheme(theme)}
+                trailing={<Icon name="x" size={14} color={palette.primary} />}
+                testID={`theme-custom-${index + 1}`}
+              />
+            ))}
+          </View>
+        </View>
       ) : null}
 
-      <View style={{ paddingTop: 8 }}>
-        <Button
-          label={pending ? (copy.startSaving ?? "Guardando...") : (copy.startToPlacement ?? "Medir o nível")}
-          variant="primary"
-          size="lg"
-          loading={pending}
-          disabled={pending || interests.length === 0}
-          onPress={onSubmit}
-          testID="onboarding-interest-submit"
-          fullWidth
-        />
+      <View style={styles.addRow}>
+        <View style={styles.addField}>
+          <Field
+            label={t.customLabel}
+            placeholder={t.customHint}
+            value={draft}
+            onChangeText={(value) => {
+              setDraft(value);
+              if (notice === "duplicate") setNotice(null);
+            }}
+            onSubmitEditing={handleAdd}
+            maxLength={MAX_THEME_LENGTH}
+            returnKeyType="done"
+            disabled={full}
+            testID="onboarding-theme-input"
+          />
+        </View>
+        <View style={styles.addButton} testID="onboarding-theme-add">
+          <TactileButton
+            label={t.customAdd}
+            variant="secondary"
+            size="md"
+            onPress={handleAdd}
+            disabled={full || draft.trim().length === 0}
+          />
+        </View>
       </View>
+
+      {notice ? (
+        <Text variant="body-sm" tone="warning" accessibilityRole="alert" testID="onboarding-theme-notice">
+          {notice === "full" ? t.themesFull(MAX_THEMES) : t.themesDuplicate}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: 24,
-    maxWidth: 620,
-    alignSelf: "center",
+    gap: 18,
     width: "100%",
   },
-  chipGrid: {
+  group: {
+    gap: 10,
+  },
+  chips: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
   },
-  chip: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    minHeight: 46,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
+  addRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  addField: {
+    flexGrow: 1,
+    flexBasis: 220,
+  },
+  addButton: {
+    flexShrink: 0,
   },
 });

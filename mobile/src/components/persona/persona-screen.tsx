@@ -1,20 +1,23 @@
-import { Redirect, router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Redirect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Pressable, Text, TextInput, View, type ViewStyle } from "react-native";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from "expo-audio";
-import { AppFrame } from "@/components/shell/app-frame";
-import { PageMasthead } from "@/components/shell/page-masthead";
-import { ChunkButton } from "@/components/shell/chunk-button";
-import { fetchPersonaScenes, sendPersonaTurn, speakStory, transcribeSpeech, type PersonaScene } from "@/lib/api";
+import { classifyFailure, fill, languageLabel, trimHistory } from "@/components/persona/talk-logic";
+import { TalkFailure, type TalkFailureState } from "@/components/session/prose-screen";
+import { TactileButton } from "@/components/tactile/tactile-button";
+import { TactileCard } from "@/components/tactile/tactile-card";
+import { fetchPersonaScenes, sendPersonaTurn, speakStory, transcribeSpeech, type PersonaScene, type PersonaTurnResult } from "@/lib/api";
+import { useAreaCopy } from "@/lib/copy/area";
+import { TALK, type TalkCopy } from "@/lib/copy/talk";
 import { tap } from "@/lib/haptics";
-import { useCopy } from "@/lib/i18n";
+import { copy as appCopy, LOCALE_BCP47, useLocale } from "@/lib/i18n";
 import { narratorVoice } from "@/lib/narrator";
 import { useSession } from "@/lib/session";
 import { stopIfRecording } from "@/lib/stop-recorder";
+import { narrationToken } from "@/lib/voice";
 import { AudioService } from "@/services/audio/AudioService";
-import { useTheme } from "@/theme/ThemeContext";
 
-type Tone = "adequate" | "direct" | "informal" | "inadequate";
+type Tone = PersonaTurnResult["tone"];
 
 interface Turn {
   role: "persona" | "learner";
@@ -23,125 +26,195 @@ interface Turn {
   note?: string;
 }
 
-const TONE_LABEL: Record<Tone, string> = {
-  adequate: "O tom serviu a esta cena.",
-  direct: "Ficou direto demais para esta cena.",
-  informal: "Ficou informal demais para esta cena.",
-  inadequate: "Faltou um costume deste lugar.",
-};
+function toneText(tone: Tone, t: TalkCopy): string {
+  if (tone === "adequate") {
+    return t.toneAdequate;
+  }
+  if (tone === "direct") {
+    return t.toneDirect;
+  }
+  if (tone === "informal") {
+    return t.toneInformal;
+  }
+  return t.toneInadequate;
+}
 
+function RegisterTag({ formal, label }: { formal: boolean; label: string }) {
+  return (
+    <View className="rounded-md px-2 py-0.5" style={{ backgroundColor: formal ? "#E0F2FE" : "#FEF3C7" }}>
+      <Text className="text-[11px] font-extrabold" style={{ color: formal ? "#075985" : "#78350F" }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function failureOf(caught: unknown) {
+  const ui = appCopy();
+  return classifyFailure(caught, [ui.modelBusy, ui.lessonFailed, ui.generationOff], [ui.apiDown]);
+}
+
+/**
+ * Cenas (GET /api/v1/persona/scenes, POST /api/v1/persona/turn): role-play num lugar real,
+ * com uma complicação e, a cada fala, o veredito do registro (tom) e a nota cultural da IA.
+ */
 export function PersonaScreen() {
-  const { palette } = useTheme();
-  const copy = useCopy();
+  const t = useAreaCopy(TALK);
+  const locale = useLocale();
   const session = useSession();
   const token = session?.token;
   const targetLang = session?.user?.target_lang ?? "en";
+  const lang = languageLabel(targetLang, LOCALE_BCP47[locale]);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderRef = useRef(recorder);
   recorderRef.current = recorder;
-  const recordingRef = useRef(false);
   const [scenes, setScenes] = useState<PersonaScene[]>([]);
   const [scene, setScene] = useState<PersonaScene | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [phase, setPhase] = useState<"loading" | "list" | "talk" | "error">("loading");
   const [pending, setPending] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<TalkFailureState | null>(null);
+  const [voiceFailed, setVoiceFailed] = useState(false);
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
 
   useEffect(() => {
     return () => {
       AudioService.stopAndUnload();
-      recordingRef.current = false;
       void stopIfRecording(recorderRef.current);
     };
   }, []);
 
-  useEffect(() => {
+  const loadScenes = useCallback(() => {
     if (!token) {
-      return;
+      return () => undefined;
     }
     let active = true;
     setPhase("loading");
+    setFailure(null);
     void fetchPersonaScenes(token)
       .then((next) => {
-        if (!active) {
-          return;
+        if (active) {
+          setScenes(next);
+          setPhase("list");
         }
-        setScenes(next);
-        setPhase("list");
       })
       .catch((caught: unknown) => {
-        if (!active) {
-          return;
+        if (active) {
+          setFailure({ kind: failureOf(caught), during: "open" });
+          setPhase("error");
         }
-        setError(caught instanceof Error ? caught.message : "As cenas não abriram.");
-        setPhase("error");
       });
     return () => {
       active = false;
     };
   }, [token]);
 
+  useEffect(() => loadScenes(), [loadScenes]);
+
+  async function playLine(text: string, index: number) {
+    if (speakingIndex === index) {
+      AudioService.stopAndUnload();
+      setSpeakingIndex(null);
+      return;
+    }
+    AudioService.stopAndUnload();
+    const generation = narrationToken();
+    setVoiceFailed(false);
+    setSpeakingIndex(index);
+    try {
+      const spoken = await speakStory(text, targetLang, narratorVoice(targetLang));
+      if (narrationToken() !== generation) {
+        return;
+      }
+      AudioService.play(
+        spoken.audioUrl,
+        1,
+        () => undefined,
+        () => setSpeakingIndex(null),
+        () => {
+          setSpeakingIndex(null);
+          setVoiceFailed(true);
+        },
+      );
+    } catch {
+      if (narrationToken() === generation) {
+        setSpeakingIndex(null);
+        setVoiceFailed(true);
+      }
+    }
+  }
+
   function openScene(next: PersonaScene) {
     AudioService.stopAndUnload();
+    setSpeakingIndex(null);
     setScene(next);
     setTurns([{ role: "persona", text: next.opener }]);
     setDraft("");
-    setError(null);
+    setFailure(null);
+    setVoiceFailed(false);
     setPhase("talk");
     void tap("light");
-    void playLine(next.opener);
+    void playLine(next.opener, 0);
   }
 
-  async function playLine(text: string) {
-    try {
-      const spoken = await speakStory(text, targetLang, narratorVoice(targetLang));
-      AudioService.play(spoken.audioUrl, 1, () => undefined, () => undefined);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "A voz não abriu. O texto continua aqui.");
-    }
+  function leaveScene() {
+    AudioService.stopAndUnload();
+    setSpeakingIndex(null);
+    setScene(null);
+    setTurns([]);
+    setFailure(null);
+    setPhase("list");
   }
 
   async function dictate() {
-    if (pending) {
+    if (pending || transcribing) {
       return;
     }
     if (recording) {
-      recordingRef.current = false;
       setRecording(false);
-      setPending(true);
-      setError(null);
+      setTranscribing(true);
+      setFailure(null);
       try {
         await recorder.stop();
         const uri = recorder.uri;
         if (!uri) {
-          throw new Error("A gravação não foi salva.");
+          setFailure({ kind: "other", during: "speech", detail: "micFailed" });
+          return;
         }
-        const spoken = await transcribeSpeech(uri, targetLang);
-        if (!spoken) {
-          throw new Error("Não ouvi fala nessa gravação.");
+        const heard = await transcribeSpeech(uri, targetLang);
+        if (!heard) {
+          setFailure({ kind: "other", during: "speech", detail: "micEmpty" });
+          return;
         }
-        setDraft((current) => (current.trim() ? `${current.trim()} ${spoken}` : spoken));
+        setDraft((current) => (current.trim() ? `${current.trim()} ${heard}` : heard));
         void tap("light");
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Não foi possível transcrever a fala.");
+        const kind = failureOf(caught);
+        setFailure(kind === "network" ? { kind, during: "speech" } : { kind: "other", during: "speech", detail: "micFailed" });
       } finally {
-        setPending(false);
+        setTranscribing(false);
       }
       return;
     }
-    const permission = await requestRecordingPermissionsAsync();
-    if (!permission.granted) {
-      setError("Precisamos do microfone para ditar a fala.");
-      return;
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setFailure({ kind: "other", during: "speech", detail: "micDenied" });
+        return;
+      }
+      setFailure(null);
+      AudioService.stopAndUnload();
+      setSpeakingIndex(null);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setRecording(true);
+      void tap("light");
+    } catch {
+      setFailure({ kind: "other", during: "speech", detail: "micDenied" });
     }
-    setError(null);
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    recordingRef.current = true;
-    setRecording(true);
-    void tap("light");
   }
 
   async function send() {
@@ -152,21 +225,23 @@ export function PersonaScreen() {
     if (!line) {
       return;
     }
-    const history = turns.slice(1).slice(-12).map((turn) => ({ role: turn.role, text: turn.text }));
+    const history = trimHistory(turns.slice(1), 12);
+    const index = turns.length + 1;
     setDraft("");
     setTurns((current) => [...current, { role: "learner", text: line }]);
     setPending(true);
-    setError(null);
+    setFailure(null);
     AudioService.stopAndUnload();
+    setSpeakingIndex(null);
     try {
       const result = await sendPersonaTurn(token, scene.id, line, history);
       setTurns((current) => [...current, { role: "persona", text: result.reply, tone: result.tone, note: result.cultural_note }]);
       void tap(result.tone === "adequate" ? "success" : "medium");
-      void playLine(result.reply);
+      void playLine(result.reply, index);
     } catch (caught) {
       setTurns((current) => current.slice(0, -1));
       setDraft(line);
-      setError(caught instanceof Error ? caught.message : "A cena não respondeu.");
+      setFailure({ kind: failureOf(caught), during: "turn" });
     } finally {
       setPending(false);
     }
@@ -176,122 +251,169 @@ export function PersonaScreen() {
     return <Redirect href="/account" />;
   }
 
+  const busy = pending || transcribing;
+  const canSend = !busy && !recording && draft.trim().length > 0;
+
   return (
-    <AppFrame>
-      <View className="gap-8 pb-16">
-        <View className="self-start">
-          <ChunkButton label="Voltar ao início" onPress={() => router.replace("/")} tone="ghost" />
-        </View>
-        {phase === "loading" ? <Text className="text-base text-muted">Abrindo as cenas.</Text> : null}
-        {phase === "error" ? (
+    <View className="gap-5">
+      {phase === "loading" ? (
+        <TactileCard className="p-5" animateEntry={false}>
           <View>
-            <Text className="font-displayItalic text-headline text-ink">A cena não abriu</Text>
-            <Text className="mt-3 text-base leading-7 text-muted">{error}</Text>
+            <Text accessibilityLiveRegion="polite" className="text-base text-[#64748B]">
+              {t.scenesLoading}
+            </Text>
           </View>
-        ) : null}
-        {phase === "list" ? (
-          <View className="gap-4">
-            <PageMasthead
-              kicker="Oficina"
-              title="Cena"
-              dek="Escolha um lugar. A pessoa responde no idioma que você estuda, e a dica explica o tom."
-            />
-            {scenes.length === 0 ? <Text className="text-base text-muted">Não há cenas para este idioma.</Text> : null}
-            {scenes.map((item) => (
-              <Pressable
-                key={item.id}
-                accessibilityRole="button"
-                accessibilityLabel={`${item.title}, ${item.role}, ${item.register === "formal" ? "formal" : "informal"}`}
-                onPress={() => openScene(item)}
-                className="min-h-16 cursor-pointer border-b border-line py-5"
-              >
-                <Text className="font-displayItalic text-3xl text-ink">{item.title}</Text>
-                <Text className="mt-2 text-base text-ink">{item.role}</Text>
-                <Text className="mt-1 text-base text-muted">{item.brief}</Text>
-                {item.hitch ? <Text className="mt-2 text-base text-ink">{item.hitch}</Text> : null}
-                <Text className="mt-3 font-label text-sm text-ember">{item.register === "formal" ? "Formal" : "Informal"} · Abrir</Text>
-              </Pressable>
-            ))}
+        </TactileCard>
+      ) : null}
+
+      {phase === "error" && failure ? <TalkFailure failure={failure} onRetry={() => void loadScenes()} /> : null}
+
+      {phase === "list" ? (
+        <View className="gap-4">
+          <Text className="text-base leading-6 text-[#3D4947]">{fill(t.scenesDek, { lang })}</Text>
+          {scenes.length === 0 ? <Text className="text-base text-[#64748B]">{t.scenesEmpty}</Text> : null}
+          <View className="flex-row flex-wrap gap-4">
+            {scenes.map((item) => {
+              const register = item.register === "formal" ? t.formal : t.informal;
+              return (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.title}, ${item.role}, ${register}. ${t.openScene}`}
+                  onPress={() => openScene(item)}
+                  className="flex-1 cursor-pointer rounded-2xl border border-[#E2E8F0] bg-white p-5"
+                  style={{ minWidth: 260, flexBasis: 300, boxShadow: "0 4px 0 #E2E8F0" } as ViewStyle}
+                >
+                  <View className="flex-row flex-wrap items-center gap-2">
+                    <Text className="text-[11px] font-extrabold uppercase tracking-wider text-[#0D9488]">{item.place}</Text>
+                    <RegisterTag formal={item.register === "formal"} label={register} />
+                  </View>
+                  <Text className="mt-2 font-display text-xl font-extrabold text-[#111C2D]">{item.title}</Text>
+                  <Text className="mt-1 text-sm font-semibold text-[#3D4947]">{item.role}</Text>
+                  <Text className="mt-2 text-sm leading-5 text-[#64748B]">{item.brief}</Text>
+                  {item.hitch ? (
+                    <Text className="mt-2 text-sm leading-5 text-[#111C2D]">
+                      <Text className="font-bold">{`${t.hitch}: `}</Text>
+                      {item.hitch}
+                    </Text>
+                  ) : null}
+                  <Text className="mt-3 text-sm font-extrabold text-[#0F766E]">{`${t.openScene} →`}</Text>
+                </Pressable>
+              );
+            })}
           </View>
-        ) : null}
-        {phase === "talk" && scene ? (
-          <View className="gap-4">
-            <PageMasthead
-              kicker={scene.place}
-              title={scene.title}
-              dek={`${scene.role}. ${scene.register === "formal" ? "Tom formal." : "Tom informal."}${scene.hitch ? ` ${copy.sceneHitch}: ${scene.hitch}` : ""}`}
-            />
+        </View>
+      ) : null}
+
+      {phase === "talk" && scene ? (
+        <View className="gap-4">
+          <TactileCard className="p-5" animateEntry={false}>
+            <View>
+              <View className="flex-row flex-wrap items-center gap-2">
+                <Text className="text-[11px] font-extrabold uppercase tracking-wider text-[#0D9488]">{scene.place}</Text>
+                <RegisterTag formal={scene.register === "formal"} label={scene.register === "formal" ? t.formal : t.informal} />
+              </View>
+              <Text className="mt-2 font-display text-xl font-extrabold text-[#111C2D]">{scene.title}</Text>
+              <Text className="mt-1 text-sm text-[#3D4947]">{scene.role}</Text>
+              {scene.hitch ? (
+                <Text className="mt-2 text-sm leading-5 text-[#111C2D]">
+                  <Text className="font-bold">{`${t.hitch}: `}</Text>
+                  {scene.hitch}
+                </Text>
+              ) : null}
+              <View className="mt-3 self-start">
+                <TactileButton label={t.otherScenes} variant="secondary" size="sm" onPress={leaveScene} />
+              </View>
+            </View>
+          </TactileCard>
+
+          <View className="gap-3">
             {turns.map((turn, index) => (
               <View key={`${turn.role}-${index}`} className={turn.role === "learner" ? "items-end" : "items-start"}>
-                <View className={`max-w-[90%] rounded-3xl px-5 py-4 ${turn.role === "learner" ? "bg-ember" : "border border-line bg-card"}`}>
-                  <Text className={`text-lg leading-7 ${turn.role === "learner" ? "text-onEmber" : "text-ink"}`}>{turn.text}</Text>
-                </View>
-                {turn.note && turn.tone ? (
-                  <View className="mt-2 max-w-[90%] rounded-3xl border border-line bg-card px-5 py-4">
-                    <Text className="font-label text-sm text-moss">Dica cultural</Text>
-                    <Text className="mt-2 text-base font-semibold text-ink">{TONE_LABEL[turn.tone]}</Text>
-                    <Text className="mt-2 text-base leading-7 text-muted">{turn.note}</Text>
+                {turn.role === "persona" ? (
+                  <View
+                    className="max-w-[90%] rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3"
+                    style={{ borderBottomLeftRadius: 6, boxShadow: "0 3px 0 #E2E8F0" } as ViewStyle}
+                  >
+                    <Text className="text-lg leading-7 text-[#111C2D]">{turn.text}</Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t.listen}: ${turn.text}`}
+                      onPress={() => void playLine(turn.text, index)}
+                      className="mt-1 cursor-pointer justify-center self-start"
+                      style={{ minHeight: 36 }}
+                    >
+                      <Text className="text-sm font-bold text-[#0F766E]">{speakingIndex === index ? "■" : "▶"} {t.listen}</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View
+                    className="max-w-[85%] rounded-2xl border bg-[#0D9488] px-4 py-3"
+                    style={{ borderColor: "#0F766E", borderBottomRightRadius: 6, boxShadow: "0 3px 0 #0F766E" } as ViewStyle}
+                  >
+                    <Text className="text-lg leading-7 text-white">{turn.text}</Text>
+                  </View>
+                )}
+                {turn.tone && turn.note ? (
+                  <View
+                    className={`mt-2 max-w-[90%] rounded-xl border px-4 py-3 ${
+                      turn.tone === "adequate" ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"
+                    }`}
+                  >
+                    <Text className="text-xs font-extrabold uppercase tracking-wider text-[#3D4947]">{t.toneLabel}</Text>
+                    <Text className={`mt-1 text-base font-bold ${turn.tone === "adequate" ? "text-emerald-900" : "text-amber-900"}`}>
+                      {toneText(turn.tone, t)}
+                    </Text>
+                    <Text className="mt-2 text-xs font-extrabold uppercase tracking-wider text-[#3D4947]">{t.culturalNote}</Text>
+                    <Text className="mt-1 text-base leading-6 text-[#3D4947]">{turn.note}</Text>
                   </View>
                 ) : null}
               </View>
             ))}
             {pending ? (
-              <Text accessibilityLiveRegion="polite" className="text-base text-muted">
-                A pessoa está respondendo.
+              <Text accessibilityLiveRegion="polite" className="text-base text-[#64748B]">
+                {t.sceneReplying}
               </Text>
             ) : null}
-            <Text className="mt-2 font-label text-sm text-muted">Sua fala</Text>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              editable={!pending}
-              multiline
-              textAlignVertical="top"
-              placeholder="No idioma que você estuda"
-              placeholderTextColor={palette.onSurfaceVariant}
-              accessibilityLabel="Sua fala"
-              className="min-h-24 rounded-3xl bg-card px-5 py-4 text-lg leading-7 text-ink"
-            />
-            <View className="flex-row flex-wrap gap-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: recording, busy: pending }}
-                disabled={pending}
-                onPress={() => void dictate()}
-                className={`min-h-12 cursor-pointer items-center justify-center rounded-full px-6 ${recording ? "bg-ember" : "bg-line"}`}
-              >
-                <Text className={`text-base font-semibold ${recording ? "text-onEmber" : "text-ink"}`}>{recording ? "Parar e transcrever" : "Ditar"}</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ disabled: pending || draft.trim().length === 0, busy: pending }}
-                disabled={pending || draft.trim().length === 0}
-                onPress={() => void send()}
-                className={`min-h-12 cursor-pointer items-center justify-center rounded-full px-6 ${pending || draft.trim().length === 0 ? "bg-line" : "bg-ember"}`}
-              >
-                <Text className={`text-base font-semibold ${pending || draft.trim().length === 0 ? "text-muted" : "text-onEmber"}`}>Enviar</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  AudioService.stopAndUnload();
-                  setScene(null);
-                  setTurns([]);
-                  setPhase("list");
-                }}
-                className="min-h-12 cursor-pointer items-center justify-center rounded-full bg-line px-6"
-              >
-                <Text className="text-base font-semibold text-ink">Outras cenas</Text>
-              </Pressable>
-            </View>
-            {error ? (
-              <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" className="text-base text-roseInk">
-                {error}
+            {transcribing ? (
+              <Text accessibilityLiveRegion="polite" className="text-base text-[#64748B]">
+                {t.transcribing}
               </Text>
             ) : null}
+            {voiceFailed ? <Text className="text-sm text-[#64748B]">{t.voiceFailed}</Text> : null}
           </View>
-        ) : null}
-      </View>
-    </AppFrame>
+
+          {failure ? (
+            <TalkFailure failure={failure} retryDisabled={busy} onRetry={failure.during === "turn" ? () => void send() : undefined} />
+          ) : null}
+
+          <TactileCard className="p-4" animateEntry={false}>
+            <View>
+              <Text className="text-sm font-semibold text-[#3D4947]">{t.yourLine}</Text>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                editable={!busy && !recording}
+                multiline
+                textAlignVertical="top"
+                placeholder={fill(t.placeholder, { lang })}
+                placeholderTextColor="#64748B"
+                accessibilityLabel={t.yourLine}
+                className="mt-2 min-h-24 rounded-xl border border-[#E2E8F0] bg-[#FDFBF7] px-4 py-3 text-lg leading-7 text-[#111C2D]"
+              />
+              <View className="mt-3 flex-row flex-wrap gap-3">
+                <TactileButton label={t.send} variant="primary" disabled={!canSend} onPress={() => void send()} />
+                <TactileButton
+                  label={recording ? t.stopAndTranscribe : t.dictate}
+                  variant={recording ? "crimson" : "secondary"}
+                  disabled={busy}
+                  onPress={() => void dictate()}
+                />
+              </View>
+            </View>
+          </TactileCard>
+        </View>
+      ) : null}
+    </View>
   );
 }

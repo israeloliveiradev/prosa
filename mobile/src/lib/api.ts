@@ -1,9 +1,9 @@
 const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
 const Platform = { OS: isWeb ? ("web" as const) : ("ios" as const) };
-import { audioCacheKey, base64ToBytes, bytesToBase64, readAudioCache, writeAudioCache } from "@/lib/audio-cache";
 import { getCast } from "@/lib/cast";
 import { copy } from "@/lib/i18n";
-import { readSse } from "@/lib/sse";
+import { clipReferenceBytes, speechService, type SpeechClip } from "@/services/speechService";
+import { recordingHasVoice } from "@/lib/voice-activity";
 import type { CognateAnchor, CourseProfile, JournalEvaluation, LessonPayload, LessonRequest, ReconstructionReport, RepairCard, SessionCard, ShadowingResult, SoundNote, VocabularyEntry } from "@/lib/types";
 import type { AccountUser, AccountSettings, LoginChallenge, VerifyChallenge } from "@/api/schemas/auth";
 import type { PlacementHistoryEntry, PlacementStatus } from "@/api/schemas/placement";
@@ -17,6 +17,14 @@ function apiUrl(): string {
     return `http://${window.location.hostname}:3000`;
   }
   return "http://127.0.0.1:3000";
+}
+
+/**
+ * O backend só aceita nomes de voz Edge ("en-US-AriaNeural"). As vozes do aparelho
+ * (Kokoro/Piper, ex. "af_heart") não vão para o servidor: a narração é local.
+ */
+function serverVoice(voice: string | undefined): voice is string {
+  return typeof voice === "string" && /^[a-z]{2}-[A-Z]{2}-[A-Za-z]+Neural$/.test(voice);
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -83,11 +91,25 @@ export async function generateLesson(input: LessonRequest & { cognate?: boolean 
 
 export { fetchCognates } from "@/api/lessons";
 
+/** Tentativa sem voz: nota zero, nenhuma palavra reconhecida (a tela mostra "não ouvimos"). */
+function silentAttempt(referenceText: string): ShadowingResult {
+  const words = referenceText
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}\p{N}'-]/gu, ""))
+    .filter(Boolean);
+  return { transcription: "", accuracy_score: 0, mispronounced_words: words, sounds: [], pitch_rhythm_match: 0, cadence_match: 0, bars: [] };
+}
+
 export async function analyzeShadowing(uri: string, referenceText: string, language: string): Promise<ShadowingResult> {
   const body = new FormData();
   if (Platform.OS === "web") {
     const file = await fetch(uri);
     const blob = await file.blob();
+    // Gravação sem voz não vai para o servidor: o transcritor "alucina" sobre silêncio.
+    if ((await recordingHasVoice(blob)) === false) {
+      return silentAttempt(referenceText);
+    }
     const type = blob.type || "audio/webm";
     const name = type.includes("wav") ? "speech.wav" : type.includes("mp4") ? "speech.m4a" : "speech.webm";
     body.append("audio", blob, name);
@@ -1051,23 +1073,23 @@ export async function varyGrammar(
   token: string,
   blocks: GrammarBlock[],
   voice?: string,
-): Promise<{ sentence: string; blocks: GrammarBlock[]; audioUrl: string }> {
+): Promise<{ sentence: string; blocks: GrammarBlock[]; audioUrl: string | null }> {
   const response = await fetch(`${apiUrl()}/api/v1/grammar/vary`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({ blocks, ...(voice ? { voice } : {}) }),
+    body: JSON.stringify({ blocks, ...(serverVoice(voice) ? { voice } : {}) }),
   });
   if (!response.ok) {
     throw new Error(await readError(response));
   }
   const body = (await response.json()) as { sentence?: string; blocks?: GrammarBlock[]; audio_url?: string };
-  if (!body.sentence || !Array.isArray(body.blocks) || !body.audio_url) {
-    throw new Error("A variação não voltou completa.");
+  if (!body.sentence || !Array.isArray(body.blocks)) {
+    throw new Error(copy().apiDown);
   }
   return {
     sentence: body.sentence,
     blocks: body.blocks,
-    audioUrl: body.audio_url.startsWith("http") ? body.audio_url : `${apiUrl()}${body.audio_url}`,
+    audioUrl: body.audio_url ? (body.audio_url.startsWith("http") ? body.audio_url : `${apiUrl()}${body.audio_url}`) : null,
   };
 }
 
@@ -1544,7 +1566,8 @@ export interface AdaptedNews {
   source_url: string;
   source_title: string;
   published?: string;
-  audioUrl: string;
+  /** Áudio do servidor (só quando uma voz Edge foi pedida). O app narra no aparelho. */
+  audioUrl: string | null;
   words: Array<{ text: string; offsetMs: number }>;
   voiceId?: string;
 }
@@ -1561,7 +1584,7 @@ export async function fetchAdaptedNews(
     headers: authHeaders(token),
     body: JSON.stringify({
       ...(interest ? { interest } : {}),
-      ...(voice ? { voice } : {}),
+      ...(serverVoice(voice) ? { voice } : {}),
       ...(index > 0 ? { index } : {}),
       ...(level ? { level } : {}),
     }),
@@ -1581,7 +1604,7 @@ export async function fetchAdaptedNews(
     audio_url?: string;
     words?: Array<{ text?: string; offset_ms?: number }>;
   };
-  if (!body.title || !body.story_text || !body.translation || !body.source_url || !body.source_title || !body.audio_url) {
+  if (!body.title || !body.story_text || !body.translation || !body.source_url || !body.source_title) {
     throw new Error("A notícia não voltou completa.");
   }
   const vocabulary = Array.isArray(body.vocabulary)
@@ -1599,7 +1622,7 @@ export async function fetchAdaptedNews(
     source_url: body.source_url,
     source_title: body.source_title,
     ...(body.published ? { published: body.published } : {}),
-    audioUrl: body.audio_url.startsWith("http") ? body.audio_url : `${apiUrl()}${body.audio_url}`,
+    audioUrl: body.audio_url ? (body.audio_url.startsWith("http") ? body.audio_url : `${apiUrl()}${body.audio_url}`) : null,
     words,
     ...(voice ? { voiceId: voice } : {}),
   };
@@ -1609,96 +1632,35 @@ export function audioUrl(path: string): string {
   return path.startsWith("http") ? path : `${apiUrl()}${path}`;
 }
 
-function readSpokenWords(words: Array<{ text?: string; offset_ms?: number }> | undefined): SpokenStory["words"] {
-  return (words ?? []).flatMap((word) =>
-    typeof word?.text === "string" && typeof word.offset_ms === "number" ? [{ text: word.text, offsetMs: word.offset_ms }] : [],
-  );
+function spokenFromClip(clip: SpeechClip): SpokenStory {
+  return { audioUrl: clip.url, words: clip.words.map((word) => ({ text: word.text, offsetMs: word.offsetMs })) };
 }
 
-function warmAudioCache(key: string, remote: string, words: SpokenStory["words"]): void {
-  void fetch(remote)
-    .then(async (file) => {
-      if (!file.ok) {
-        return;
-      }
-      writeAudioCache(key, {
-        audioUrl: `data:audio/mpeg;base64,${bytesToBase64(new Uint8Array(await file.arrayBuffer()))}`,
-        words,
-      });
-    })
-    .catch(() => undefined);
-}
-
+/**
+ * Narração no aparelho (Kokoro para inglês, Piper para de/fr/es/it/ru/pt, Web Speech para ja).
+ * `audioUrl` é uma blob: URL de um WAV (ou `speech:` em japonês) que o AudioService toca;
+ * `words` traz o tempo estimado de cada palavra.
+ */
 export async function speakStory(text: string, lang: string, voice?: string): Promise<SpokenStory> {
-  const clips = await speakStories([text], lang, voice);
-  const spoken = clips[0];
-  if (!spoken) {
-    throw new Error("A narração não voltou da API.");
-  }
-  return spoken;
+  return spokenFromClip(await speechService.synthesize(text, lang, voice));
 }
 
 export async function speakStories(texts: string[], lang: string, voice?: string): Promise<SpokenStory[]> {
-  const language = lang.slice(0, 2).toLowerCase();
-  const results = new Array<SpokenStory>(texts.length);
-  const missing: number[] = [];
-  texts.forEach((text, index) => {
-    const cached = readAudioCache(audioCacheKey(text, language, voice ?? ""));
-    if (cached) {
-      results[index] = cached;
-    } else {
-      missing.push(index);
-    }
-  });
-  if (missing.length === 0) {
-    return results;
-  }
-  try {
-    const response = await fetch(`${apiUrl()}/api/v1/audio/speak-batch`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        texts: missing.map((index) => texts[index]),
-        lang: language,
-        ...(voice ? { voice } : {}),
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(await readError(response));
-    }
-    const body = (await response.json()) as {
-      clips?: Array<{ audio_url?: string; words?: Array<{ text?: string; offset_ms?: number }> }>;
-    };
-    const clips = body.clips ?? [];
-    missing.forEach((index, cursor) => {
-      const clip = clips[cursor];
-      if (!clip?.audio_url) {
-        throw new Error("A narração não voltou da API.");
-      }
-      const words = readSpokenWords(clip.words);
-      const remote = audioUrl(clip.audio_url);
-      results[index] = { audioUrl: remote, words };
-      warmAudioCache(audioCacheKey(texts[index] ?? "", language, voice ?? ""), remote, words);
-    });
-    return results;
-  } catch (caught) {
-    missing.forEach((index) => {
-      const cached = readAudioCache(audioCacheKey(texts[index] ?? "", language, voice ?? ""));
-      if (cached) {
-        results[index] = cached;
-      }
-    });
-    if (missing.every((index) => results[index])) {
-      return results;
-    }
-    throw caught instanceof Error ? caught : new Error("A narração não voltou da API.");
-  }
+  const clips = await speechService.synthesizeMany(texts, lang, voice);
+  return clips.map(spokenFromClip);
 }
 
 export function prefetchSpeech(texts: string[], lang: string, voice?: string): void {
-  void speakStories(texts.filter((text) => text.trim().length > 0), lang, voice).catch(() => undefined);
+  speechService.prefetch(texts, lang, voice);
 }
 
+/**
+ * Mesma assinatura do antigo stream MPEG do servidor, agora no aparelho. Cada frase sintetizada
+ * chega ao `onAudio` como uma referência de clipe (o manipulador de stream do AudioService a toca
+ * assim que chega). As palavras vêm junto com o primeiro trecho, numa linha do tempo estimada que
+ * o AudioService segue; o `SpokenStory` devolvido traz o clipe inteiro e os tempos finais.
+ * Com o clipe já pronto (cache, disco, japonês), vai uma referência só.
+ */
 export async function speakStoryStream(
   text: string,
   lang: string,
@@ -1710,115 +1672,39 @@ export async function speakStoryStream(
   },
   signal?: AbortSignal,
 ): Promise<SpokenStory> {
-  const language = lang.slice(0, 2).toLowerCase();
-  const key = audioCacheKey(text, language, voice ?? "");
-  const cached = readAudioCache(key);
-  if (cached) {
-    const bytes = await audioBytes(cached.audioUrl, signal);
-    if (bytes.length > 0) {
-      handlers.onAudio(bytes);
+  let wordsSent = false;
+  const result = await speechService.synthesizeStreaming(text, lang, voice, (segment) => {
+    if (signal?.aborted) {
+      URL.revokeObjectURL(segment.url);
+      return;
     }
-    for (const word of cached.words) {
+    handlers.onAudio(
+      clipReferenceBytes(segment.url, {
+        temp: true,
+        estStartMs: segment.estStartMs,
+        estEndMs: segment.estEndMs,
+        estTotalMs: segment.estTotalMs,
+      }),
+    );
+    if (segment.words && !wordsSent) {
+      wordsSent = true;
+      for (const word of segment.words) {
+        handlers.onWord({ text: word.text, offsetMs: word.offsetMs });
+      }
+    }
+  });
+  if (signal?.aborted) {
+    return { audioUrl: "", words: [] };
+  }
+  const spoken = spokenFromClip(result.clip);
+  if (!result.streamed) {
+    handlers.onAudio(clipReferenceBytes(result.clip.url));
+    for (const word of spoken.words) {
       handlers.onWord(word);
     }
-    handlers.onDone();
-    return cached;
-  }
-  const response = await fetch(`${apiUrl()}/api/v1/audio/speak-stream`, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "text/event-stream" },
-    body: JSON.stringify({
-      text,
-      lang: language,
-      ...(voice ? { voice } : {}),
-    }),
-    signal,
-  });
-  if (!response.ok || !response.body) {
-    throw new Error(await readError(response));
-  }
-  const words: SpokenStory["words"] = [];
-  const chunks: Uint8Array[] = [];
-  let remote = "";
-  let failed = "";
-  for await (const frame of readSse(response.body)) {
-    if (signal?.aborted) {
-      return { audioUrl: "", words: [] };
-    }
-    if (frame.event === "audio") {
-      const bytes = base64ToBytes(frame.data);
-      if (bytes.length > 0) {
-        chunks.push(bytes);
-        handlers.onAudio(bytes);
-      }
-      continue;
-    }
-    if (frame.event === "word") {
-      try {
-        const parsed = JSON.parse(frame.data) as { text?: string; offset_ms?: number };
-        if (typeof parsed.text === "string" && typeof parsed.offset_ms === "number") {
-          const word = { text: parsed.text, offsetMs: parsed.offset_ms };
-          words.push(word);
-          handlers.onWord(word);
-        }
-      } catch {
-        continue;
-      }
-      continue;
-    }
-    if (frame.event === "done") {
-      try {
-        const parsed = JSON.parse(frame.data) as { audio_url?: string };
-        if (typeof parsed.audio_url === "string") {
-          remote = audioUrl(parsed.audio_url);
-        }
-      } catch {
-        remote = "";
-      }
-      continue;
-    }
-    if (frame.event === "error") {
-      failed = copy().neuralVoiceFailed;
-    }
-  }
-  if (failed) {
-    throw new Error(failed);
-  }
-  if (chunks.length === 0) {
-    throw new Error(copy().neuralVoiceFailed);
   }
   handlers.onDone();
-  const spoken: SpokenStory = remote
-    ? { audioUrl: remote, words }
-    : { audioUrl: `data:audio/mpeg;base64,${bytesToBase64(concatBytes(chunks))}`, words };
-  if (remote) {
-    warmAudioCache(key, remote, words);
-  } else {
-    writeAudioCache(key, spoken);
-  }
   return spoken;
-}
-
-async function audioBytes(url: string, signal?: AbortSignal): Promise<Uint8Array> {
-  if (url.startsWith("data:audio/mpeg;base64,")) {
-    return base64ToBytes(url.slice("data:audio/mpeg;base64,".length));
-  }
-  const file = await fetch(url, { signal });
-  if (!file.ok) {
-    return new Uint8Array();
-  }
-  return new Uint8Array(await file.arrayBuffer());
-}
-
-function concatBytes(chunks: Uint8Array[]): Uint8Array {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return out;
 }
 
 export interface Fluency360Response {

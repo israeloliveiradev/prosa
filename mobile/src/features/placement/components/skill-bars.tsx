@@ -1,109 +1,76 @@
-import { View, StyleSheet } from "react-native";
-import { Text } from "@/ui/text";
-import { Progress } from "@/ui/progress";
-import { skillPercentage } from "@/features/placement/model/placement-flow";
-import { useCopy } from "@/lib/i18n";
+import { Text, View } from "react-native";
+import { TactileCard } from "@/components/tactile/tactile-card";
+import { fillCopy, percent } from "@/features/placement/model/placement-flow";
+import type { PlacementCopy } from "@/lib/copy/placement";
+import { SectionLabel } from "./parts";
 
-export interface SkillEntry {
-  skill: "vocab" | "grammar" | "reading" | "listening";
+export interface ScoreRow {
+  key: string;
+  label: string;
   correct: number;
   total: number;
 }
 
-export interface BandEntry {
-  band: string;
-  correct: number;
-  total: number;
-}
-
-export interface SkillBarsProps {
-  skills?: SkillEntry[];
-  bands?: BandEntry[];
-}
-
-function skillName(copy: any, skill: string): string {
-  switch (skill) {
-    case "vocab":
-      return copy.skillVocab ?? "Vocabulário";
-    case "grammar":
-      return copy.skillGrammar ?? "Gramática";
-    case "reading":
-      return copy.skillReading ?? "Leitura";
-    case "listening":
-      return copy.skillListening ?? "Escuta";
-    default:
-      return skill;
+/**
+ * Barras de acerto (faixa CEFR ou habilidade). Cada barra é `correct / total`
+ * devolvidos pelo servidor; o número ao lado mostra a conta de verdade.
+ */
+export function ScoreBars({
+  title,
+  rows,
+  t,
+  tone = "teal",
+  labelWidth = 112,
+  testID,
+}: {
+  title: string;
+  rows: ScoreRow[];
+  t: PlacementCopy;
+  tone?: "teal" | "amber";
+  labelWidth?: number;
+  testID?: string;
+}) {
+  if (rows.length === 0) {
+    return null;
   }
-}
-
-export function SkillBars({ skills, bands }: SkillBarsProps) {
-  const copy = useCopy();
-
+  const fill = tone === "teal" ? "bg-[#0D9488]" : "bg-[#F59E0B]";
   return (
-    <View style={styles.container} testID="placement-skill-bars">
-      {skills && skills.length > 0 ? (
-        <View style={{ gap: 12 }}>
-          <Text variant="label" weight="semibold" tone="ink">
-            {copy.placeSkills ?? "Desempenho por habilidade"}
-          </Text>
-          <View style={{ gap: 10 }}>
-            {skills.map((s) => {
-              const percent = skillPercentage(s.correct, s.total);
-              return (
-                <View key={s.skill} style={styles.row}>
-                  <Text variant="body" tone="ink" style={{ width: 110 }}>
-                    {skillName(copy, s.skill)}
-                  </Text>
-                  <View style={{ flex: 1 }}>
-                    <Progress value={percent} tone="accent" />
-                  </View>
-                  <Text variant="caption" tone="muted" style={{ width: 48, textAlign: "right" }}>
-                    {s.correct}/{s.total}
+    <TactileCard animateEntry={false} className="flex-1 p-5" style={{ padding: 20 }}>
+      <View testID={testID} className="gap-4">
+        <SectionLabel>{title}</SectionLabel>
+        <View className="gap-3">
+          {rows.map((row) => {
+            const value = percent(row.correct, row.total);
+            const spoken = fillCopy(t.correctOf, { correct: row.correct, total: row.total });
+            return (
+              <View
+                key={row.key}
+                className="flex-row items-center gap-3"
+                accessible
+                accessibilityLabel={`${row.label}: ${spoken}`}
+              >
+                <View style={{ width: labelWidth }}>
+                  <Text className="font-sans text-sm font-bold text-[#111C2D]" numberOfLines={1}>
+                    {row.label}
                   </Text>
                 </View>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
-
-      {bands && bands.length > 0 ? (
-        <View style={{ gap: 12 }}>
-          <Text variant="label" weight="semibold" tone="ink">
-            {copy.placeBand ?? "Desempenho por faixa CEFR"}
-          </Text>
-          <View style={{ gap: 10 }}>
-            {bands.map((b) => {
-              const percent = skillPercentage(b.correct, b.total);
-              return (
-                <View key={b.band} style={styles.row}>
-                  <Text variant="body" weight="semibold" tone="ink" style={{ width: 40 }}>
-                    {b.band}
-                  </Text>
-                  <View style={{ flex: 1 }}>
-                    <Progress value={percent} tone="ink" />
-                  </View>
-                  <Text variant="caption" tone="muted" style={{ width: 48, textAlign: "right" }}>
-                    {b.correct}/{b.total}
+                <View
+                  className="h-3 flex-1 overflow-hidden rounded-full border border-[#E2E8F0] bg-[#F5F0E8]"
+                  accessibilityRole="progressbar"
+                  accessibilityValue={{ min: 0, max: 100, now: value }}
+                >
+                  <View className={`h-full rounded-full ${fill}`} style={{ width: `${value}%` }} />
+                </View>
+                <View style={{ width: 48 }}>
+                  <Text className="text-right font-sans text-sm font-bold text-[#64748B]">
+                    {row.correct}/{row.total}
                   </Text>
                 </View>
-              );
-            })}
-          </View>
+              </View>
+            );
+          })}
         </View>
-      ) : null}
-    </View>
+      </View>
+    </TactileCard>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    gap: 20,
-    width: "100%",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-});

@@ -1,41 +1,59 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import { ListenPace } from "@/components/session/listen-pace";
+import { IconPause, IconPlay } from "@/components/session/session-icons";
+import { ChoiceTile, Kicker, Notice, StageCard } from "@/components/session/stage-kit";
+import { TactileButton } from "@/components/tactile/tactile-button";
 import { speakStory } from "@/lib/api";
+import { SESSION_COPY } from "@/lib/copy/session";
+import { useAreaCopy } from "@/lib/copy/area";
 import { buildDictation, dictationMatches } from "@/lib/dictation";
 import { listenRate } from "@/lib/listen-rate";
 import { tap } from "@/lib/haptics";
 import { useCopy } from "@/lib/i18n";
 import { narratorVoice, useNarratorVoice, voicesFor } from "@/lib/narrator";
 import { listenChecks } from "@/lib/session-clock";
-import { startNeuralPlayback, type PlaybackHandle } from "@/lib/voice";
+import { narrationToken, startNeuralPlayback, type PlaybackHandle } from "@/lib/voice";
 import { AudioService } from "@/services/audio/AudioService";
 import { useTheme } from "@/theme/ThemeContext";
+
+export interface ListenResult {
+  right: number;
+  total: number;
+}
 
 export function ListenStage({
   story,
   translation,
   language,
   vocabulary,
+  onDone,
 }: {
   story: string;
   translation: string;
   language: string;
   vocabulary: Array<{ word: string }>;
+  /** Chamado uma vez, quando a compreensão foi respondida (ou a história ouvida, se não há pergunta). */
+  onDone?: (result: ListenResult) => void;
 }) {
   const copy = useCopy();
+  const local = useAreaCopy(SESSION_COPY);
+  const { palette } = useTheme();
   const voiceId = useNarratorVoice(language);
   const voiceName = voicesFor(language).find((voice) => voice.id === voiceId)?.name ?? "";
-  const checks = listenChecks(story, translation);
+  const checks = useMemo(() => listenChecks(story, translation), [story, translation]);
   const playback = useRef<PlaybackHandle | null>(null);
+  const reported = useRef(false);
   const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [heard, setHeard] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
+  const [right, setRight] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const question = heard ? checks[cursor] : undefined;
   const questionsFinished = checks.length === 0 ? heard : heard && cursor === checks.length - 1 && picked !== null;
-  const dictation = buildDictation(story, vocabulary);
+  const dictation = useMemo(() => buildDictation(story, vocabulary), [story, vocabulary]);
 
   useEffect(() => {
     return () => {
@@ -44,114 +62,132 @@ export function ListenStage({
     };
   }, []);
 
+  useEffect(() => {
+    if (questionsFinished && !reported.current) {
+      reported.current = true;
+      onDone?.({ right, total: checks.length });
+    }
+  }, [checks.length, onDone, questionsFinished, right]);
+
+  function stop() {
+    playback.current?.stop();
+    playback.current = null;
+    AudioService.stopAndUnload();
+    setPlaying(false);
+    setLoading(false);
+  }
+
   async function play(text: string, markHeard: boolean) {
+    stop();
+    const generation = narrationToken();
     setError(null);
-    setPlaying(true);
+    setLoading(true);
     try {
       const spoken = await speakStory(text, language, narratorVoice(language));
-      playback.current?.stop();
+      if (narrationToken() !== generation) {
+        return;
+      }
+      setLoading(false);
+      setPlaying(true);
       playback.current = startNeuralPlayback(
         spoken.audioUrl,
         listenRate(),
         () => undefined,
         () => {
+          playback.current = null;
           setPlaying(false);
           if (markHeard) {
             setHeard(true);
           }
         },
         () => {
+          playback.current = null;
           setPlaying(false);
-          setError(copy.neuralVoiceFailed);
+          setError(local.voiceFailed);
         },
       );
     } catch (caught) {
-      setPlaying(false);
-      setError(caught instanceof Error ? caught.message : copy.neuralVoiceFailed);
+      if (narrationToken() === generation) {
+        setLoading(false);
+        setPlaying(false);
+        setError(caught instanceof Error ? caught.message : local.voiceFailed);
+      }
     }
   }
 
   return (
-    <View className="mt-6">
-      <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.listenPhase}</Text>
-      <Text className="font-displayItalic mt-2 text-headline leading-10 text-ink">{copy.listenTitle}</Text>
-      {voiceName ? <Text className="mt-3 font-label text-sm text-muted">{`${copy.listenVoiceToday} · ${voiceName}`}</Text> : null}
-      <ListenPace />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ busy: playing }}
-        disabled={playing}
-        onPress={() => {
-          void play(story, true);
-        }}
-        className={`mt-5 min-h-12 items-center justify-center self-start rounded-full px-6 ${playing ? "bg-line" : "bg-ember"}`}
-      >
-        <Text className={`text-base font-semibold ${playing ? "text-muted" : "text-onEmber"}`}>
-          {playing ? copy.listenPlay : heard ? copy.listenAgain : copy.listenPlay}
-        </Text>
-      </Pressable>
-      {heard ? null : (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setHeard(true)}
-          className="mt-3 min-h-12 items-center justify-center self-start rounded-full bg-line px-6"
-        >
-          <Text className="text-base font-semibold text-ink">{copy.listenHeard}</Text>
-        </Pressable>
-      )}
-      {error ? (
-        <Text accessibilityRole="alert" className="mt-3 text-base text-roseInk">
-          {error}
-        </Text>
-      ) : null}
-      {questionsFinished && dictation.gaps.length > 0 ? <DictationGaps story={story} vocabulary={vocabulary} /> : null}
-      {questionsFinished && dictation.gaps.length === 0 ? <Text className="mt-6 text-base leading-7 text-muted">{copy.listenOpen}</Text> : null}
+    <View className="gap-4">
+      <StageCard>
+        <Kicker>{copy.listenPhase}</Kicker>
+        <Text className="mt-2 font-display text-2xl leading-8 font-extrabold text-ink">{copy.listenTitle}</Text>
+        {voiceName ? <Text className="mt-2 font-sans text-sm text-muted">{`${copy.listenVoiceToday} · ${voiceName}`}</Text> : null}
+        <ListenPace />
+        <View className="mt-5 flex-row flex-wrap gap-2">
+          <TactileButton
+            variant="primary"
+            size="lg"
+            disabled={loading}
+            onPress={() => (playing ? stop() : void play(story, true))}
+            icon={playing ? <IconPause color={palette.onPrimary} /> : <IconPlay color={palette.onPrimary} />}
+            label={playing ? copy.pauseAudio : heard ? copy.listenAgain : copy.listenPlay}
+          />
+          {heard ? null : <TactileButton variant="secondary" size="lg" onPress={() => setHeard(true)} label={copy.listenHeard} />}
+        </View>
+        {loading ? <Text className="mt-3 font-sans text-sm text-muted">{local.voiceLoading}</Text> : null}
+        {error ? <Notice>{error}</Notice> : null}
+      </StageCard>
       {question ? (
-        <View className="mt-6">
-          <Text className="font-label text-sm text-ink">{copy.listenQuestion}</Text>
-          <Pressable
-            accessibilityRole="button"
-            disabled={playing}
-            onPress={() => {
-              void play(question.audio, false);
-            }}
-            className="mt-3 min-h-12 items-center justify-center self-start rounded-full bg-line px-6"
-          >
-            <Text className="text-base font-semibold text-ink">{copy.listenAgain}</Text>
-          </Pressable>
+        <StageCard>
+          <Kicker tone="muted">{copy.listenQuestion}</Kicker>
+          <View className="mt-3 flex-row">
+            <TactileButton
+              variant="secondary"
+              size="sm"
+              disabled={loading}
+              onPress={() => void play(question.audio, false)}
+              icon={<IconPlay color={palette.primary} size={14} />}
+              label={copy.listenAgain}
+            />
+          </View>
           <View className="mt-4 gap-2">
             {question.options.map((option, index) => {
-              const chosen = picked === index;
-              const right = picked !== null && index === question.answer;
+              const answered = picked !== null;
+              const state = !answered ? "idle" : index === question.answer ? "right" : picked === index ? "wrong" : "idle";
               return (
-                <Pressable
+                <ChoiceTile
                   key={`${index}-${option}`}
-                  accessibilityRole="button"
-                  disabled={picked !== null}
+                  label={option}
+                  state={state}
+                  disabled={answered}
                   onPress={() => {
                     setPicked(index);
+                    if (index === question.answer) {
+                      setRight((value) => value + 1);
+                    }
                     void tap(index === question.answer ? "success" : "medium");
                   }}
-                  className={`min-h-12 justify-center rounded-[20px] px-4 py-3 ${right ? "bg-mossSoft" : chosen ? "bg-roseSoft" : "bg-card"}`}
-                >
-                  <Text className="text-base leading-6 text-ink">{option}</Text>
-                </Pressable>
+                />
               );
             })}
           </View>
           {picked !== null && cursor < checks.length - 1 ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setCursor((current) => current + 1);
-                setPicked(null);
-              }}
-              className="mt-4 min-h-12 items-center justify-center self-start rounded-full bg-ember px-6"
-            >
-              <Text className="text-base font-semibold text-onEmber">{copy.listenNext}</Text>
-            </Pressable>
+            <View className="mt-4 flex-row">
+              <TactileButton
+                variant="primary"
+                size="md"
+                onPress={() => {
+                  setCursor((current) => current + 1);
+                  setPicked(null);
+                }}
+                label={copy.listenNext}
+              />
+            </View>
           ) : null}
-        </View>
+        </StageCard>
+      ) : null}
+      {questionsFinished && dictation.gaps.length > 0 ? <DictationGaps story={story} vocabulary={vocabulary} /> : null}
+      {questionsFinished && dictation.gaps.length === 0 ? (
+        <Text className="font-sans text-base leading-7 text-muted">{copy.listenOpen}</Text>
       ) : null}
     </View>
   );
@@ -166,13 +202,13 @@ function DictationGaps({ story, vocabulary }: { story: string; vocabulary: Array
   const right = built.gaps.filter((gap, index) => dictationMatches(answers[index] ?? "", gap.expected)).length;
 
   return (
-    <View className="mt-6">
-      <Text className="font-label text-sm text-ink">{copy.dictationTitle}</Text>
+    <StageCard>
+      <Kicker tone="muted">{copy.dictationTitle}</Kicker>
       <View className="mt-4 flex-row flex-wrap items-end">
         {built.pieces.map((piece, index) => {
           if (piece.kind === "word" || piece.gap === undefined) {
             return (
-              <Text key={`word-${index}`} className="mb-2 mr-1 text-lg leading-8 text-ink">
+              <Text key={`word-${index}`} className="mb-2 mr-1 font-serif text-lg leading-8 text-ink">
                 {piece.text}
               </Text>
             );
@@ -189,29 +225,37 @@ function DictationGaps({ story, vocabulary }: { story: string; vocabulary: Array
                 }}
                 accessibilityLabel={`${copy.dictationGap} ${gap + 1}`}
                 placeholder="···"
-                placeholderTextColor={palette.onSurfaceVariant}
+                placeholderTextColor={palette.faint}
                 autoCapitalize="none"
                 autoCorrect={false}
-                className={`min-h-12 min-w-24 rounded-2xl border border-line px-3 text-lg text-ink ${checked && ok ? "bg-mossSoft" : checked ? "bg-roseSoft" : "bg-card"}`}
+                className="min-h-11 min-w-24 rounded-xl px-3 font-sans text-lg text-ink"
+                style={{
+                  backgroundColor: checked ? (ok ? palette.pillPositiveBg : palette.pillNegativeBg) : palette.card,
+                  borderWidth: 2,
+                  borderColor: checked ? (ok ? palette.positive : palette.negative) : palette.border,
+                }}
               />
-              {checked && !ok ? <Text className="mt-1 text-sm text-muted">{piece.text}</Text> : null}
+              {checked && !ok ? <Text className="mt-1 font-sans text-sm text-muted">{piece.text}</Text> : null}
             </View>
           );
         })}
       </View>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => {
-          setChecked(true);
-          void tap(right === built.gaps.length ? "success" : "medium");
-        }}
-        className="mt-4 min-h-12 items-center justify-center self-start rounded-full bg-ember px-6"
-      >
-        <Text className="text-base font-semibold text-onEmber">{copy.dictationCheck}</Text>
-      </Pressable>
+      <View className="mt-4 flex-row">
+        <TactileButton
+          variant="primary"
+          size="md"
+          onPress={() => {
+            setChecked(true);
+            void tap(right === built.gaps.length ? "success" : "medium");
+          }}
+          label={copy.dictationCheck}
+        />
+      </View>
       {checked ? (
-        <Text className="mt-3 text-base text-ink">{copy.dictationScore.replace("{right}", String(right)).replace("{total}", String(built.gaps.length))}</Text>
+        <Text accessibilityLiveRegion="polite" className="mt-3 font-sans text-base font-semibold text-ink">
+          {copy.dictationScore.replace("{right}", String(right)).replace("{total}", String(built.gaps.length))}
+        </Text>
       ) : null}
-    </View>
+    </StageCard>
   );
 }

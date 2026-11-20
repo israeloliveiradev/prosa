@@ -2,6 +2,8 @@ import { View, StyleSheet } from "react-native";
 import { Text } from "@/ui/text";
 import { useTheme } from "@/theme/ThemeContext";
 import { useCopy } from "@/lib/i18n";
+import { useAreaCopy } from "@/lib/copy/area";
+import { SHELL_COPY } from "@/lib/copy/shell";
 import {
   sessionPhases,
   phaseAt,
@@ -34,6 +36,7 @@ export function SessionRuler({
 }: SessionRulerProps) {
   const { palette } = useTheme();
   const copy = useCopy();
+  const shell = useAreaCopy(SHELL_COPY);
 
   const phases = phasesProp && phasesProp.length > 0
     ? phasesProp
@@ -51,8 +54,8 @@ export function SessionRuler({
   const completedPhasesCount = segments.filter((s) => currentSeconds >= s.end).length;
   const a11ySummary =
     completedPhasesCount === segments.length
-      ? "Prosa de hoje concluída."
-      : `${completedPhasesCount > 0 ? `${completedPhasesCount} etapas concluídas. ` : ""}${phaseName(copy, currentSegment.id)}, ${currentMinutes} de ${totalPhaseMinutes} min.`;
+      ? shell.rulerDone
+      : `${completedPhasesCount > 0 ? `${shell.rulerStepsDone(completedPhasesCount)} ` : ""}${shell.rulerAt(phaseName(copy, currentSegment.id), currentMinutes, totalPhaseMinutes)}`;
 
   return (
     <View

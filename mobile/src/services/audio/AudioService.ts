@@ -1,10 +1,24 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer, type AudioStatus } from "expo-audio";
 import { Platform } from "react-native";
+import { voiceCopy } from "@/lib/copy/voice";
+import {
+  isSpeechUrl,
+  keepPitch,
+  parseSpeechUrl,
+  readClipReference,
+  speakWithWebSpeech,
+  speechService,
+  type ClipReference,
+} from "@/services/speechService";
 
 export interface PlaybackHandle {
   stop: () => void;
 }
 
+/**
+ * Manipulador de "stream" de narração. A narração agora sai inteira do aparelho: `push` recebe a
+ * referência do clipe (ver `clipReferenceBytes`) ou bytes de áudio crus; `end` começa a tocar.
+ */
 export interface MpegStreamHandle extends PlaybackHandle {
   push: (bytes: Uint8Array) => void;
   end: () => void;
@@ -34,7 +48,9 @@ interface WebAudio {
   src: string;
   currentTime: number;
   duration: number;
+  paused: boolean;
   playbackRate: number;
+  defaultPlaybackRate: number;
   play: () => Promise<void>;
   pause: () => void;
   addEventListener: (type: string, listener: () => void) => void;
@@ -46,6 +62,8 @@ interface MediaSessionLike {
   playbackState: "none" | "paused" | "playing";
   setActionHandler: (action: string, handler: (() => void) | null) => void;
 }
+
+const TICK_MS = 80;
 
 class AudioController {
   private generation = 0;
@@ -99,10 +117,7 @@ class AudioController {
     this.sequenceLive = false;
     this.finishClip("stop");
     this.releaseCurrent();
-    const release =
-      Platform.OS === "web"
-        ? this.bindWeb(url, rate, onTime, onEnd, null, onError)
-        : this.bindNative(url, rate, onTime, onEnd, null, onError);
+    const release = this.bind(url, rate, onTime, onEnd, null, onError);
     this.release = release;
     return {
       stop: () => {
@@ -124,10 +139,7 @@ class AudioController {
     this.sequenceLive = false;
     this.finishClip("stop");
     this.releaseCurrent();
-    if (Platform.OS === "web" && mpegSourceSupported()) {
-      return this.bindMediaSource(rate, onTime, onEnd, onError);
-    }
-    return this.bindBufferedMpeg(rate, onTime, onEnd, onError);
+    return this.bindClipStream(rate, onTime, onEnd, onError);
   }
 
   startSequence(items: SequenceItem[], onUpdate: (update: SequenceUpdate) => void, options?: { open?: boolean }): void {
@@ -228,7 +240,7 @@ class AudioController {
     if (this.sequenceId === sequenceId) {
       this.sequenceLive = false;
       this.sequenceOpen = false;
-      onUpdate({ title: "Fim", unit: this.currentUnit, done: true, paused: false });
+      onUpdate({ title: voiceCopy().sequenceEnd, unit: this.currentUnit, done: true, paused: false });
       this.clearMediaSession();
     }
   }
@@ -253,11 +265,7 @@ class AudioController {
         onUpdate({ title, unit: this.currentUnit, done: false, paused: this.paused, error: message });
         this.finishClip("stop");
       };
-      const release =
-        Platform.OS === "web"
-          ? this.bindWeb(url, 1, () => undefined, onEnd, title, onError)
-          : this.bindNative(url, 1, () => undefined, onEnd, title, onError);
-      this.release = release;
+      this.release = this.bind(url, 1, () => undefined, onEnd, title, onError);
     });
   }
 
@@ -363,136 +371,46 @@ class AudioController {
     }
   }
 
-  private bindMediaSource(
+  private bind(
+    url: string,
     rate: number,
     onTime: (elapsedMs: number, durationMs: number) => void,
     onEnd: () => void,
+    lockTitle: string | null,
     onError?: (message: string) => void,
-  ): MpegStreamHandle {
-    const MediaSourceCtor = (globalThis as { MediaSource?: { new (): MediaSource; isTypeSupported?: (type: string) => boolean } }).MediaSource;
-    const Factory = (globalThis as { Audio?: new (src: string) => WebAudio }).Audio;
-    if (!MediaSourceCtor || !Factory) {
-      return this.bindBufferedMpeg(rate, onTime, onEnd, onError);
-    }
-    const mediaSource = new MediaSourceCtor();
-    const objectUrl = URL.createObjectURL(mediaSource);
-    const audio = new Factory(objectUrl);
-    audio.playbackRate = rate;
-    const queue: Uint8Array[] = [];
-    let sourceBuffer: { updating: boolean; appendBuffer: (data: BufferSource) => void; addEventListener: (type: string, listener: () => void) => void } | null = null;
-    let streamEnded = false;
-    let failed = false;
-    let started = false;
-    let released = false;
-
-    const pump = () => {
-      if (!sourceBuffer || sourceBuffer.updating || failed || released) {
-        return;
-      }
-      const next = queue.shift();
-      if (next && next.byteLength > 0) {
-        try {
-          const copy = new Uint8Array(next.byteLength);
-          copy.set(next);
-          sourceBuffer.appendBuffer(copy);
-        } catch {
-          onError?.("O áudio neural não abriu.");
-        }
-        return;
-      }
-      if (streamEnded && mediaSource.readyState === "open") {
-        try {
-          mediaSource.endOfStream();
-        } catch {
-          return;
-        }
-      }
-    };
-
-    const update = () => {
-      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-      onTime(audio.currentTime * 1000, duration * 1000);
-    };
-    audio.addEventListener("timeupdate", update);
-    audio.addEventListener("ended", onEnd);
-
-    mediaSource.addEventListener("sourceopen", () => {
-      try {
-        sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
-        sourceBuffer.addEventListener("updateend", () => {
-          if (!started) {
-            started = true;
-            void audio.play().catch(() => {
-              onError?.("O navegador recusou o áudio.");
-            });
-          }
-          pump();
-        });
-        pump();
-      } catch {
-        onError?.("O áudio neural não abriu.");
-      }
-    });
-
-    const stop = () => {
-      if (released) {
-        return;
-      }
-      released = true;
-      failed = true;
-      queue.length = 0;
-      audio.pause();
-      audio.src = "";
-      audio.removeEventListener("timeupdate", update);
-      audio.removeEventListener("ended", onEnd);
-      try {
-        if (mediaSource.readyState === "open") {
-          mediaSource.endOfStream();
-        }
-      } catch {
-        /* already closed */
-      }
-      URL.revokeObjectURL(objectUrl);
-    };
-
-    this.release = stop;
-    return {
-      push: (bytes) => {
-        if (released || failed || bytes.byteLength === 0) {
-          return;
-        }
-        queue.push(bytes);
-        pump();
-      },
-      end: () => {
-        streamEnded = true;
-        pump();
-      },
-      fail: (message) => {
-        if (released) {
-          return;
-        }
-        failed = true;
-        onError?.(message);
-      },
-      stop: () => {
-        if (this.release === stop) {
-          this.release = null;
-        }
-        stop();
-      },
-    };
+  ): Release {
+    return Platform.OS === "web"
+      ? this.bindWeb(url, rate, onTime, onEnd, lockTitle, onError)
+      : this.bindNative(url, rate, onTime, onEnd, lockTitle, onError);
   }
 
-  private bindBufferedMpeg(
+  /**
+   * Toca a narração conforme ela chega. Cada referência de clipe (trecho WAV no aparelho, clipe
+   * inteiro ou `speech:`) começa a tocar assim que chega e as seguintes entram em fila; `end` diz
+   * que não vem mais nada. Com linha do tempo estimada (`estStartMs`/`estEndMs`), o tempo
+   * informado é o dessa linha, para o destaque bater com as palavras já entregues.
+   * Bytes crus (sem referência) viram um único arquivo ao fim.
+   */
+  private bindClipStream(
     rate: number,
     onTime: (elapsedMs: number, durationMs: number) => void,
     onEnd: () => void,
     onError?: (message: string) => void,
   ): MpegStreamHandle {
     const parts: Uint8Array[] = [];
+    const refs: ClipReference[] = [];
     let released = false;
+    let ended = false;
+    let playing = false;
+    let cursor = 0;
+    let offsetMs = 0;
     let inner: Release | null = null;
+    let tempUrl: string | null = null;
+    const revoke = (ref: ClipReference | undefined) => {
+      if (ref?.temp) {
+        URL.revokeObjectURL(ref.url);
+      }
+    };
     const stop = () => {
       if (released) {
         return;
@@ -500,34 +418,108 @@ class AudioController {
       released = true;
       inner?.();
       inner = null;
+      revoke(refs[cursor - 1]);
+      refs.slice(cursor).forEach(revoke);
+      if (tempUrl) {
+        URL.revokeObjectURL(tempUrl);
+        tempUrl = null;
+      }
+    };
+    const playNext = () => {
+      if (released) {
+        return;
+      }
+      const ref = refs[cursor];
+      if (!ref) {
+        playing = false;
+        if (ended) {
+          onEnd();
+        }
+        return;
+      }
+      playing = true;
+      cursor += 1;
+      const base = offsetMs;
+      let lastDuration = 0;
+      const estimated = ref.estStartMs != null && ref.estEndMs != null;
+      inner = this.bind(
+        ref.url,
+        rate,
+        (elapsedMs, durationMs) => {
+          lastDuration = durationMs;
+          if (estimated) {
+            const start = ref.estStartMs ?? 0;
+            const span = (ref.estEndMs ?? start) - start;
+            const fraction = durationMs > 0 ? Math.min(1, elapsedMs / durationMs) : 0;
+            onTime(start + fraction * span, ref.estTotalMs ?? ref.estEndMs ?? 0);
+          } else {
+            onTime(base + elapsedMs, base + durationMs);
+          }
+        },
+        () => {
+          const finished = inner;
+          inner = null;
+          finished?.();
+          revoke(ref);
+          offsetMs = base + lastDuration;
+          playNext();
+        },
+        null,
+        onError,
+      );
     };
     this.release = stop;
     return {
       push: (bytes) => {
-        if (!released && bytes.byteLength > 0) {
+        if (bytes.byteLength === 0) {
+          return;
+        }
+        const ref = readClipReference(bytes);
+        if (released) {
+          revoke(ref ?? undefined);
+          return;
+        }
+        if (ref) {
+          refs.push(ref);
+          if (!playing) {
+            playNext();
+          }
+        } else {
           parts.push(bytes);
         }
       },
       end: () => {
-        if (released) {
+        if (released || ended) {
           return;
         }
-        const blob = new Blob(parts as BlobPart[], { type: "audio/mpeg" });
+        ended = true;
+        if (refs.length > 0) {
+          if (!playing) {
+            playNext();
+          }
+          return;
+        }
+        const blob = new Blob(parts as BlobPart[], { type: sniffAudioType(parts[0]) });
         if (blob.size === 0) {
-          onError?.("O áudio neural não abriu.");
+          onError?.(voiceCopy().audioFailed);
           return;
         }
         const url = URL.createObjectURL(blob);
-        inner =
-          Platform.OS === "web"
-            ? this.bindWeb(url, rate, onTime, () => {
-                URL.revokeObjectURL(url);
-                onEnd();
-              }, null, onError)
-            : this.bindNative(url, rate, onTime, () => {
-                URL.revokeObjectURL(url);
-                onEnd();
-              }, null, onError);
+        tempUrl = url;
+        inner = this.bind(
+          url,
+          rate,
+          onTime,
+          () => {
+            if (tempUrl === url) {
+              URL.revokeObjectURL(url);
+              tempUrl = null;
+            }
+            onEnd();
+          },
+          null,
+          onError,
+        );
       },
       fail: (message) => {
         if (!released) {
@@ -551,42 +543,149 @@ class AudioController {
     lockTitle: string | null,
     onError?: (message: string) => void,
   ): Release {
+    if (isSpeechUrl(url)) {
+      return this.bindSpeech(url, rate, onTime, onEnd, lockTitle, onError);
+    }
     const Factory = (globalThis as { Audio?: new (src: string) => WebAudio }).Audio;
     if (!Factory) {
-      throw new Error("Áudio indisponível neste aparelho.");
-    }
-    const audio = new Factory(url);
-    audio.playbackRate = rate;
-    const update = () => {
-      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-      onTime(audio.currentTime * 1000, duration * 1000);
-    };
-    audio.addEventListener("timeupdate", update);
-    audio.addEventListener("ended", onEnd);
-    const pending = audio.play();
-    void pending.catch(() => {
-      onError?.("O navegador recusou o áudio.");
-    });
-    if (lockTitle) {
-      this.clipPause = () => audio.pause();
-      this.clipResume = () => {
-        void audio.play().catch(() => {
-          onError?.("O navegador recusou o áudio.");
-        });
-      };
-      this.publishMedia("playing", lockTitle);
+      throw new Error(voiceCopy().engineUnavailable);
     }
     let released = false;
+    let inner: Release | null = null;
+    const start = (source: string) => {
+      if (released) {
+        return;
+      }
+      inner = this.bindElement(Factory, source, rate, onTime, onEnd, lockTitle, onError);
+    };
+    if (speechService.needsRevival(url)) {
+      // URL de um clipe de antes do F5 (ou que saiu do cache): refaz a partir do texto registrado.
+      speechService.reviveUrl(url).then(
+        (fresh) => {
+          if (released) {
+            return;
+          }
+          if (fresh) {
+            start(fresh);
+          } else {
+            onError?.(voiceCopy().audioFailed);
+          }
+        },
+        (caught: unknown) => {
+          if (!released) {
+            onError?.(caught instanceof Error ? caught.message : voiceCopy().audioFailed);
+          }
+        },
+      );
+    } else {
+      start(url);
+    }
     return () => {
       if (released) {
         return;
       }
       released = true;
-      audio.pause();
-      audio.src = "";
-      audio.removeEventListener("timeupdate", update);
-      audio.removeEventListener("ended", onEnd);
+      inner?.();
+      inner = null;
     };
+  }
+
+  private bindElement(
+    Factory: new (src: string) => WebAudio,
+    url: string,
+    rate: number,
+    onTime: (elapsedMs: number, durationMs: number) => void,
+    onEnd: () => void,
+    lockTitle: string | null,
+    onError?: (message: string) => void,
+  ): Release {
+    const audio = new Factory(url);
+    // A velocidade de escuta muda só o andamento: o tom fica (nada de playbackRate em AudioBufferSourceNode).
+    keepPitch(audio);
+    audio.defaultPlaybackRate = rate;
+    audio.playbackRate = rate;
+    speechService.retain(url);
+    let released = false;
+    let failed = false;
+    const update = () => {
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      onTime(audio.currentTime * 1000, duration * 1000);
+    };
+    const fail = (message: string) => {
+      if (released || failed) {
+        return;
+      }
+      failed = true;
+      onError?.(message);
+    };
+    const onMediaError = () => fail(voiceCopy().audioFailed);
+    const onEnded = () => {
+      update();
+      onEnd();
+    };
+    const ticker = setInterval(() => {
+      if (!audio.paused) {
+        update();
+      }
+    }, TICK_MS);
+    audio.addEventListener("timeupdate", update);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onMediaError);
+    const startPlaying = () => {
+      void audio.play().catch((caught: unknown) => {
+        const name = (caught as { name?: string } | null)?.name;
+        if (name === "AbortError") {
+          return;
+        }
+        fail(name === "NotAllowedError" ? voiceCopy().browserRefused : voiceCopy().audioFailed);
+      });
+    };
+    startPlaying();
+    if (lockTitle) {
+      this.clipPause = () => audio.pause();
+      this.clipResume = startPlaying;
+      this.publishMedia("playing", lockTitle);
+    }
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      clearInterval(ticker);
+      audio.pause();
+      audio.removeEventListener("timeupdate", update);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onMediaError);
+      audio.src = "";
+      speechService.releaseUrl(url);
+    };
+  }
+
+  /** Japonês: `speech:` toca com speechSynthesis (via speechService), com o mesmo contrato de tempo. */
+  private bindSpeech(
+    url: string,
+    rate: number,
+    onTime: (elapsedMs: number, durationMs: number) => void,
+    onEnd: () => void,
+    lockTitle: string | null,
+    onError?: (message: string) => void,
+  ): Release {
+    const parsed = parseSpeechUrl(url);
+    if (!parsed) {
+      setTimeout(() => onError?.(voiceCopy().audioFailed), 0);
+      return () => undefined;
+    }
+    const handle = speakWithWebSpeech(parsed.text, parsed.lang, parsed.voice, rate, {
+      onProgress: (mediaMs, durationMs) => onTime(mediaMs, durationMs),
+      onEnd,
+      onError: (message) => onError?.(message),
+    });
+    if (lockTitle) {
+      this.clipPause = () => handle.pause();
+      this.clipResume = () => handle.resume();
+      this.publishMedia("playing", lockTitle);
+    }
+    return () => handle.cancel();
   }
 
   private bindNative(
@@ -597,6 +696,10 @@ class AudioController {
     lockTitle: string | null,
     onError?: (message: string) => void,
   ): Release {
+    if (isSpeechUrl(url)) {
+      setTimeout(() => onError?.(voiceCopy().engineUnavailable), 0);
+      return () => undefined;
+    }
     const player: AudioPlayer = createAudioPlayer(url);
     player.shouldCorrectPitch = true;
     player.playbackRate = rate;
@@ -628,9 +731,19 @@ class AudioController {
   }
 }
 
-function mpegSourceSupported(): boolean {
-  const MediaSourceCtor = (globalThis as { MediaSource?: { isTypeSupported?: (type: string) => boolean } }).MediaSource;
-  return MediaSourceCtor?.isTypeSupported?.("audio/mpeg") === true;
+/** Tipo do áudio pelos primeiros bytes (WAV, Ogg ou MPEG). */
+export function sniffAudioType(bytes: Uint8Array | undefined): string {
+  if (!bytes || bytes.byteLength < 4) {
+    return "audio/mpeg";
+  }
+  const head = String.fromCharCode(bytes[0] ?? 0, bytes[1] ?? 0, bytes[2] ?? 0, bytes[3] ?? 0);
+  if (head === "RIFF") {
+    return "audio/wav";
+  }
+  if (head === "OggS") {
+    return "audio/ogg";
+  }
+  return "audio/mpeg";
 }
 
 function mediaSession(): MediaSessionLike | null {

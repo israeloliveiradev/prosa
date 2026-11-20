@@ -13,8 +13,10 @@ import type {
   LoginChallenge,
   VerifyChallenge,
 } from "@/api/schemas/auth";
+import { ApiError } from "@/api/errors";
+import { shouldAdoptServerLocale, serverLocaleFor } from "@/features/auth/model/locale-sync";
 import { hydrateCast } from "@/lib/cast";
-import { hydrateLocale } from "@/lib/i18n";
+import { getLocale, hydrateLocale, type DisplayLocale } from "@/lib/i18n";
 import { kv } from "@/lib/kv";
 
 const STORAGE_KEY = "prosa.session.v1";
@@ -23,26 +25,6 @@ export interface SessionState {
   token: string;
   user: AccountUser;
 }
-
-const DEFAULT_USER: AccountUser = {
-  id: "estudante_prosa",
-  email: "estudante@prosa.app",
-  display_name: "Estudante",
-  display_locale: "pt",
-  plan: "pro",
-  target_lang: "en",
-  native_lang: "pt",
-  level: "B1",
-  mind_reading: "da_vinci",
-  mind_memory: "feynman",
-  mind_speech: "curie",
-  mind_journal: "einstein",
-};
-
-const DEFAULT_SESSION: SessionState = {
-  token: "prosa_demo_token",
-  user: DEFAULT_USER,
-};
 
 let state: SessionState | null = null;
 const listeners = new Set<() => void>();
@@ -57,9 +39,7 @@ function persist(next: SessionState | null): void {
   state = next;
   if (next) {
     kv.set(STORAGE_KEY, JSON.stringify(next));
-    if (next.user.display_locale === "en" || next.user.display_locale === "pt") {
-      hydrateLocale(next.user.display_locale);
-    }
+    adoptAccountLocale(next.user.display_locale);
     hydrateCast({
       reading: next.user.mind_reading,
       memory: next.user.mind_memory,
@@ -70,6 +50,13 @@ function persist(next: SessionState | null): void {
     kv.delete(STORAGE_KEY);
   }
   emit();
+}
+
+/** O idioma de interface da conta vale, salvo quando o servidor só guardou o substituto (pt/en). */
+function adoptAccountLocale(server: unknown): void {
+  if (shouldAdoptServerLocale(getLocale(), server)) {
+    hydrateLocale(server);
+  }
 }
 
 function isUser(value: unknown): value is AccountUser {
@@ -90,9 +77,7 @@ export function hydrateSession(): void {
     const parsed = JSON.parse(raw) as Partial<SessionState>;
     if (typeof parsed.token === "string" && isUser(parsed.user)) {
       state = { token: parsed.token, user: parsed.user };
-      if (parsed.user.display_locale === "en" || parsed.user.display_locale === "pt") {
-        hydrateLocale(parsed.user.display_locale);
-      }
+      adoptAccountLocale(parsed.user.display_locale);
       hydrateCast({
         reading: parsed.user.mind_reading,
         memory: parsed.user.mind_memory,
@@ -147,10 +132,16 @@ export async function signUp(input: {
   password: string;
   native_lang: string;
   target_lang: string;
-  level: AccountUser["level"];
-  display_locale?: "pt" | "en";
+  /** Opcional: sem nível, o servidor usa o padrão e o nivelamento do primeiro dia decide. */
+  level?: AccountUser["level"];
+  /** Idioma da interface; o servidor guarda pt ou en (os outros viram en). */
+  display_locale?: DisplayLocale;
 }): Promise<AccountUser | VerifyChallenge> {
-  const session = await registerAccount(input);
+  const { display_locale: displayLocale, ...rest } = input;
+  const session = await registerAccount({
+    ...rest,
+    ...(displayLocale ? { display_locale: serverLocaleFor(displayLocale) } : {}),
+  });
   if ("requires_verify" in session) {
     return session;
   }
@@ -185,14 +176,23 @@ export async function refreshSession(): Promise<AccountUser | null> {
   if (!token) {
     return null;
   }
-  if (token === "prosa_demo_token") {
-    return current.user;
-  }
   try {
     const user = await currentAccount(token);
+    if (state?.token !== token) {
+      // A sessão mudou (saiu ou trocou de conta) enquanto a resposta vinha.
+      return state?.user ?? null;
+    }
     persist({ token, user });
     return user;
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      // Token recusado pelo servidor: a sessão local não vale mais.
+      if (state?.token === token) {
+        persist(null);
+      }
+      return null;
+    }
+    // Sem rede ou servidor fora: segue com o cache local (sobrevive ao F5).
     return current.user;
   }
 }

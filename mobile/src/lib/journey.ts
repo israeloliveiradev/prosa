@@ -1,68 +1,32 @@
 import { useSyncExternalStore } from "react";
 import { kv } from "@/lib/kv";
+import {
+  EMPTY_JOURNEY,
+  parseJourney,
+  type JourneyState,
+} from "@/features/onboarding/model/journey-snapshot";
+import {
+  normalizePair,
+  toCefrLevel,
+  type DailyMinutes,
+  type GoalId,
+  type JourneyStep,
+  type LevelSource,
+} from "@/features/onboarding/model/journey-flow";
+import { sanitizeThemes } from "@/lib/themes";
 
-export type JourneyStep = "welcome" | "pair" | "interests" | "place" | "ready";
-
-export interface JourneyState {
-  userId: string;
-  done: boolean;
-  step: JourneyStep;
-  target_lang: string;
-  through_lang: string;
-  interests: string[];
-  goal: string;
-  level: string | null;
-}
+export type { JourneyState, JourneyStep, DailyMinutes, GoalId, LevelSource };
+export { parseJourney };
 
 const STORAGE_KEY = "prosa.journey.v1";
 const listeners = new Set<() => void>();
-
-const EMPTY: JourneyState = {
-  userId: "",
-  done: false,
-  step: "welcome",
-  target_lang: "en",
-  through_lang: "pt",
-  interests: [],
-  goal: "",
-  level: null,
-};
+const EMPTY = EMPTY_JOURNEY;
 
 let state: JourneyState = EMPTY;
 
 function emit(): void {
   for (const listener of listeners) {
     listener();
-  }
-}
-
-function isStep(value: string): value is JourneyStep {
-  return value === "welcome" || value === "pair" || value === "interests" || value === "place" || value === "ready";
-}
-
-function readState(): JourneyState {
-  const raw = kv.getString(STORAGE_KEY);
-  if (!raw) {
-    return EMPTY;
-  }
-  try {
-    const parsed = JSON.parse(raw) as Partial<JourneyState>;
-    // Se o step é "ready" ou "done" sem um usuário autenticado registrado, reinicia do início
-    if (!parsed.userId && (parsed.step === "ready" || parsed.done)) {
-      return EMPTY;
-    }
-    return {
-      userId: typeof parsed.userId === "string" ? parsed.userId : "",
-      done: parsed.done === true,
-      step: parsed.step && isStep(parsed.step) ? parsed.step : "welcome",
-      target_lang: typeof parsed.target_lang === "string" ? parsed.target_lang : "en",
-      through_lang: typeof parsed.through_lang === "string" ? parsed.through_lang : "pt",
-      interests: Array.isArray(parsed.interests) ? parsed.interests.filter((item) => typeof item === "string") : [],
-      goal: typeof parsed.goal === "string" ? parsed.goal : "",
-      level: typeof parsed.level === "string" ? parsed.level : null,
-    };
-  } catch {
-    return EMPTY;
   }
 }
 
@@ -73,7 +37,7 @@ function persist(next: JourneyState): void {
 }
 
 export function hydrateJourney(): void {
-  state = readState();
+  state = parseJourney(kv.getString(STORAGE_KEY));
 }
 
 hydrateJourney();
@@ -103,15 +67,43 @@ export function patchJourney(patch: Partial<JourneyState>): JourneyState {
   return next;
 }
 
-export function markJourneyDone(userId: string, level?: string): void {
-  persist({ ...state, userId, done: true, step: "ready", ...(level ? { level } : {}) });
+export function markJourneyDone(userId: string, level?: string | null): void {
+  const known = toCefrLevel(level);
+  persist({ ...state, userId, done: true, step: "plan", ...(known ? { level: known } : {}) });
+}
+
+/**
+ * Conclui a jornada com o que a conta já guarda (par, temas, nível): usado
+ * quando o servidor mostra que o aluno já passou pelo primeiro dia, por
+ * exemplo em outro aparelho. Objetivo e minutos continuam os deste aparelho.
+ */
+export function markJourneyDoneFromAccount(user: {
+  id: string;
+  target_lang?: string | null;
+  native_lang?: string | null;
+  interests?: readonly string[] | null;
+  level?: string | null;
+}): void {
+  const base = state.userId === user.id ? state : { ...EMPTY, userId: user.id };
+  const pair = normalizePair(user.target_lang, user.native_lang);
+  const interests = user.interests && user.interests.length > 0 ? sanitizeThemes(user.interests) : base.interests;
+  persist({
+    ...base,
+    userId: user.id,
+    done: true,
+    step: "plan",
+    target_lang: pair.target_lang,
+    through_lang: pair.through_lang,
+    interests,
+    level: toCefrLevel(user.level) ?? base.level,
+  });
 }
 
 export function clearJourneyDone(): void {
   if (!state.done && state.step === "welcome") {
     return;
   }
-  persist({ ...state, done: false, step: state.done ? "welcome" : state.step, level: null });
+  persist({ ...state, done: false, step: state.done ? "welcome" : state.step, level: null, level_source: null });
 }
 
 export function resetJourney(): void {
@@ -120,6 +112,11 @@ export function resetJourney(): void {
 
 export function journeyFinished(userId: string): boolean {
   return state.done && state.userId === userId;
+}
+
+/** Meta diária escolhida no primeiro dia (20 min se ainda não escolheu). */
+export function dailyGoalMinutes(current: JourneyState = state): DailyMinutes {
+  return current.minutes;
 }
 
 export function useJourney(): JourneyState {

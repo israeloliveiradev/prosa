@@ -186,7 +186,7 @@ export class PersonalizationService {
     voice?: string,
     index = 0,
     level?: AuthUser["level"],
-  ): Promise<{ news: StoredNews; audio_url: string; words: { text: string; offset_ms: number }[]; cached: boolean }> {
+  ): Promise<{ news: StoredNews; audio_url: string | null; words: { text: string; offset_ms: number }[]; cached: boolean }> {
     const levelUsed = level ?? user.level;
     if (this.ops && (await this.ops.isGenerationPaused())) {
       return this.speakStored(
@@ -294,13 +294,18 @@ export class PersonalizationService {
     news: StoredNews,
     voice: string | undefined,
     cached: boolean,
-  ): Promise<{ news: StoredNews; audio_url: string; words: { text: string; offset_ms: number }[]; cached: boolean }> {
-    const spoken = await this.neural.speak({
-      text: news.story_text,
-      lang: user.target_lang.toLowerCase(),
-      ...(voice ? { voice } : {}),
-    });
-    return { news, audio_url: spoken.audioUrl, words: spoken.words, cached };
+  ): Promise<{ news: StoredNews; audio_url: string | null; words: { text: string; offset_ms: number }[]; cached: boolean }> {
+    // O app narra no aparelho (Kokoro/Piper). O servidor só sintetiza quando um cliente
+    // pede uma voz Edge explicitamente, e uma falha de voz nunca derruba a matéria.
+    if (!voice) {
+      return { news, audio_url: null, words: [], cached };
+    }
+    try {
+      const spoken = await this.neural.speak({ text: news.story_text, lang: user.target_lang.toLowerCase(), voice });
+      return { news, audio_url: spoken.audioUrl, words: spoken.words, cached };
+    } catch {
+      return { news, audio_url: null, words: [], cached };
+    }
   }
 
   private async loadInterests(userId: string): Promise<string[]> {

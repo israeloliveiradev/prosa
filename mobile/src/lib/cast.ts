@@ -49,11 +49,30 @@ export function castPeople(cast = picks): Mind[] {
   return CAST_SLOTS.map((slot) => mindById(cast[slot]));
 }
 
+const ROLES: Record<DisplayLocale, Record<CastSlot, string>> = {
+  pt: { reading: "Leitura", memory: "Memória", speech: "Fala", journal: "Diário" },
+  en: { reading: "Reading", memory: "Memory", speech: "Speech", journal: "Journal" },
+  de: { reading: "Lesen", memory: "Gedächtnis", speech: "Sprechen", journal: "Tagebuch" },
+  fr: { reading: "Lecture", memory: "Mémoire", speech: "Parole", journal: "Journal" },
+  es: { reading: "Lectura", memory: "Memoria", speech: "Habla", journal: "Diario" },
+  it: { reading: "Lettura", memory: "Memoria", speech: "Parlato", journal: "Diario" },
+  ja: { reading: "読む", memory: "記憶", speech: "話す", journal: "日記" },
+};
+
+/** Texto da tabela no idioma pedido; sem tradução, cai no inglês (e depois no português). */
+function localized(table: Partial<Record<DisplayLocale, string>> & { pt: string; en: string }, locale: DisplayLocale): string {
+  return table[locale] ?? table.en ?? table.pt;
+}
+
+export function mindRole(slot: CastSlot, locale: DisplayLocale = getLocale()): string {
+  return (ROLES[locale] ?? ROLES.en)[slot];
+}
+
 export function mindCopy(mind: Mind, locale: DisplayLocale = getLocale()) {
   return {
-    line: mind.line[locale],
-    bio: mind.bio[locale],
-    role: locale === "en" ? ({ reading: "Reading", memory: "Memory", speech: "Speech", journal: "Journal" } as const)[mind.slot] : ({ reading: "Leitura", memory: "Memória", speech: "Fala", journal: "Diário" } as const)[mind.slot],
+    line: localized(mind.line, locale),
+    bio: localized(mind.bio, locale),
+    role: mindRole(mind.slot, locale),
   };
 }
 

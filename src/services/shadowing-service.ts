@@ -5,6 +5,9 @@ import { pronunciationReport } from "./levenshtein.js";
 import { soundNotes } from "./sound-feedback.js";
 import type { PhoneticShadowingResult, ShadowingResult } from "../schemas/shadowing.js";
 
+/** Abaixo disso a frase não foi reconhecida o bastante para julgar ritmo/cadência. */
+export const MIN_ACCURACY_FOR_RHYTHM = 30;
+
 export class ShadowingService {
   constructor(
     private readonly gemini: GeminiGateway,
@@ -42,6 +45,15 @@ export class ShadowingService {
       ...(input.language ? { language: input.language.slice(0, 2) } : {}),
     });
     const base = this.report(input.referenceText, prosody.transcription, input.language);
+    // Sem fala reconhecida não há o que pontuar: tudo zero (nada de ritmo "de cortesia").
+    if (!prosody.transcription.trim() || base.accuracy_score === 0) {
+      return { ...base, accuracy_score: 0, pitch_rhythm_match: 0, cadence_match: 0, bars: [] };
+    }
+    // Ritmo e cadência só valem quando a frase foi reconhecida em boa parte: o ritmo de
+    // outra coisa (ex.: um "Hello" alucinado sobre silêncio) não é o ritmo desta frase.
+    if (base.accuracy_score < MIN_ACCURACY_FOR_RHYTHM) {
+      return { ...base, pitch_rhythm_match: 0, cadence_match: 0, bars: [] };
+    }
     let cadence = { score: prosody.rhythmScore, bars: [] as ReturnType<typeof cadenceReport>["bars"] };
     try {
       const reference = await this.neural.speak({

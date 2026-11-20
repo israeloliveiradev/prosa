@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from "expo-audio";
+import { Notice, StageCard } from "@/components/session/stage-kit";
+import { TactileButton } from "@/components/tactile/tactile-button";
 import { prefetchSpeech, speakStories, speakStory, transcribeSpeech } from "@/lib/api";
 import { tap } from "@/lib/haptics";
 import { allSentences, HANDS_FREE_GAP_MS, handsFreeHeld, handsFreeIntro, handsFreeSteps } from "@/lib/hands-free";
@@ -165,26 +167,27 @@ export function HandsFreePlayer({
   }
 
   return (
-    <View className="mt-4">
+    <StageCard tone="raised">
       {(phase === "idle" || phase === "done") && showStart ? (
-        <Pressable accessibilityRole="button" onPress={() => void start()} className="min-h-12 cursor-pointer items-center justify-center self-start rounded-full border border-line px-6">
-          <Text className="text-base font-semibold text-ink">{phase === "done" ? ui.handsFreeListenAgain : ui.handsFreeStart}</Text>
-        </Pressable>
+        <View className="flex-row">
+          <TactileButton variant="secondary" size="md" onPress={() => void start()} label={phase === "done" ? ui.handsFreeListenAgain : ui.handsFreeStart} />
+        </View>
       ) : null}
-      {phase === "preparing" ? <Text className="text-base text-muted">{label}</Text> : null}
+      {phase === "preparing" ? <Text className="font-sans text-base text-muted">{label}</Text> : null}
       {phase === "live" ? (
         <View>
-          <Text accessibilityLiveRegion="polite" className="text-base text-ink">
+          <Text accessibilityLiveRegion="polite" className="font-sans text-base font-semibold text-ink">
             {paused ? `${ui.handsFreePaused} · ${label}` : label}
           </Text>
           {check ? (
-            <Text accessibilityLiveRegion="polite" className="mt-2 text-base text-muted">
+            <Text accessibilityLiveRegion="polite" className="mt-2 font-sans text-base text-muted">
               {check}
             </Text>
           ) : null}
           <View className="mt-3 flex-row flex-wrap gap-2">
-            <Pressable
-              accessibilityRole="button"
+            <TactileButton
+              variant="primary"
+              size="md"
               onPress={() => {
                 if (paused) {
                   AudioService.resumeSequence();
@@ -194,15 +197,12 @@ export function HandsFreePlayer({
                   setPaused(true);
                 }
               }}
-              className="min-h-12 cursor-pointer items-center justify-center rounded-full bg-ember px-5"
-            >
-              <Text className="text-base font-semibold text-onEmber">{paused ? ui.continueClock : ui.pause}</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => AudioService.nextSequence()} className="min-h-12 cursor-pointer items-center justify-center rounded-full bg-line px-5">
-              <Text className="text-base font-semibold text-ink">{ui.nextPhrase}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+              label={paused ? ui.continueClock : ui.pause}
+            />
+            <TactileButton variant="secondary" size="md" onPress={() => AudioService.nextSequence()} label={ui.nextPhrase} />
+            <TactileButton
+              variant="secondary"
+              size="md"
               onPress={() => {
                 AudioService.stopAndUnload();
                 capturing.current = false;
@@ -210,19 +210,13 @@ export function HandsFreePlayer({
                 setPaused(false);
                 setCheck("");
               }}
-              className="min-h-12 cursor-pointer items-center justify-center rounded-full bg-line px-5"
-            >
-              <Text className="text-base font-semibold text-ink">{ui.endHandsFree}</Text>
-            </Pressable>
+              label={ui.endHandsFree}
+            />
           </View>
         </View>
       ) : null}
-      {error ? (
-        <Text accessibilityRole="alert" className="mt-3 text-base text-roseInk">
-          {error}
-        </Text>
-      ) : null}
-    </View>
+      {error ? <Notice>{error}</Notice> : null}
+    </StageCard>
   );
 }
 

@@ -1,27 +1,42 @@
 import { router, type Href } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { Flag } from "@/components/shell/flag";
-import { fetchPlacementStatus, type PlacementStatus } from "@/lib/api";
-import { useCopy } from "@/lib/i18n";
-import { languageName } from "@/lib/languages";
+import { fetchPlacementStatus } from "@/api/placement";
+import type { PlacementStatus } from "@/api/schemas/placement";
+import {
+  fillCopy,
+  formatDay,
+  languageLabel,
+  nextTestDate,
+  statusKind,
+} from "@/features/placement/model/placement-flow";
+import { useAreaCopy } from "@/lib/copy/area";
+import { PLACEMENT_COPY } from "@/lib/copy/placement";
+import { LOCALE_BCP47, useLocale } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 
-function fill(template: string, values: Record<string, string | number>): string {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? ""));
-}
-
+/**
+ * Cartão do nivelamento (Hoje / Você): nível atual do idioma, se dá para medir
+ * agora ou quando abre, e os últimos resultados. Tudo vem de `/placement/status`.
+ */
 export function PlacementCard() {
-  const copy = useCopy();
+  const t = useAreaCopy(PLACEMENT_COPY);
+  const locale = useLocale();
+  const bcp47 = LOCALE_BCP47[locale];
   const session = useSession();
+  const token = session?.token ?? null;
+  const targetLang = session?.user.target_lang ?? "";
   const [status, setStatus] = useState<PlacementStatus | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (!session) {
-      return;
+    if (!token || !targetLang) {
+      return undefined;
     }
     let active = true;
-    void fetchPlacementStatus(session.token)
+    setFailed(false);
+    void fetchPlacementStatus(targetLang)
       .then((next) => {
         if (active) {
           setStatus(next);
@@ -29,52 +44,70 @@ export function PlacementCard() {
       })
       .catch(() => {
         if (active) {
-          setStatus(null);
+          setFailed(true);
         }
       });
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [targetLang, token]);
 
   if (!session) {
     return null;
   }
 
-  const detail = status?.last
-    ? status.due
-      ? copy.placeDue
-      : fill(copy.placeWait, { days: status.days_until ?? 0 })
-    : copy.placeNever;
-  const cta = status?.open_attempt_id ? copy.placeContinue : status?.last ? (status.due ? copy.placeRetake : copy.placeTitle) : copy.placeStart;
+  const kind = status ? statusKind(status) : null;
+  const opensOn = status && kind === "wait" ? nextTestDate(status) : null;
+  const detail = failed
+    ? t.statusFailed
+    : kind === "open"
+      ? t.stateOpen
+      : kind === "never"
+        ? t.stateNever
+        : kind === "due"
+          ? t.stateDue
+          : kind === "wait"
+            ? opensOn
+              ? fillCopy(t.stateWait, { date: formatDay(opensOn, bcp47) })
+              : t.stateWaitUnknown
+            : t.statusLoading;
+  const cta = kind === "open" ? t.resume : kind === "never" ? t.start : kind === "due" ? t.retake : t.cardOpen;
+  const level = status?.current_level ?? session.user.level;
+  const language = languageLabel(targetLang, bcp47, { capitalize: true });
 
   return (
     <Pressable
+      testID="placement-card"
       accessibilityRole="button"
-      accessibilityLabel={`${copy.placeTitle}. ${detail}`}
+      accessibilityLabel={`${t.kicker}: ${language} ${level}. ${detail}`}
       onPress={() => router.push("/placement" as Href)}
-      className="cursor-pointer rounded-[28px] border border-line bg-card px-5 py-6"
+      className="gap-4 rounded-3xl border-2 border-[#E2E8F0] bg-white p-5 shadow-[0_4px_0_#E2E8F0]"
+      style={Platform.OS === "web" ? ({ cursor: "pointer" } as object) : undefined}
     >
       <View className="flex-row items-center gap-3">
-        <Flag code={session.user.target_lang} size={34} />
+        <Flag code={targetLang} size={34} />
         <View className="min-w-0 flex-1">
-          <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.placeKicker}</Text>
-          <Text className="font-displayItalic mt-1 text-3xl text-ink">
-            {languageName(session.user.target_lang)} · {status?.last?.result_level ?? session.user.level}
+          <Text className="font-sans text-[11px] font-extrabold uppercase tracking-widest text-[#0F766E]">{t.kicker}</Text>
+          <Text className="font-sans text-xl font-black text-[#111C2D]">
+            {language} · {level}
           </Text>
         </View>
       </View>
-      <Text className="mt-4 text-base leading-6 text-muted">{detail}</Text>
+      <Text className="font-sans text-sm leading-6 text-[#64748B]">{detail}</Text>
       {status && status.history.length > 1 ? (
-        <View className="mt-4 flex-row flex-wrap gap-2">
+        <View className="flex-row flex-wrap gap-2">
           {status.history.slice(-6).map((entry) => (
-            <View key={entry.id} className="rounded-full bg-emberSoft px-3 py-1">
-              <Text className="font-label text-xs text-ink">{entry.result_level}</Text>
+            <View
+              key={entry.id}
+              className="rounded-full bg-[#F0FDFA] px-3 py-1"
+              style={{ borderWidth: 1, borderColor: "#99F6E4" }}
+            >
+              <Text className="font-sans text-xs font-bold text-[#0F766E]">{entry.result_level}</Text>
             </View>
           ))}
         </View>
       ) : null}
-      <Text className="mt-5 font-label text-base text-ember">{cta}</Text>
+      <Text className="font-sans text-sm font-extrabold text-[#0D9488]">{cta}</Text>
     </Pressable>
   );
 }

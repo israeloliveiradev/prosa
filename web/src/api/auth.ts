@@ -17,7 +17,9 @@ export interface RegisterInput {
   password: string;
   native_lang: string;
   target_lang: string;
-  level: AccountUser["level"];
+  /** Opcional: sem nível, o servidor usa o padrão dele (o nivelamento do primeiro dia decide). */
+  level?: AccountUser["level"];
+  /** O servidor guarda só pt ou en. */
   display_locale?: "pt" | "en";
 }
 

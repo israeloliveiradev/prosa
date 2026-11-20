@@ -569,18 +569,19 @@ export class GeminiGateway {
     try {
       const completion = await this.generateStructured({
         systemInstruction: [
-          "Transcribe the spoken words verbatim.",
+          "Transcribe the spoken words verbatim, exactly as heard.",
           languageLine,
-          "Do not translate and do not invent words that were not spoken.",
-          "rhythm_score is an integer from 0 to 100 for how closely the pacing and stress follow a natural reading of the reference sentence.",
+          "Do not translate, do not correct the speaker and do not invent words that were not spoken.",
+          "rhythm_score is an integer from 0 to 100 for how natural the pacing and word stress of the speech are.",
           "words lists each spoken word with duration_ms, how long that word lasted.",
-          "Use an empty words list and rhythm_score 0 when the audio contains no speech.",
+          "When the audio contains no human speech (silence, noise, a tone or a beep), return an empty transcription, an empty words list and rhythm_score 0.",
         ].join(" "),
         contents: [
           {
             role: "user",
             parts: [
-              { text: `Reference sentence:\n${input.referenceText}` },
+              // A frase de referência NÃO vai para o modelo: com ela, o transcritor "ouvia" o que
+              // esperava ouvir e dava 100 a um áudio sem fala. A comparação é feita em código.
               {
                 inlineData: {
                   mimeType,

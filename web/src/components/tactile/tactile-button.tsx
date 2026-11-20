@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Platform, Pressable, Text, type StyleProp, type ViewStyle, type TextStyle } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle, type TextStyle } from "react-native";
 import { motion } from "framer-motion";
 
 export type ButtonVariant = "primary" | "secondary" | "amber" | "crimson" | "ghost" | "purple";
@@ -19,6 +19,9 @@ export interface TactileButtonProps {
   icon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   fullWidth?: boolean;
+  /** data-testid no web, testID no nativo. */
+  testID?: string;
+  accessibilityLabel?: string;
 }
 
 const VARIANT_STYLES: Record<
@@ -90,6 +93,8 @@ export function TactileButton({
   icon,
   rightIcon,
   fullWidth = false,
+  testID,
+  accessibilityLabel,
 }: TactileButtonProps) {
   const v = VARIANT_STYLES[variant];
   const s = SIZE_STYLES[size];
@@ -102,6 +107,8 @@ export function TactileButton({
         type="button"
         disabled={disabled}
         onClick={handleAction}
+        data-testid={testID}
+        aria-label={accessibilityLabel}
         whileHover={disabled ? undefined : { y: -1 }}
         whileTap={disabled ? undefined : { y: 3, boxShadow: v.activeShadow }}
         transition={{ duration: 0.08, ease: "easeInOut" }}
@@ -126,7 +133,7 @@ export function TactileButton({
           alignItems: "center",
           gap: 8,
           outline: "none",
-          ...(style as any),
+          ...((StyleSheet.flatten(style) ?? {}) as React.CSSProperties),
         }}
       >
         {icon}
@@ -139,8 +146,10 @@ export function TactileButton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      testID={testID}
       disabled={disabled}
-      onPress={onPress}
+      onPress={handleAction}
       onPressIn={() => setIsPressed(true)}
       onPressOut={() => setIsPressed(false)}
       style={[

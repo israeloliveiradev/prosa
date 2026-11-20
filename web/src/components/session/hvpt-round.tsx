@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from "expo-audio";
+import { IconMic, IconPlay } from "@/components/session/session-icons";
 import { SoundNotes } from "@/components/session/sound-notes";
+import { ChoiceTile, Kicker, Notice, StageCard } from "@/components/session/stage-kit";
+import { TactileButton } from "@/components/tactile/tactile-button";
 import { analyzeShadowing, speakStory } from "@/lib/api";
-import { getLocale, useCopy } from "@/lib/i18n";
+import { useCopy, useLocale } from "@/lib/i18n";
 import { localDate } from "@/lib/listen-pace";
 import { voicesFor } from "@/lib/narrator";
 import { hvptTrials, trialWord, type PronunciationContrast } from "@/lib/pronunciation-contrasts";
@@ -11,6 +14,7 @@ import { tap } from "@/lib/haptics";
 import type { SoundNote } from "@/lib/types";
 import { narrationToken, startNeuralPlayback } from "@/lib/voice";
 import { AudioService } from "@/services/audio/AudioService";
+import { useTheme } from "@/theme/ThemeContext";
 
 export function HvptRound({
   contrast,
@@ -20,8 +24,9 @@ export function HvptRound({
   language: string;
 }) {
   const ui = useCopy();
+  const { palette } = useTheme();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const locale = getLocale();
+  const locale = useLocale();
   const date = localDate();
   const voices = voicesFor(language);
   const trials = hvptTrials(contrast, voices.length, date);
@@ -133,85 +138,71 @@ export function HvptRound({
   }
 
   return (
-    <View className="mb-8 rounded-[28px] border border-line bg-card px-5 py-5">
-      <Text className="font-label text-xs uppercase tracking-widest text-ember">{contrast.name[locale]}</Text>
+    <StageCard tone="raised">
+      <Kicker tone="accent">{contrast.name[locale]}</Kicker>
       {phase === "hear" ? (
         <View>
-          <Text className="mt-2 text-lg leading-7 text-ink">{ui.hvptQuestion}</Text>
-          {voice ? (
-            <Text className="mt-1 text-sm text-muted">{ui.hvptVoice.replace("{name}", voice.name)}</Text>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              void play();
-            }}
-            className="mt-4 min-h-12 items-center justify-center rounded-full bg-ink px-4"
-          >
-            <Text className="text-base font-semibold text-card">{ui.listenPlay}</Text>
-          </Pressable>
+          <Text className="mt-2 font-sans text-lg font-semibold leading-7 text-ink">{ui.hvptQuestion}</Text>
+          {voice ? <Text className="mt-1 font-sans text-sm text-muted">{ui.hvptVoice.replace("{name}", voice.name)}</Text> : null}
+          <View className="mt-4 flex-row">
+            <TactileButton
+              variant="primary"
+              size="md"
+              onPress={() => void play()}
+              icon={<IconPlay color={palette.onPrimary} size={14} />}
+              label={ui.listen}
+            />
+          </View>
           <View className="mt-3 flex-row gap-2">
             {([0, 1] as const).map((side) => {
               const word = side === 0 ? pair.a : pair.b;
               const answered = choice !== null;
-              const tone = !answered ? "bg-line" : side === trial.side ? "bg-mossSoft" : side === choice ? "bg-roseSoft" : "bg-line";
+              const state = !answered ? "idle" : side === trial.side ? "right" : side === choice ? "wrong" : "idle";
               return (
-                <Pressable
-                  key={word}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: choice === side, disabled: answered }}
-                  disabled={answered}
-                  onPress={() => pick(side)}
-                  className={`min-h-12 flex-1 items-center justify-center rounded-full px-3 ${tone}`}
-                >
-                  <Text className="text-base font-semibold text-ink">{word}</Text>
-                </Pressable>
+                <ChoiceTile key={word} label={word} state={state} disabled={answered} onPress={() => pick(side)} className="flex-1 items-center" />
               );
             })}
           </View>
           {choice !== null ? (
             <View className="mt-3 gap-3">
-              <Text accessibilityLiveRegion="polite" className={`text-base ${choice === trial.side ? "text-moss" : "text-roseInk"}`}>
+              <Text
+                accessibilityLiveRegion="polite"
+                className="font-sans text-base font-semibold"
+                style={{ color: choice === trial.side ? palette.pillPositiveInk : palette.pillNegativeInk }}
+              >
                 {choice === trial.side ? ui.hvptRight : ui.hvptWrong}
               </Text>
-              <Pressable accessibilityRole="button" onPress={next} className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5">
-                <Text className="text-base font-semibold text-ink">{ui.listenNext}</Text>
-              </Pressable>
+              <View className="flex-row">
+                <TactileButton variant="secondary" size="md" onPress={next} label={ui.listenNext} />
+              </View>
             </View>
           ) : null}
         </View>
       ) : (
         <View>
-          <Text className="mt-2 text-base leading-6 text-muted">{contrast.hint[locale]}</Text>
-          <Text className="font-displayItalic mt-3 text-headline leading-10 text-ink">
+          <Text className="mt-2 font-sans text-base leading-6 text-muted">{contrast.hint[locale]}</Text>
+          <Text className="mt-3 font-display text-2xl leading-8 font-extrabold text-ink">
             {ui.hvptProduce} {produceWord}
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ busy: scoring, disabled: scoring }}
-            disabled={scoring}
-            onPress={() => {
-              void toggleRecording();
-            }}
-            className={`mt-4 min-h-12 items-center justify-center rounded-full px-4 ${recording ? "bg-roseSoft" : "bg-ember"}`}
-          >
-            <Text className={`text-base font-semibold ${recording ? "text-roseInk" : "text-onEmber"}`}>
-              {scoring ? ui.scoring : recording ? ui.stopAndScore : ui.recordPronunciation}
-            </Text>
-          </Pressable>
+          <View className="mt-4 flex-row">
+            <TactileButton
+              variant={recording ? "crimson" : "amber"}
+              size="md"
+              disabled={scoring}
+              onPress={() => void toggleRecording()}
+              icon={<IconMic color={recording ? "#FFFFFF" : "#2A1700"} size={15} />}
+              label={scoring ? ui.scoring : recording ? ui.stopAndScore : ui.recordPronunciation}
+            />
+          </View>
           {score !== null ? (
-            <Text accessibilityLiveRegion="polite" className="mt-3 text-base text-ink">
+            <Text accessibilityLiveRegion="polite" className="mt-3 font-sans text-base font-semibold text-ink">
               {ui.hvptScore.replace("{score}", String(score))}
             </Text>
           ) : null}
           <SoundNotes notes={sounds} />
         </View>
       )}
-      {error ? (
-        <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" className="mt-3 text-base text-roseInk">
-          {error}
-        </Text>
-      ) : null}
-    </View>
+      {error ? <Notice>{error}</Notice> : null}
+    </StageCard>
   );
 }
