@@ -20,6 +20,13 @@ import { Notice, StageCard } from "@/components/session/stage-kit";
 import { StageRecap } from "@/components/session/stage-recap";
 import { WordSheet } from "@/components/session/word-sheet";
 import { TactileButton } from "@/components/tactile/tactile-button";
+import type { PathUnit } from "@/api/schemas/path";
+import { Tag } from "@/features/path/components/path-parts";
+import { UnitChips } from "@/features/path/components/unit-chips";
+import { streakToShow } from "@/features/path/model/outbox-model";
+import { findUnit, isUnitId, resolveSessionUnit, unitIndexInBand } from "@/features/path/model/path-model";
+import { flushOutbox, outboxKey, readOutbox, sendCompletion } from "@/features/path/model/session-outbox";
+import { usePath } from "@/features/path/model/use-path";
 import type { SessionState } from "@/lib/session";
 import {
   fetchCourseProfile,
@@ -32,6 +39,7 @@ import {
 import { mindForPhase, mindRole, useCast } from "@/lib/cast";
 import { fill, SESSION_COPY } from "@/lib/copy/session";
 import { useAreaCopy } from "@/lib/copy/area";
+import { PATH_COPY, type PathCopy } from "@/lib/copy/path";
 import { fluencyDay } from "@/lib/fluency-432";
 import { allSentences, handsFreeIntro } from "@/lib/hands-free";
 import { tap } from "@/lib/haptics";
@@ -98,7 +106,11 @@ import { awardXp } from "@/lib/xp";
 import { AudioService } from "@/services/audio/AudioService";
 import { useTheme } from "@/theme/ThemeContext";
 
-/** Sessão diária real: revisão → ouvir → ler → falar → escrever → fecho, em sequência. */
+/**
+ * Sessão diária real: revisão → ouvir → ler → falar → escrever → fecho, em sequência.
+ * Cada sessão pratica uma unidade da trilha (?unit= ou a unidade em curso de GET /path) e,
+ * ao salvar o fecho, é registrada no servidor (POST /sessions/complete).
+ */
 export default function DailyRoute() {
   const session = useSession();
   if (!session) {
@@ -113,10 +125,13 @@ function cardKey(card: Pick<SessionCard, "front_phrase">): string {
 
 const EMPTY_RUN: Pick<DailyRun, "completed"> = { completed: [] };
 
+type CompletionNote = { state: "sending" } | { state: "saved"; unit: PathUnit | null } | { state: "queued" } | { state: "rejected" };
+
 function DailySession({ session }: { session: SessionState }) {
   const { palette } = useTheme();
   const copy = useCopy();
   const local = useAreaCopy(SESSION_COPY);
+  const pathCopy = useAreaCopy(PATH_COPY);
   const locale = useLocale();
   const phaseLabel = usePhaseLabel();
   const cast = useCast();
@@ -138,8 +153,20 @@ function DailySession({ session }: { session: SessionState }) {
     date,
   });
   const personalized = params.personalized === "1";
-  // A trilha manda ?unit=<id>; a API de lição ainda não recebe unit_id, então guardamos na sessão para depois.
-  const unitId = typeof params.unit === "string" && params.unit.trim() ? params.unit.trim() : null;
+  // Unidade da sessão: a do link (?unit=) ou, sem ela, a unidade em curso da trilha. Sem trilha
+  // (offline, erro), a sessão segue sem unidade depois de no máximo 10 s de espera.
+  const paramUnit = isUnitId(params.unit) ? params.unit.trim() : null;
+  const path = usePath({ timeoutMs: 10_000, retry: false });
+  const pathSettled = Boolean(paramUnit) || !(path.isPending && path.fetchStatus === "fetching");
+  const unitId = resolveSessionUnit(paramUnit, path.data);
+  // A unidade da lição fica fixa quando é decidida: a trilha chegando depois não gera outra lição.
+  const [lessonUnit, setLessonUnit] = useState<{ id: string | null } | null>(null);
+  useEffect(() => {
+    if (!lessonUnit && pathSettled) {
+      setLessonUnit({ id: unitId });
+    }
+  }, [lessonUnit, pathSettled, unitId]);
+  const lessonUnitId = lessonUnit?.id ?? null;
   const savedLesson =
     (progress.lessonDate === date && progress.topic === topic ? progress.cachedLesson : null) ??
     progress.history.find((item) => item.date === date && item.topic === topic)?.lesson ??
@@ -148,10 +175,10 @@ function DailySession({ session }: { session: SessionState }) {
   const allowed = pro || (date === today && (progress.lessonDate !== today || Boolean(savedLesson)));
 
   const query = useQuery({
-    queryKey: ["lesson", date, topic, target, through, level, personalized ? user.id : "shared"],
+    queryKey: ["lesson", date, topic, target, through, level, personalized ? user.id : "shared", lessonUnitId ?? "no-unit"],
     queryFn: (): Promise<LessonPayload> => {
       if (personalized) {
-        return generatePersonalized(token, topic);
+        return generatePersonalized(token, topic, lessonUnitId);
       }
       const cognate = level === "A1" && getProgress().cognateKeys.length < 5;
       const request = {
@@ -159,12 +186,13 @@ function DailySession({ session }: { session: SessionState }) {
         native_lang: through,
         level,
         topic,
+        ...(lessonUnitId ? { unit_id: lessonUnitId } : {}),
         ...(interests.length > 0 ? { interests: interests.slice(0, 12) } : {}),
         ...(cognate ? { cognate: true } : {}),
       };
       return generateLesson(request, token);
     },
-    enabled: ready && allowed && !savedLesson,
+    enabled: ready && allowed && !savedLesson && lessonUnit !== null,
     initialData: savedLesson ?? undefined,
     networkMode: "offlineFirst",
     retry: 1,
@@ -188,6 +216,9 @@ function DailySession({ session }: { session: SessionState }) {
   const [speechTrouble, setSpeechTrouble] = useState(false);
   const [readSeconds, setReadSeconds] = useState(0);
   const [endSeen, setEndSeen] = useState(false);
+  const completionKey = outboxKey(user.id, target);
+  const [serverStreak, setServerStreak] = useState(() => readOutbox(completionKey).last);
+  const [completion, setCompletion] = useState<CompletionNote | null>(null);
   const seeded = useRef("");
   const reviewTouched = useRef(false);
   const scrollRef = useRef<ScrollView | null>(null);
@@ -222,6 +253,22 @@ function DailySession({ session }: { session: SessionState }) {
       saveDailyRun(runKey, run);
     }
   }, [run, runKey]);
+
+  /* A trilha respondeu depois de a sessão abrir (lição já salva): a sessão passa a contar para a unidade. */
+  useEffect(() => {
+    if (unitId && run && !run.finished && run.unitId === null) {
+      setRun((current) => (current && !current.finished && current.unitId === null ? { ...current, unitId } : current));
+    }
+  }, [run, unitId]);
+
+  /* Sessão concluída que ficou guardada sem rede: reenvia (a rota é idempotente por dia). */
+  useEffect(() => {
+    void flushOutbox(completionKey).then((result) => {
+      if (result?.kind === "saved") {
+        setServerStreak(readOutbox(completionKey).last);
+      }
+    });
+  }, [completionKey]);
 
   useEffect(() => {
     if (dueReverse) {
@@ -524,8 +571,8 @@ function DailySession({ session }: { session: SessionState }) {
   }
 
   function onFluencyScored(wpm: number) {
+    // Só local: o ritmo de fala do perfil é medido pelo servidor (/profile/signals recusa notas do cliente).
     update((current) => ({ ...current, shadow: { ...current.shadow, wpm: Math.max(current.shadow.wpm ?? 0, Math.round(wpm)) } }));
-    void postProfileSignals(token, target, { fluency_wpm: wpm }).catch(() => undefined);
   }
 
   function onJournal(evaluation: JournalEvaluation) {
@@ -554,6 +601,20 @@ function DailySession({ session }: { session: SessionState }) {
     }
     void tap("success");
     update((current) => ({ ...completePhase({ ...current, finished: true }, "note", gate), xp: current.xp + gained }));
+    const sessionUnit = run.unitId ?? unitId;
+    setCompletion({ state: "sending" });
+    void sendCompletion(completionKey, {
+      date: today,
+      elapsed_seconds: Math.min(86_400, Math.max(0, Math.round(run.elapsed))),
+      ...(sessionUnit ? { unit_id: sessionUnit } : {}),
+    }).then((result) => {
+      if (result.kind === "saved") {
+        setServerStreak({ date: today, streak: result.response.streak_count });
+        setCompletion({ state: "saved", unit: result.response.unit });
+      } else {
+        setCompletion({ state: result.kind });
+      }
+    });
   }
 
   function exit() {
@@ -598,6 +659,8 @@ function DailySession({ session }: { session: SessionState }) {
               ? local.gateJournalOrRebuild
               : local.gateJournal;
   const nextId = nextPhase(frontier);
+  const studyUnit = findUnit(path.data, run?.unitId ?? unitId);
+  const streakShown = streakToShow({ server: serverStreak, today, local: progress.streakCount }).value;
 
   return (
     <View className="flex-1" style={{ backgroundColor: palette.frame }}>
@@ -669,6 +732,12 @@ function DailySession({ session }: { session: SessionState }) {
                 <TactileButton variant="secondary" size="lg" onPress={exit} label={local.backHome} />
               </View>
             </StageCard>
+          ) : null}
+
+          {lesson && run && studyUnit && path.data ? (
+            <View testID="daily-unit" className="mb-3 flex-row">
+              <Tag label={pathCopy.dailyUnit(unitIndexInBand(path.data, studyUnit), studyUnit.title)} icon="route" tone="teal" />
+            </View>
           ) : null}
 
           {lesson && run ? (
@@ -820,6 +889,7 @@ function DailySession({ session }: { session: SessionState }) {
                 ) : null}
 
                 {frontier === "note" ? (
+                  <View className="gap-4">
                   <NoteStage
                     summary={{
                       ratings: run.ratings,
@@ -833,7 +903,7 @@ function DailySession({ session }: { session: SessionState }) {
                       rebuildScore: run.rebuild?.score ?? null,
                       xp: run.xp,
                     }}
-                    streak={progress.streakCount}
+                    streak={streakShown}
                     finished={run.finished}
                     note={course?.note}
                     clock={course?.clock}
@@ -849,6 +919,8 @@ function DailySession({ session }: { session: SessionState }) {
                       router.push("/talk");
                     }}
                   />
+                  {run.finished && completion ? <CompletionCard note={completion} copy={pathCopy} /> : null}
+                  </View>
                 ) : null}
 
                 {frontier !== "note" ? (
@@ -901,5 +973,33 @@ function DailySession({ session }: { session: SessionState }) {
         onSave={saveWord}
       />
     </View>
+  );
+}
+
+/** Depois de salvar: o que o servidor registrou (progresso da unidade) ou por que ainda não registrou. */
+function CompletionCard({ note, copy }: { note: CompletionNote; copy: PathCopy }) {
+  if (note.state === "sending") {
+    return null;
+  }
+  if (note.state === "queued" || note.state === "rejected") {
+    return <Notice tone="info">{note.state === "queued" ? copy.completeQueued : copy.completeRejected}</Notice>;
+  }
+  const unit = note.unit;
+  return (
+    <StageCard>
+      <View testID="daily-completion" className="gap-3">
+        <Text className="font-sans text-sm font-semibold text-muted">{copy.completeSaved}</Text>
+        {unit ? (
+          <View className="gap-2">
+            <Text className="font-sans text-xs font-extrabold uppercase tracking-widest text-muted">{copy.unitAfterTitle}</Text>
+            <Text className="font-sans text-lg font-extrabold text-ink">{unit.title}</Text>
+            <UnitChips unit={unit} t={copy} testID="daily-completion-chips" />
+            {unit.mastery.test.available && !unit.mastery.test.met ? (
+              <Text className="font-sans text-sm font-semibold text-accentInk">{copy.unitAfterTestReady}</Text>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    </StageCard>
   );
 }

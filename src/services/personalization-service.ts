@@ -151,10 +151,15 @@ export class PersonalizationService {
     }
   }
 
-  async generatePersonalized(user: AuthUser, selectedTopic: string): Promise<{
+  async generatePersonalized(
+    user: AuthUser,
+    selectedTopic: string,
+    options: { unitId?: string; voice?: string } = {},
+  ): Promise<{
     lesson: Awaited<ReturnType<LessonService["generate"]>>["lesson"];
     anchors: Awaited<ReturnType<LessonService["generate"]>>["anchors"];
-    audio_url: string;
+    unit: Awaited<ReturnType<LessonService["generate"]>>["unit"];
+    audio_url: string | null;
     words: { text: string; offset_ms: number }[];
     cached: boolean;
   }> {
@@ -164,18 +169,34 @@ export class PersonalizationService {
         user_id: user.id,
         topic: selectedTopic,
         interests,
+        ...(options.unitId ? { unit_id: options.unitId } : {}),
       },
       user,
     );
-    const spoken = await this.neural.speak({
-      text: generated.lesson.story_text,
-      lang: user.target_lang.toLowerCase(),
-    });
+    // O app narra no aparelho (Kokoro/Piper). O servidor só sintetiza quando o cliente pede
+    // uma voz explicitamente, e uma falha de voz nunca derruba a lição.
+    let audioUrl: string | null = null;
+    let words: { text: string; offset_ms: number }[] = [];
+    if (options.voice) {
+      try {
+        const spoken = await this.neural.speak({
+          text: generated.lesson.story_text,
+          lang: user.target_lang.toLowerCase(),
+          voice: options.voice,
+        });
+        audioUrl = spoken.audioUrl;
+        words = spoken.words;
+      } catch {
+        audioUrl = null;
+        words = [];
+      }
+    }
     return {
       lesson: generated.lesson,
       anchors: generated.anchors,
-      audio_url: spoken.audioUrl,
-      words: spoken.words,
+      unit: generated.unit,
+      audio_url: audioUrl,
+      words,
       cached: generated.cached,
     };
   }

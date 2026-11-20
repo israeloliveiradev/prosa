@@ -1,10 +1,15 @@
 // Prosa — voz no aparelho.
 //
-// Kokoro-82M (inglês, 24 kHz) e Piper (de, fr, es, it, ru, pt) rodam num Web Worker
-// (/workers/ttsWorker.js). O PCM volta para cá, vira WAV (lib/wav.ts) e uma blob: URL que o
+// Kokoro-82M (inglês, 24 kHz; WebGPU quando há, senão WASM) e Piper (de, fr, es, it, ru, pt e as
+// vozes rápidas em inglês) rodam num Web Worker (/workers/ttsWorker.js). O PCM volta para cá, vira
+// WAV (lib/wav.ts) e uma blob: URL que o
 // AudioService toca com <audio> (preservesPitch). Japonês usa Web Speech (ja-JP): o clipe é uma
 // pseudo-URL `speech:` que o AudioService toca por aqui — este arquivo é o único que usa
 // speechSynthesis.
+//
+// Velocidade: cada trecho do Kokoro traz o tempo de inferência; o guarda (services/audio/speedGuard)
+// mede o fator de tempo real e, se o Kokoro for mais lento que a fala neste aparelho, baixa uma voz
+// Piper em inglês e passa a narração para ela (o aluno pode escolher no seletor de voz).
 //
 // Robustez: pedidos iguais em voo viram a mesma promessa; clipes ficam num LRU em memória (a
 // URL é revogada ao sair) e no IndexedDB (sobrevivem ao F5); uma blob: URL antiga é refeita a
@@ -28,6 +33,21 @@ import {
 } from "@/lib/audio-cache";
 import { voiceCopy } from "@/lib/copy/voice";
 import { concatFloat32, encodeWav, readWavInfo } from "@/lib/wav";
+import { FAST_EN_DEFAULT, FAST_EN_MENTOR_VOICES, fastEquivalent, isFastEnglishVoice } from "@/services/audio/fastVoices";
+import {
+  currentEnglishEngine,
+  currentVerdict,
+  recordSpeedSample,
+  setAutoFast,
+  setSpeedPreference as storeSpeedPreference,
+  shouldSwitchToFast,
+  speedState,
+  subscribeSpeed,
+  type EnglishEngine,
+  type KokoroDevice,
+  type SpeedVerdict,
+  type VoiceSpeedPreference,
+} from "@/services/audio/speedGuard";
 import {
   DEFAULT_VOICE_BY_LANG,
   ENGINE_BY_LANG,
@@ -41,8 +61,11 @@ import {
 } from "@/workers/ttsWorker";
 
 export type { TtsEngine } from "@/workers/ttsWorker";
+export type { EnglishEngine, KokoroDevice, SpeedVerdict, VoiceSpeedPreference } from "@/services/audio/speedGuard";
 
-const WORKER_URL = "/workers/ttsWorker.js?v=4";
+const WORKER_URL = "/workers/ttsWorker.js?v=8";
+/** Frase do teste de velocidade (~4 s de fala): longa o bastante para medir, curta para não pesar. */
+const BENCH_TEXT = "The museum opens at nine, so we still have time for breakfast.";
 const WEBSPEECH_PREFIX = "webspeech:";
 const SPEECH_URL_PREFIX = "speech:";
 const CLIP_REF_PREFIX = "prosa-clip:";
@@ -99,6 +122,31 @@ function workerErrorCode(raw: string | undefined): SpeechErrorCode {
   return "synthesis-failed";
 }
 
+/** Campos que o worker v5 acrescenta ao protocolo de src/workers/ttsWorker.ts. */
+type WorkerReply = Omit<WorkerResponse, "type"> & {
+  type: WorkerResponse["type"] | "BENCHED" | "MODEL_FALLBACK";
+  /** Onde a inferência rodou (Kokoro: webgpu ou wasm; Piper: sempre wasm). */
+  device?: KokoroDevice;
+  dtype?: string;
+  /** Tempo de inferência do trecho (sem download do modelo). */
+  inferMs?: number;
+  /** Primeira inferência desta voz desde o carregamento (não serve para medir velocidade). */
+  cold?: boolean;
+  audioMs?: number;
+  kokoroDevice?: KokoroDevice;
+};
+
+type WorkerCommand = {
+  type: WorkerRequest["type"] | "BENCH" | "DROP" | "CONFIG";
+  payload?: WorkerRequest["payload"] & { text?: string; ids?: string[]; kokoroDevice?: "auto" | KokoroDevice };
+};
+
+export interface PartTiming {
+  inferMs?: number;
+  cold?: boolean;
+  device?: KokoroDevice;
+}
+
 // ---------------------------------------------------------------------------
 // Funções puras (testadas em tests/unit/speech-*.test.ts)
 // ---------------------------------------------------------------------------
@@ -115,6 +163,9 @@ export interface ResolvedVoice {
 
 export function isVoiceFor(lang: string, voice: string): boolean {
   const code = speechLang(lang);
+  if (code === "en" && isFastEnglishVoice(voice)) {
+    return true;
+  }
   const engine = ENGINE_BY_LANG[code];
   if (engine === "kokoro") {
     return Object.prototype.hasOwnProperty.call(KOKORO_VOICES, voice);
@@ -128,12 +179,26 @@ export function isVoiceFor(lang: string, voice: string): boolean {
   return false;
 }
 
-/** Motor e voz para um idioma: a voz pedida (se for do idioma), a do mentor, ou a padrão. */
-export function resolveVoice(lang: string, voice?: string | null, mentorId?: string | null): ResolvedVoice {
+/**
+ * Motor e voz para um idioma: a voz pedida (se for do idioma), a do mentor, ou a padrão.
+ * Em inglês, `english` diz qual motor narra: no rápido ("piper"), uma voz Kokoro pedida vira a voz
+ * Piper do mesmo gênero e sotaque. Uma voz Piper em inglês pedida explicitamente vale sempre.
+ */
+export function resolveVoice(lang: string, voice?: string | null, mentorId?: string | null, english: EnglishEngine = "kokoro"): ResolvedVoice {
   const code = speechLang(lang);
   const engine = ENGINE_BY_LANG[code];
   if (!engine) {
     throw new SpeechError("unsupported-language", code);
+  }
+  if (code === "en") {
+    if (voice && isFastEnglishVoice(voice)) {
+      return { lang: code, engine: "piper", voice };
+    }
+    if (english === "piper") {
+      const fromVoice = voice && Object.prototype.hasOwnProperty.call(KOKORO_VOICES, voice) ? fastEquivalent(voice) : null;
+      const fromMentor = mentorId ? FAST_EN_MENTOR_VOICES[mentorId] : undefined;
+      return { lang: code, engine: "piper", voice: fromVoice ?? fromMentor ?? FAST_EN_DEFAULT };
+    }
   }
   if (voice && isVoiceFor(code, voice)) {
     return { lang: code, engine, voice };
@@ -737,6 +802,9 @@ export interface SpeechEvent {
     | "revive"
     | "model-progress"
     | "model-ready"
+    | "model-fallback"
+    | "speed-sample"
+    | "engine-switch"
     | "error";
   at: number;
   key?: string;
@@ -752,6 +820,8 @@ export interface SpeechEvent {
   loaded?: number;
   total?: number;
   error?: string;
+  device?: KokoroDevice;
+  rtf?: number;
 }
 
 export interface SpeechStats {
@@ -789,6 +859,34 @@ export interface ModelState {
 export interface SynthesisOptions {
   priority?: "now" | "prefetch";
   mentorId?: string;
+}
+
+/**
+ * Retrato imutável do estado da voz, refeito a cada mudança (download, pronto, velocidade).
+ * Componentes leem por `useSyncExternalStore(speechService.subscribe, speechService.snapshot)`:
+ * com o React Compiler, ler o serviço direto no render fica memorizado e velho.
+ */
+export interface SpeechSnapshot {
+  version: number;
+  speed: SpeedInfo;
+  /** A voz rápida em inglês que a narração usaria. */
+  fastVoice: string;
+  modelState: (lang: string, voice?: string | null) => ModelState;
+}
+
+/** O que o seletor de voz mostra sobre a velocidade da voz em inglês neste aparelho. */
+export interface SpeedInfo {
+  preference: VoiceSpeedPreference;
+  /** Motor que narra o inglês agora. */
+  engine: EnglishEngine;
+  /** No automático, a troca para a voz rápida já aconteceu. */
+  autoFast: boolean;
+  /** Medida do Kokoro neste aparelho (null enquanto não há áudio suficiente). */
+  verdict: SpeedVerdict | null;
+  /** Onde o Kokoro roda (ou rodaria) neste aparelho; null antes de o worker responder. */
+  kokoroDevice: KokoroDevice | null;
+  /** A voz rápida está sendo baixada para a troca automática. */
+  switching: boolean;
 }
 
 // --- API legada (telas antigas: speak/preload/warmup/status) ---------------
@@ -851,15 +949,16 @@ function speedValue(speed: SpeechOptions["speed"]): number {
 interface PendingRequest {
   parts: Float32Array[];
   sampleRate: number;
-  resolve: (value: WorkerResponse) => void;
+  resolve: (value: WorkerReply) => void;
   reject: (error: SpeechError) => void;
   onProgress?: (loaded: number, total: number) => void;
-  onPart?: (index: number, samples: Float32Array, sampleRate: number) => void;
+  onPart?: (index: number, samples: Float32Array, sampleRate: number, timing: PartTiming) => void;
 }
 
 interface InflightClip {
   promise: Promise<{ clip: SpeechClip; source: ClipSource }>;
   requestId: string | null;
+  engine: TtsEngine;
   wantNow: boolean;
   text: string;
   lang: string;
@@ -924,7 +1023,14 @@ class SpeechService {
   private worker: Worker | null = null;
   private requestCounter = 0;
   private inspected: Promise<void> | null = null;
+  private kokoroDevice: KokoroDevice | null = null;
+  private kokoroDeviceOverride: "auto" | KokoroDevice = "auto";
+  private fastSwitch: Promise<void> | null = null;
+  private fastVoicePicker: () => string = () => FAST_EN_DEFAULT;
+  private speedWatch: (() => void) | null = null;
   private lastLang = "en";
+  private snapshotVersion = 0;
+  private snapshotCache: SpeechSnapshot | null = null;
   private engineMode: VoiceEngineMode = "hybrid";
   private legacyToken = 0;
   private legacyStop: (() => void) | null = null;
@@ -959,7 +1065,7 @@ class SpeechService {
     }
     try {
       const worker = new Worker(WORKER_URL, { type: "module" });
-      worker.onmessage = (event: MessageEvent<WorkerResponse>) => this.onWorkerMessage(event.data);
+      worker.onmessage = (event: MessageEvent<WorkerReply>) => this.onWorkerMessage(event.data);
       worker.onerror = (event) => {
         event.preventDefault?.();
         // Sem mensagem = o script do worker nem carregou (rede/servidor).
@@ -967,6 +1073,9 @@ class SpeechService {
         this.failWorker(`worker:${event.message || "load-failed"}${where}`);
       };
       this.worker = worker;
+      if (this.kokoroDeviceOverride !== "auto") {
+        worker.postMessage({ type: "CONFIG", payload: { kokoroDevice: this.kokoroDeviceOverride } });
+      }
       return worker;
     } catch (caught) {
       this.record({ type: "error", error: caught instanceof Error ? caught.message : "worker-create" });
@@ -996,20 +1105,20 @@ class SpeechService {
     this.notifyStatus();
   }
 
-  private send(request: Omit<WorkerRequest, "id">, onProgress?: (loaded: number, total: number) => void): { id: string; promise: Promise<WorkerResponse> } {
+  private send(request: WorkerCommand, onProgress?: (loaded: number, total: number) => void): { id: string; promise: Promise<WorkerReply> } {
     const worker = this.ensureWorker();
     const id = `${request.type.toLowerCase()}-${++this.requestCounter}`;
     if (!worker) {
       return { id, promise: Promise.reject(new SpeechError("engine-unavailable")) };
     }
-    const promise = new Promise<WorkerResponse>((resolve, reject) => {
+    const promise = new Promise<WorkerReply>((resolve, reject) => {
       this.pending.set(id, { parts: [], sampleRate: 0, resolve, reject, onProgress });
     });
     worker.postMessage({ ...request, id, payload: { ...request.payload, origin: window.location.origin } });
     return { id, promise };
   }
 
-  private onWorkerMessage(data: WorkerResponse | undefined): void {
+  private onWorkerMessage(data: WorkerReply | undefined): void {
     if (!data) {
       return;
     }
@@ -1021,7 +1130,23 @@ class SpeechService {
       const key = modelKey(data.engine, data.voice ?? "");
       const previous = this.models.get(key);
       this.models.set(key, { phase: "ready", loaded: previous?.total ?? 0, total: previous?.total ?? 0, stored: true });
-      this.record({ type: "model-ready", engine: data.engine, voice: data.voice ?? undefined });
+      if (data.engine === "kokoro" && data.device) {
+        this.kokoroDevice = data.device;
+      }
+      this.record({ type: "model-ready", engine: data.engine, voice: data.voice ?? undefined, device: data.device });
+      this.notifyStatus();
+      return;
+    }
+    if (data.type === "MODEL_FALLBACK" && data.engine) {
+      // O WebGPU falhou: o Kokoro volta para o WASM (outro arquivo de modelo, outro download).
+      if (data.engine === "kokoro") {
+        this.kokoroDevice = data.device ?? "wasm";
+        const state = this.models.get("kokoro");
+        if (state?.phase === "ready") {
+          this.models.set("kokoro", { phase: "downloading", loaded: 0, total: 0, stored: false });
+        }
+      }
+      this.record({ type: "model-fallback", engine: data.engine, device: data.device, error: data.error });
       this.notifyStatus();
       return;
     }
@@ -1033,7 +1158,7 @@ class SpeechService {
       const index = data.index ?? request.parts.length;
       request.parts[index] = data.audioData;
       request.sampleRate = data.samplingRate ?? request.sampleRate;
-      request.onPart?.(index, data.audioData, request.sampleRate);
+      request.onPart?.(index, data.audioData, request.sampleRate, { inferMs: data.inferMs, cold: data.cold, device: data.device });
       return;
     }
     if (data.type === "ERROR") {
@@ -1041,7 +1166,7 @@ class SpeechService {
       request.reject(new SpeechError(workerErrorCode(data.error), data.error));
       return;
     }
-    if (data.type === "SYNTHESIZED" || data.type === "PRELOADED" || data.type === "INSPECTED") {
+    if (data.type === "SYNTHESIZED" || data.type === "PRELOADED" || data.type === "INSPECTED" || data.type === "BENCHED") {
       this.pending.delete(data.id);
       request.resolve(data);
     }
@@ -1079,7 +1204,7 @@ class SpeechService {
     }
     let resolved: ResolvedVoice;
     try {
-      resolved = resolveVoice(lang, voice, options.mentorId);
+      resolved = resolveVoice(lang, voice, options.mentorId, this.englishEngine());
     } catch (caught) {
       return Promise.reject(caught);
     }
@@ -1109,6 +1234,7 @@ class SpeechService {
     const entry: InflightClip = {
       promise: Promise.resolve(null as never),
       requestId: null,
+      engine: resolved.engine,
       wantNow: now,
       text: clean,
       lang: resolved.lang,
@@ -1193,8 +1319,11 @@ class SpeechService {
       entry.requestId = request.id;
       const pending = this.pending.get(request.id);
       if (pending) {
-        pending.onPart = (index, samples, sampleRate) => {
+        pending.onPart = (index, samples, sampleRate, timing) => {
           entry.parts[index] = { samples, sampleRate };
+          if (sampleRate > 0) {
+            this.recordTiming(resolved.engine, timing, (samples.length / sampleRate) * 1000);
+          }
           for (const listener of [...entry.partListeners]) {
             listener();
           }
@@ -1204,7 +1333,7 @@ class SpeechService {
     };
     let attempt = run();
     let pending = attempt.pending;
-    let done: WorkerResponse;
+    let done: WorkerReply;
     try {
       try {
         done = await attempt.promise;
@@ -1218,8 +1347,11 @@ class SpeechService {
         done = await attempt.promise;
       }
     } catch (caught) {
-      this.counters.errors += 1;
       const error = caught instanceof SpeechError ? caught : new SpeechError("synthesis-failed", caught instanceof Error ? caught.message : undefined);
+      // Pré-carga descartada numa troca de voz não é falha.
+      if (error.detail !== "dropped") {
+        this.counters.errors += 1;
+      }
       this.record({ type: "error", key, engine: resolved.engine, voice: resolved.voice, lang: resolved.lang, error: error.detail ?? error.code });
       if (this.models.get(model)?.phase === "downloading") {
         this.models.set(model, { ...(this.models.get(model) as ModelState), phase: "error" });
@@ -1318,7 +1450,7 @@ class SpeechService {
     const promise = this.synthesizeDetailed(text, lang, voice);
     let entry: InflightClip | undefined;
     try {
-      const resolved = resolveVoice(lang, voice);
+      const resolved = resolveVoice(lang, voice, undefined, this.englishEngine());
       entry = this.inflight.get(audioCacheKey(text.trim(), resolved.lang, resolved.voice));
     } catch {
       entry = undefined;
@@ -1381,6 +1513,10 @@ class SpeechService {
 
   /** Pré-carrega em segundo plano; erros ficam só no registro de eventos. */
   prefetch(texts: string[], lang: string, voice?: string | null, options: Omit<SynthesisOptions, "priority"> = {}): void {
+    // Trocando para a voz rápida: pré-carregar com o Kokoro lento só atrasaria a troca (mesma thread).
+    if (this.fastSwitch && speechLang(lang) === "en" && this.englishEngine() === "kokoro" && !isFastEnglishVoice(voice)) {
+      return;
+    }
     for (const text of texts) {
       if (text.trim()) {
         void this.synthesize(text, lang, voice, { ...options, priority: "prefetch" }).catch(() => undefined);
@@ -1445,6 +1581,9 @@ class SpeechService {
           const state = this.models.get("kokoro");
           this.models.set("kokoro", { phase: state?.phase ?? "idle", loaded: state?.loaded ?? 0, total: state?.total ?? 0, stored: true });
         }
+        if (result.kokoroDevice && !this.kokoroDevice) {
+          this.kokoroDevice = result.kokoroDevice;
+        }
         this.notifyStatus();
       })
       .catch(() => {
@@ -1457,7 +1596,7 @@ class SpeechService {
   modelState(lang: string, voice?: string | null): ModelState {
     let resolved: ResolvedVoice;
     try {
-      resolved = resolveVoice(lang, voice);
+      resolved = resolveVoice(lang, voice, undefined, this.englishEngine());
     } catch {
       return { phase: "error", loaded: 0, total: 0, stored: false };
     }
@@ -1473,11 +1612,11 @@ class SpeechService {
    */
   downloadModels(
     onProgress?: (progress: ModelProgress) => void,
-    options: { lang?: string; voice?: string | null; mentorId?: string } = {},
+    options: { lang?: string; voice?: string | null; mentorId?: string; english?: EnglishEngine } = {},
   ): Promise<void> {
     let resolved: ResolvedVoice;
     try {
-      resolved = resolveVoice(options.lang ?? this.lastLang, options.voice, options.mentorId);
+      resolved = resolveVoice(options.lang ?? this.lastLang, options.voice, options.mentorId, options.english ?? this.englishEngine());
     } catch (caught) {
       return Promise.reject(caught);
     }
@@ -1553,6 +1692,158 @@ class SpeechService {
     );
   }
 
+  // --- Velocidade da voz em inglês -----------------------------------------
+
+  /** Motor que narra o inglês neste aparelho agora (ver services/audio/speedGuard). */
+  englishEngine(): EnglishEngine {
+    return currentEnglishEngine();
+  }
+
+  /** Quem escolhe a voz rápida da troca automática (o narrador registra a escolha do aluno). */
+  setFastVoicePicker(picker: () => string): void {
+    this.fastVoicePicker = picker;
+  }
+
+  /** A voz rápida que a narração em inglês usaria agora. */
+  fastVoice(): string {
+    try {
+      const id = this.fastVoicePicker();
+      return isFastEnglishVoice(id) ? id : FAST_EN_DEFAULT;
+    } catch {
+      return FAST_EN_DEFAULT;
+    }
+  }
+
+  speedInfo(): SpeedInfo {
+    const state = speedState();
+    return {
+      preference: state.preference,
+      engine: this.englishEngine(),
+      autoFast: state.autoFast,
+      verdict: currentVerdict(this.kokoroDevice),
+      kokoroDevice: this.kokoroDevice,
+      switching: this.fastSwitch !== null,
+    };
+  }
+
+  /** Escolha do aluno: automático, natural (Kokoro) ou rápida (Piper). Fica neste aparelho. */
+  setSpeedPreference(preference: VoiceSpeedPreference): void {
+    storeSpeedPreference(preference);
+    if (this.englishEngine() === "piper") {
+      this.dropQueuedKokoro();
+    }
+    if (preference === "auto") {
+      void this.maybeSwitchToFast()?.catch(() => undefined);
+    }
+    this.notifyStatus();
+  }
+
+  /** A troca automática em andamento (download da voz rápida), se houver. */
+  pendingFastSwitch(): Promise<void> | null {
+    return this.fastSwitch;
+  }
+
+  /** Começa a troca automática se a voz natural já foi medida lenta (ou devolve a que está em andamento). */
+  switchToFastIfSlow(): Promise<void> | null {
+    return this.maybeSwitchToFast();
+  }
+
+  /**
+   * Mede a voz natural neste aparelho: carrega o Kokoro (baixa se preciso), aquece a voz e
+   * cronometra uma frase de ~4 s. A medida entra no guarda e pode disparar a troca automática.
+   */
+  async benchmark(): Promise<SpeedVerdict | null> {
+    await this.downloadModels(undefined, { lang: "en", english: "kokoro" });
+    const result = await this.send({
+      type: "BENCH",
+      payload: { engine: "kokoro", voice: DEFAULT_VOICE_BY_LANG.en, lang: "en", text: BENCH_TEXT },
+    }).promise;
+    if (result.device) {
+      this.kokoroDevice = result.device;
+    }
+    this.recordTiming("kokoro", { inferMs: result.inferMs, cold: result.cold, device: result.device }, result.audioMs ?? 0);
+    return currentVerdict(result.device ?? this.kokoroDevice);
+  }
+
+  /** Força o dispositivo do Kokoro (só para testes e medições; o padrão é automático). */
+  configureKokoroDevice(device: "auto" | KokoroDevice): void {
+    this.kokoroDeviceOverride = device;
+    if (device !== "auto" && this.kokoroDevice && this.kokoroDevice !== device) {
+      this.models.delete("kokoro");
+      this.kokoroDevice = null;
+    }
+    this.worker?.postMessage({ type: "CONFIG", payload: { kokoroDevice: device } });
+  }
+
+  private recordTiming(engine: TtsEngine, timing: PartTiming, audioMs: number): void {
+    if (engine !== "kokoro" || timing.cold || !timing.device || !timing.inferMs || !(audioMs > 0)) {
+      return;
+    }
+    const verdict = recordSpeedSample({ device: timing.device, audioMs, inferMs: timing.inferMs, at: Date.now() });
+    this.record({
+      type: "speed-sample",
+      engine: "kokoro",
+      device: timing.device,
+      ms: timing.inferMs,
+      durationMs: Math.round(audioMs),
+      rtf: verdict?.rtf ?? Math.round((timing.inferMs / audioMs) * 100) / 100,
+    });
+    void this.maybeSwitchToFast()?.catch(() => undefined);
+  }
+
+  /**
+   * Natural medido lento, no automático: baixa a voz rápida e só então passa a narração para ela
+   * (até lá o Kokoro continua falando, devagar, em vez de deixar o aluno sem voz).
+   */
+  private maybeSwitchToFast(): Promise<void> | null {
+    if (this.fastSwitch) {
+      return this.fastSwitch;
+    }
+    const state = speedState();
+    const verdict = currentVerdict(this.kokoroDevice);
+    if (!shouldSwitchToFast(state.preference, verdict, state.autoFast)) {
+      return null;
+    }
+    const voice = this.fastVoice();
+    // A pré-carga do Kokoro ocuparia o worker (WASM numa thread) e atrasaria o download da voz rápida.
+    this.dropQueuedKokoro();
+    const run = this.downloadModels(undefined, { lang: "en", voice }).then(() => {
+      const now = speedState();
+      // O aluno pode ter escolhido a voz natural enquanto baixava: a escolha dele manda.
+      if (now.preference === "auto" && !now.autoFast) {
+        setAutoFast(true);
+        this.record({ type: "engine-switch", engine: "piper", voice, lang: "en", rtf: verdict?.rtf, device: verdict?.device });
+        this.dropQueuedKokoro();
+      }
+    });
+    const tracked = run.finally(() => {
+      if (this.fastSwitch === tracked) {
+        this.fastSwitch = null;
+      }
+      this.notifyStatus();
+    });
+    tracked.catch(() => undefined);
+    this.fastSwitch = tracked;
+    this.notifyStatus();
+    return tracked;
+  }
+
+  /**
+   * Descarta a pré-carga do Kokoro (a voz agora é outra): a que está na fila sai, a que está rodando
+   * para no fim do trecho atual. O que alguém espera para tocar agora (wantNow) continua.
+   */
+  private dropQueuedKokoro(): void {
+    const ids: string[] = [];
+    for (const entry of this.inflight.values()) {
+      if (entry.engine === "kokoro" && !entry.wantNow && entry.requestId) {
+        ids.push(entry.requestId);
+      }
+    }
+    if (ids.length > 0) {
+      this.worker?.postMessage({ type: "DROP", payload: { ids } });
+    }
+  }
+
   // --- Estado, assinaturas e teste ------------------------------------------
 
   stats(): SpeechStats {
@@ -1591,6 +1882,7 @@ class SpeechService {
   }
 
   subscribe(listener: (status: VoiceEngineStatus) => void): () => void {
+    this.speedWatch ??= subscribeSpeed(() => this.notifyStatus());
     this.statusListeners.add(listener);
     listener(this.getStatus());
     void this.inspect();
@@ -1599,7 +1891,22 @@ class SpeechService {
     };
   }
 
+  /** Retrato atual (o mesmo objeto até a próxima mudança). */
+  snapshot(): SpeechSnapshot {
+    if (!this.snapshotCache) {
+      this.snapshotVersion += 1;
+      this.snapshotCache = {
+        version: this.snapshotVersion,
+        speed: this.speedInfo(),
+        fastVoice: this.fastVoice(),
+        modelState: (lang, voice) => this.modelState(lang, voice),
+      };
+    }
+    return this.snapshotCache;
+  }
+
   private notifyStatus(): void {
+    this.snapshotCache = null;
     const status = this.getStatus();
     for (const listener of [...this.statusListeners]) {
       try {
@@ -1656,7 +1963,7 @@ class SpeechService {
 
   isCached(text: string, options: SpeechOptions = {}): boolean {
     try {
-      const resolved = resolveVoice(options.lang ?? "en", undefined, options.mentorId);
+      const resolved = resolveVoice(options.lang ?? "en", undefined, options.mentorId, this.englishEngine());
       return this.clips.has(audioCacheKey(text.trim(), resolved.lang, resolved.voice));
     } catch {
       return false;
@@ -1675,7 +1982,7 @@ class SpeechService {
     await this.inspect();
     let resolved: ResolvedVoice;
     try {
-      resolved = resolveVoice(targetLang, undefined, mentorId);
+      resolved = resolveVoice(targetLang, undefined, mentorId, this.englishEngine());
     } catch {
       return false;
     }
@@ -1851,6 +2158,17 @@ export interface SpeechTestHook {
     segments: Array<{ index: number; total: number; atMs: number; estStartMs: number; estEndMs: number; estTotalMs: number; words: number }>;
   }>;
   modelState: (lang: string, voice?: string) => ModelState;
+  /** Guarda de velocidade do inglês: preferência, motor atual, medida e dispositivo do Kokoro. */
+  speed: () => SpeedInfo;
+  setSpeedPreference: (preference: VoiceSpeedPreference) => void;
+  /** Mede a voz natural (baixa e carrega o Kokoro se preciso). */
+  benchmark: () => Promise<SpeedVerdict | null>;
+  /** Força o dispositivo do Kokoro antes de carregar (medições de WebGPU x WASM). */
+  configureKokoroDevice: (device: "auto" | KokoroDevice) => void;
+  /** Espera a troca automática para a voz rápida, se estiver em andamento. */
+  fastSwitch: () => Promise<void>;
+  /** Pré-carga em segundo plano (como a lição faz). */
+  prefetch: (texts: string[], lang: string, voice?: string) => void;
 }
 
 function installTestHook(): void {
@@ -1911,6 +2229,12 @@ function installTestHook(): void {
       };
     },
     modelState: (lang, voice) => speechService.modelState(lang, voice),
+    speed: () => speechService.speedInfo(),
+    setSpeedPreference: (preference) => speechService.setSpeedPreference(preference),
+    benchmark: () => speechService.benchmark(),
+    configureKokoroDevice: (device) => speechService.configureKokoroDevice(device),
+    fastSwitch: () => speechService.pendingFastSwitch() ?? Promise.resolve(),
+    prefetch: (texts, lang, voice) => speechService.prefetch(texts, lang, voice),
   };
   (globalThis as { __prosaSpeech?: SpeechTestHook }).__prosaSpeech = hook;
 }

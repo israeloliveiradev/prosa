@@ -6,6 +6,8 @@ import { storedPlacementItemSchema, type PlacementPublicItem, type StoredPlaceme
 import type { CefrLevel } from "../types/database.js";
 import { catalogPlacementItems, shufflePlacementItem } from "./placement-bank.js";
 import type { GeminiGateway } from "./gemini-gateway.js";
+import { syncPathToLevel } from "./path-service.js";
+import { ProfileStore } from "./profile-store.js";
 import {
   PLACEMENT_CAP,
   bandDifficulty,
@@ -140,6 +142,21 @@ function rowToItem(row: PoolRow): StoredPlacementItem | null {
     difficulty: row.difficulty,
   });
   return parsed.success ? parsed.data : null;
+}
+
+function shuffleRows<T>(rows: readonly T[]): T[] {
+  const next = [...rows];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    const current = next[index];
+    const other = next[swap];
+    if (current === undefined || other === undefined) {
+      continue;
+    }
+    next[index] = other;
+    next[swap] = current;
+  }
+  return next;
 }
 
 export class PlacementService {
@@ -376,6 +393,13 @@ export class PlacementService {
       ],
     );
     await this.applyLevel(user.id, row.target_lang, row.through_lang, level);
+    await this.writeSkills(user.id, row.target_lang, skills);
+    try {
+      // Bandas abaixo do novo nível viram validated e a unidade ativa avança; nada volta a locked.
+      await syncPathToLevel(this.pool, user.id, row.target_lang, level);
+    } catch {
+      // O nível já foi gravado; o próximo GET /path sobe a trilha a partir dele.
+    }
     return {
       attempt_id: attemptId,
       target_lang: row.target_lang,
@@ -390,6 +414,80 @@ export class PlacementService {
       skills,
       history: await this.history(user, row.target_lang),
     };
+  }
+
+  /**
+   * Itens do banco de nivelamento de uma faixa, para o checkpoint da trilha (com gabarito,
+   * que fica só no servidor). Prefere itens que o aluno ainda não viu e pede mais à IA
+   * quando a faixa tem poucos itens novos.
+   */
+  async checkpointItems(
+    user: AuthUser,
+    targetLang: string,
+    throughLang: string,
+    band: CefrLevel,
+    count: number,
+  ): Promise<StoredPlacementItem[]> {
+    await this.seedPool(targetLang, throughLang);
+    await this.backfillSeen(user.id, targetLang);
+    let rows = await this.bandRows(user.id, targetLang, throughLang, band);
+    if (rows.filter((row) => !row.seen).length < count) {
+      await this.refill(user, targetLang, throughLang, band);
+      rows = await this.bandRows(user.id, targetLang, throughLang, band);
+    }
+    const ordered = [...shuffleRows(rows.filter((row) => !row.seen)), ...shuffleRows(rows.filter((row) => row.seen))];
+    const chosen = ordered
+      .flatMap((row) => {
+        const item = rowToItem(row);
+        return item ? [shufflePlacementItem(item)] : [];
+      })
+      .slice(0, count);
+    for (const item of chosen) {
+      await this.markSeen(user.id, item.id);
+    }
+    return chosen;
+  }
+
+  private async bandRows(
+    userId: string,
+    targetLang: string,
+    throughLang: string,
+    band: CefrLevel,
+  ): Promise<Array<PoolRow & { seen: boolean }>> {
+    const found = await this.pool.query<PoolRow & { seen: boolean }>(
+      `SELECT id, band, kind, prompt, hint, options, answer, passage, audio_text, difficulty,
+              EXISTS (SELECT 1 FROM placement_seen WHERE user_id = $1 AND item_id = placement_items.id) AS seen
+       FROM placement_items
+       WHERE target_lang = $2 AND through_lang = $3 AND band = $4
+       ORDER BY created_at DESC
+       LIMIT 80`,
+      [userId, targetLang, throughLang, band],
+    );
+    return found.rows;
+  }
+
+  /** Notas por habilidade do nivelamento entram no perfil do aluno (learner_profile). */
+  private async writeSkills(userId: string, targetLang: string, skills: SkillScore[]): Promise<void> {
+    const signals: { vocabulary?: number; grammar?: number; reading?: number; listening?: number } = {};
+    for (const skill of skills) {
+      if (skill.total <= 0) {
+        continue;
+      }
+      const value = Math.round((100 * skill.correct) / skill.total);
+      if (skill.skill === "vocab") {
+        signals.vocabulary = value;
+      } else {
+        signals[skill.skill] = value;
+      }
+    }
+    if (Object.keys(signals).length === 0) {
+      return;
+    }
+    try {
+      await new ProfileStore(this.pool).merge(userId, targetLang, signals);
+    } catch {
+      // O perfil é auxiliar: o resultado do nivelamento já está salvo.
+    }
   }
 
   private async requireOpen(userId: string, attemptId: string): Promise<AttemptRow> {

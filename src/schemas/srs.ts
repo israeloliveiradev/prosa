@@ -8,6 +8,12 @@ export const syncReviewSchema = z.object({
   back_translation: z.string().trim().min(1).max(240),
   context_sentence: z.string().trim().min(1).max(500),
   quality: reviewQualitySchema,
+  /**
+   * Quando o aluno respondeu (ISO 8601). Vale para revisões feitas offline: o servidor usa
+   * esse horário se estiver entre 30 dias atrás e agora; fora disso, usa o próprio relógio
+   * (ver reviewTime em routes/srs.ts). Formato inválido é recusado.
+   */
+  reviewed_at: z.string().datetime({ offset: true }).optional(),
 });
 
 export const syncReviewsBodySchema = z.object({
@@ -25,10 +31,14 @@ export const retentionBodySchema = z.object({
   cards: z.array(retentionCardSchema).max(500),
 });
 
+/**
+ * Pedido de âncora: só `front_phrase` identifica o cartão. Tradução e frase vêm do cartão
+ * guardado no servidor; os campos abaixo continuam aceitos por compatibilidade, mas não são usados.
+ */
 export const mnemonicBodySchema = z.object({
   front_phrase: z.string().trim().min(1).max(240),
-  back_translation: z.string().trim().min(1).max(240),
-  context_sentence: z.string().trim().min(1).max(500),
+  back_translation: z.string().trim().min(1).max(240).optional(),
+  context_sentence: z.string().trim().min(1).max(500).optional(),
 });
 
 export const mnemonicResponseSchema = z.object({

@@ -210,3 +210,72 @@ function remember(list: string[], item: string): string[] {
   const key = item.toLowerCase();
   return [item, ...list.filter((entry) => entry.toLowerCase() !== key)].slice(0, 6);
 }
+
+/** Sinais que mudam o perfil (o mesmo formato de applySignals). */
+export type ProfileSignals = Parameters<typeof applySignals>[1];
+
+/**
+ * Preferências que o próprio aluno escolhe: o cliente pode mandar por /profile/signals.
+ */
+export const CLIENT_PROFILE_FIELDS = [
+  "goal",
+  "weekly_aim",
+  "minutes_per_day",
+  "session_duration_mode",
+  "paused_session_state",
+] as const;
+
+/**
+ * Medidas: notas por habilidade, vocabulário, erros, sons, ritmo e tempo de estudo. Só o
+ * servidor grava, a partir dos próprios dados (nivelamento, pronúncia em /audio/*, diário,
+ * revisões FSRS, sessões concluídas). /profile/signals recusa estes campos.
+ */
+export const MEASURED_PROFILE_FIELDS = [
+  ...PROFILE_SKILLS,
+  "hearing",
+  "lexicon_size",
+  "coverage",
+  "error",
+  "sound",
+  "fluency_wpm",
+  "add_active_seconds",
+  "milestone_unlocked",
+] as const;
+
+export type ClientProfileSignals = Pick<ProfileSignals, (typeof CLIENT_PROFILE_FIELDS)[number]>;
+
+/** Campos de medida presentes num corpo enviado pelo cliente (para recusar com 400). */
+export function measuredFieldsIn(body: Record<string, unknown>): string[] {
+  return MEASURED_PROFILE_FIELDS.filter((field) => body[field] !== undefined);
+}
+
+/** Só as preferências do corpo; qualquer medida fica de fora. */
+export function clientProfileSignals(body: ProfileSignals): ClientProfileSignals {
+  const signals: ClientProfileSignals = {};
+  if (body.goal !== undefined) signals.goal = body.goal;
+  if (body.weekly_aim !== undefined) signals.weekly_aim = body.weekly_aim;
+  if (body.minutes_per_day !== undefined) signals.minutes_per_day = body.minutes_per_day;
+  if (body.session_duration_mode !== undefined) signals.session_duration_mode = body.session_duration_mode;
+  if (body.paused_session_state !== undefined) signals.paused_session_state = body.paused_session_state;
+  return signals;
+}
+
+/**
+ * Sinal de pronúncia medido no servidor (/audio/analyze-shadowing*): a nota de acerto e o
+ * primeiro som que escapou. Sem fala reconhecida não há medida (silêncio não vira nota).
+ */
+export function pronunciationSignals(result: {
+  transcription: string;
+  accuracy_score: number;
+  sounds?: ReadonlyArray<{ held: boolean; sound: { en: string } }>;
+}): Pick<ProfileSignals, "pronunciation" | "sound"> | null {
+  if (!result.transcription.trim() || !Number.isFinite(result.accuracy_score) || result.accuracy_score <= 0) {
+    return null;
+  }
+  const signals: Pick<ProfileSignals, "pronunciation" | "sound"> = { pronunciation: scoreOf(result.accuracy_score) };
+  const missed = result.sounds?.find((note) => !note.held);
+  if (missed?.sound.en.trim()) {
+    signals.sound = missed.sound.en.trim().slice(0, 40);
+  }
+  return signals;
+}

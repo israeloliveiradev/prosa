@@ -33,7 +33,7 @@ export function registerLessonRoutes(app: FastifyInstance, lessons: LessonServic
       }
       const result = await lessons.generate(body, user);
       reply.header("x-prosa-cache", result.cached ? "hit" : "miss");
-      return { ...result.lesson, anchors: result.anchors };
+      return { ...result.lesson, anchors: result.anchors, unit: result.unit };
     },
   );
 

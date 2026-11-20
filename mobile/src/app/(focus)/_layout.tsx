@@ -34,6 +34,8 @@ export default function FocusLayout() {
       <Stack.Screen name="quiz" />
       <Stack.Screen name="start" />
       <Stack.Screen name="placement" />
+      <Stack.Screen name="unit-test" />
+      <Stack.Screen name="checkpoint" />
     </Stack>
   );
 }

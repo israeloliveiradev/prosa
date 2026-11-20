@@ -8,6 +8,28 @@ import type { MnemonicService } from "../services/mnemonic-service.js";
 import { scheduleFsrs } from "../services/fsrs.js";
 import { retentionSnapshot } from "../services/retention.js";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Revisão offline mais antiga que o servidor aceita como horário real. */
+export const REVIEW_MAX_AGE_MS = 30 * DAY_MS;
+/** Folga para relógio do aparelho um pouco adiantado. */
+export const REVIEW_CLOCK_SKEW_MS = 2 * 60 * 1000;
+
+/**
+ * Horário da revisão: o `reviewed_at` do cliente quando está entre 30 dias atrás e agora
+ * (com 2 min de folga, cortado em agora); fora disso, o relógio do servidor. Nunca recua
+ * antes da última revisão gravada do cartão, para o intervalo não ficar negativo.
+ */
+export function reviewTime(reviewedAt: string | undefined, now: number, lastReviewAt: number | null): number {
+  let at = now;
+  if (reviewedAt) {
+    const parsed = Date.parse(reviewedAt);
+    if (Number.isFinite(parsed) && parsed >= now - REVIEW_MAX_AGE_MS && parsed <= now + REVIEW_CLOCK_SKEW_MS) {
+      at = Math.min(parsed, now);
+    }
+  }
+  return lastReviewAt !== null && lastReviewAt > at ? lastReviewAt : at;
+}
+
 export function registerSrsRoutes(app: FastifyInstance, pool: Pool, mnemonics: MnemonicService): void {
   app.get(
     "/api/v1/srs/cards",
@@ -198,14 +220,17 @@ async function applyReviews(client: PoolClient, body: SyncReviewsBody, targetLan
     if (!card) {
       throw new AppError(500, "Card was not created");
     }
+    const lastReviewAt = card.last_review_at ? card.last_review_at.getTime() : null;
+    const reviewedAt = reviewTime(review.reviewed_at, Date.now(), lastReviewAt);
     const scheduled = scheduleFsrs(
       {
         stability: Number(card.stability) || 0,
         difficulty: Number(card.difficulty) || 0,
         reps: card.repetition_count,
-        lastReviewAt: card.last_review_at ? card.last_review_at.getTime() : null,
+        lastReviewAt,
       },
       review.quality,
+      reviewedAt,
     );
     await client.query(
       `UPDATE srs_cards
@@ -216,7 +241,7 @@ async function applyReviews(client: PoolClient, body: SyncReviewsBody, targetLan
            next_review_at = $6,
            stability = $7,
            difficulty = $8,
-           last_review_at = now()
+           last_review_at = $9
        WHERE id = $1`,
       [
         card.id,
@@ -227,6 +252,7 @@ async function applyReviews(client: PoolClient, body: SyncReviewsBody, targetLan
         new Date(scheduled.dueAt).toISOString(),
         scheduled.stability,
         scheduled.difficulty,
+        new Date(reviewedAt).toISOString(),
       ],
     );
     await client.query(

@@ -14,7 +14,7 @@ import {
   secondFactorCode,
   sixDigitCode,
 } from "@/features/auth/model/account-model";
-import { serverLocaleFor, shouldAdoptServerLocale } from "@/features/auth/model/locale-sync";
+import { isAccountLocale, reconcileLocale, shouldAdoptServerLocale } from "@/features/auth/model/locale-sync";
 import { ACCOUNT_COPY } from "@/lib/copy/account";
 
 const copy = ACCOUNT_COPY.pt as unknown as Record<string, unknown>;
@@ -97,20 +97,53 @@ test.describe("conta: respostas do login", () => {
   });
 });
 
-test.describe("conta: idioma da tela guardado no servidor (pt/en)", () => {
-  test("o cadastro manda pt ou en", () => {
-    expect(serverLocaleFor("pt")).toBe("pt");
-    expect(serverLocaleFor("en")).toBe("en");
-    expect(serverLocaleFor("de")).toBe("en");
-    expect(serverLocaleFor("ja")).toBe("en");
+test.describe("conta: idioma da tela guardado no servidor (7 idiomas, M2)", () => {
+  test("a conta guarda os 7 idiomas de interface", () => {
+    for (const locale of ["pt", "en", "de", "fr", "es", "it", "ja"]) {
+      expect(isAccountLocale(locale)).toBe(true);
+    }
+    expect(isAccountLocale("ru")).toBe(false);
+    expect(isAccountLocale(undefined)).toBe(false);
   });
 
-  test("a conta não desfaz um idioma que o servidor não guarda", () => {
+  test("aparelho novo para a conta: o idioma da conta vale", () => {
+    expect(reconcileLocale({ local: "pt", server: "de", synced: null })).toEqual({ adopt: "de", push: null, synced: "de" });
+    expect(reconcileLocale({ local: "en", server: "ja", synced: null })).toEqual({ adopt: "ja", push: null, synced: "ja" });
+    expect(reconcileLocale({ local: "fr", server: "de", synced: null })).toEqual({ adopt: "de", push: null, synced: "de" });
+  });
+
+  test("conta do M1 com o substituto pt/en não desfaz o idioma do aparelho e é corrigida", () => {
+    expect(reconcileLocale({ local: "de", server: "en", synced: null })).toEqual({ adopt: null, push: "de", synced: null });
+    expect(reconcileLocale({ local: "ja", server: "pt", synced: null })).toEqual({ adopt: null, push: "ja", synced: null });
+  });
+
+  test("escolha recente no aparelho vence uma resposta velha e sobe para a conta", () => {
+    // Acordo em pt; o aluno trocou para de; chega um /auth/me pedido antes do PATCH, ainda com pt.
+    expect(reconcileLocale({ local: "de", server: "pt", synced: "pt" })).toEqual({ adopt: null, push: "de", synced: "pt" });
+    // A conta confirmou de.
+    expect(reconcileLocale({ local: "de", server: "de", synced: "pt" })).toEqual({ adopt: null, push: null, synced: "de" });
+  });
+
+  test("mudança feita em outro aparelho chega aqui", () => {
+    expect(reconcileLocale({ local: "de", server: "fr", synced: "de" })).toEqual({ adopt: "fr", push: null, synced: "fr" });
+  });
+
+  test("os dois lados mudaram: vale o aparelho (a escolha que o aluno vê agora)", () => {
+    expect(reconcileLocale({ local: "it", server: "fr", synced: "de" })).toEqual({ adopt: null, push: "it", synced: "de" });
+  });
+
+  test("sem idioma válido na resposta, nada muda", () => {
+    expect(reconcileLocale({ local: "de", server: undefined, synced: "de" })).toEqual({ adopt: null, push: null, synced: "de" });
+    expect(reconcileLocale({ local: "de", server: "xx", synced: null })).toEqual({ adopt: null, push: null, synced: null });
+  });
+
+  test("atalho sem histórico: adota salvo o caso do substituto do M1", () => {
     expect(shouldAdoptServerLocale("pt", "en")).toBe(true);
     expect(shouldAdoptServerLocale("en", "pt")).toBe(true);
     expect(shouldAdoptServerLocale("de", "en")).toBe(false);
     expect(shouldAdoptServerLocale("ja", "pt")).toBe(false);
     expect(shouldAdoptServerLocale("pt", "fr")).toBe(true);
+    expect(shouldAdoptServerLocale("de", "fr")).toBe(true);
     expect(shouldAdoptServerLocale("pt", "pt")).toBe(false);
     expect(shouldAdoptServerLocale("pt", "xx")).toBe(false);
     expect(shouldAdoptServerLocale("pt", undefined)).toBe(false);

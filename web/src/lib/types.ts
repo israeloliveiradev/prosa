@@ -150,6 +150,8 @@ export interface LessonRequest {
   native_lang: string;
   level: "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
   topic: string;
+  /** Unidade da trilha (M2, "a1-01" … "c1-03"). */
+  unit_id?: string;
   mind_reading?: string;
   mind_memory?: string;
   mind_speech?: string;

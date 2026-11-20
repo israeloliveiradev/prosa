@@ -1,33 +1,25 @@
-import { Image, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Image, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { TactileButton } from "@/components/tactile/tactile-button";
-import { TactileIcon, type TactileIconName } from "@/components/tactile/tactile-icon";
+import { TactileIcon } from "@/components/tactile/tactile-icon";
 import { PanelKicker, TactilePanel } from "@/components/tactile/tactile-panel";
 import { tactile } from "@/components/tactile/tokens";
-import { capitalizeFirst, formatMinutes, longDate, nextLevel, phaseDurations, weekdayShort, xpFraction } from "@/features/home/model/home-model";
+import { capitalizeFirst, formatMinutes, longDate, phaseDurations, weekdayShort, xpFraction } from "@/features/home/model/home-model";
 import { useTodayPlan } from "@/features/home/model/use-today-plan";
+import { CurrentUnitCard } from "@/features/path/components/current-unit-card";
+import { dailyHref, findUnit } from "@/features/path/model/path-model";
+import { usePath, usePathFocusRefresh } from "@/features/path/model/use-path";
 import { SessionRuler } from "@/features/session/components/session-ruler";
 import { shellLayoutFor } from "@/features/shell/model/shell-model";
-import { canDoFor, canDoText, type CanDoSkill } from "@/lib/can-do";
 import { mindRole, useCast } from "@/lib/cast";
 import { useAreaCopy } from "@/lib/copy/area";
-import { HOME_COPY, type HomeCopy } from "@/lib/copy/home";
+import { HOME_COPY } from "@/lib/copy/home";
+import { PATH_COPY } from "@/lib/copy/path";
 import { SHELL_COPY } from "@/lib/copy/shell";
 import { LOCALE_BCP47, givenName, phaseName, useLocale } from "@/lib/i18n";
 import { dailyGoalMinutes, useJourney } from "@/lib/journey";
 import { useSession } from "@/lib/session";
 import { themeLabel } from "@/lib/themes";
-
-const SKILL_ICON: Record<CanDoSkill, TactileIconName> = {
-  reading: "book",
-  listening: "headphones",
-  speaking: "mic",
-  writing: "pen",
-};
-
-function skillName(skill: CanDoSkill, t: HomeCopy): string {
-  return skill === "reading" ? t.skillReading : skill === "listening" ? t.skillListening : skill === "speaking" ? t.skillSpeaking : t.skillWriting;
-}
 
 function joinList(items: string[], bcp47: string): string {
   try {
@@ -41,15 +33,21 @@ function joinList(items: string[], bcp47: string): string {
   return items.join(", ");
 }
 
-/** Hoje: a sessão do dia (com a régua do plano real), revisões, ofensiva, XP, nível e a notícia nos seus temas. */
+/**
+ * Hoje: a sessão do dia (com a régua do plano real) ligada à unidade em curso da trilha, a unidade atual,
+ * revisões, ofensiva, XP e a notícia nos seus temas.
+ */
 export function HomeScreen() {
   const t = useAreaCopy(HOME_COPY);
   const shell = useAreaCopy(SHELL_COPY);
+  const pathCopy = useAreaCopy(PATH_COPY);
   const locale = useLocale();
   const bcp47 = LOCALE_BCP47[locale];
   const session = useSession();
   const router = useRouter();
   const plan = useTodayPlan();
+  const path = usePath();
+  usePathFocusRefresh(path);
   const dailyMinutes = dailyGoalMinutes(useJourney());
   const cast = useCast();
   const { width } = useWindowDimensions();
@@ -65,8 +63,8 @@ export function HomeScreen() {
   const { snapshot, status } = plan;
   const name = givenName(user.email, user.display_name);
   const level = user.level;
-  const next = nextLevel(level);
-  const goals = next ? canDoFor(next) : [];
+  const currentUnitId = path.data?.current_unit_id ?? null;
+  const currentUnit = findUnit(path.data, currentUnitId);
   const themes = (user.interests ?? []).map((theme) => themeLabel(theme, t.themes));
   const xpShare = xpFraction(snapshot.xpToday, snapshot.xpGoal);
   const goalMet = snapshot.xpGoal > 0 && snapshot.xpToday >= snapshot.xpGoal;
@@ -82,6 +80,11 @@ export function HomeScreen() {
             {t.sessionTitle}
           </Text>
           <Text style={{ fontFamily: tactile.font, fontSize: 15, lineHeight: 22, color: tactile.body }}>{dek}</Text>
+          {currentUnit && status !== "done" ? (
+            <Text testID="home-session-unit" style={{ fontFamily: tactile.font, fontSize: 14, lineHeight: 20, fontWeight: "700", color: tactile.primaryInk }}>
+              {pathCopy.sessionUnit(currentUnit.title)}
+            </Text>
+          ) : null}
         </View>
         {phone ? null : (
           <View style={{ flexDirection: "row" }}>
@@ -124,7 +127,7 @@ export function HomeScreen() {
           variant={status === "done" ? "secondary" : "primary"}
           size="xl"
           fullWidth={phone}
-          onPress={() => router.push("/daily")}
+          onPress={() => router.push(dailyHref(currentUnitId) as Href)}
           icon={<TactileIcon name={status === "done" ? "check" : "play"} size={20} color={status === "done" ? tactile.primaryInk : "#FFFFFF"} fill={status === "done" ? "none" : "#FFFFFF"} />}
         />
       </View>
@@ -205,34 +208,7 @@ export function HomeScreen() {
     </TactilePanel>
   );
 
-  const levelCard = (
-    <TactilePanel testID="home-level">
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: tactile.primary, boxShadow: `0 3px 0 ${tactile.primaryDark}` } as object}>
-          <Text style={{ fontFamily: tactile.font, fontSize: 20, fontWeight: "800", color: "#FFFFFF" }}>{level}</Text>
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <PanelKicker icon="target">{t.levelTitle}</PanelKicker>
-          <Text style={{ fontFamily: tactile.font, fontSize: 15, fontWeight: "700", color: tactile.ink, marginTop: 2 }}>
-            {next ? t.nextGoal(next) : t.topLevel}
-          </Text>
-        </View>
-      </View>
-      {goals.length > 0 ? (
-        <View style={{ gap: 10 }}>
-          {goals.map((item) => (
-            <View key={item.id} style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
-              <View accessibilityLabel={skillName(item.skill, t)} style={{ width: 28, height: 28, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: tactile.raised }}>
-                <TactileIcon name={SKILL_ICON[item.skill]} size={15} color={tactile.primaryInk} />
-              </View>
-              <Text style={{ flex: 1, fontFamily: tactile.font, fontSize: 14, lineHeight: 20, color: tactile.body }}>{canDoText(item, locale)}</Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-      <LinkButton testID="home-see-path" label={t.seePath} onPress={() => router.push("/path" as Href)} />
-    </TactilePanel>
-  );
+  const unitCard = <CurrentUnitCard t={pathCopy} level={level} path={path} onSeePath={() => router.push("/path" as Href)} />;
 
   const newsCard = (
     <TactilePanel testID="home-news" tone="quiet">
@@ -267,13 +243,14 @@ export function HomeScreen() {
               {newsCard}
             </View>
             <View style={{ flex: 2, minWidth: 0, gap: 20 }}>
+              {unitCard}
               {streakCard}
-              {levelCard}
             </View>
           </View>
         ) : (
           <View style={{ gap: 16 }}>
             {sessionCard}
+            {unitCard}
             <View style={{ flexDirection: phone ? "column" : "row", gap: 16 }}>
               {reviewsCard}
               {streakCard}
@@ -282,19 +259,9 @@ export function HomeScreen() {
               <View style={{ flex: 1, minWidth: 0 }}>{xpCard}</View>
               <View style={{ flex: 1, minWidth: 0 }}>{newsCard}</View>
             </View>
-            {levelCard}
           </View>
         )}
       </View>
     </ScrollView>
-  );
-}
-
-function LinkButton({ label, onPress, testID }: { label: string; onPress: () => void; testID?: string }) {
-  return (
-    <Pressable testID={testID} accessibilityRole="link" onPress={onPress} hitSlop={6} style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingVertical: 4, cursor: "pointer" } as object}>
-      <Text style={{ fontFamily: tactile.font, fontSize: 14, fontWeight: "800", color: tactile.primaryInk }}>{label}</Text>
-      <TactileIcon name="chevronRight" size={16} color={tactile.primaryInk} />
-    </Pressable>
   );
 }

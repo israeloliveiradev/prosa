@@ -95,7 +95,8 @@ export function scheduleFsrs(state: FsrsState, quality: FsrsQuality, now = Date.
     first
       ? WEIGHTS[rating - 1]!
       : rating === 1
-        ? forgetStability(difficulty, state.stability, recall)
+        ? // FSRS-5: depois de um lapso, a estabilidade nunca passa da que o cartão tinha.
+          Math.min(forgetStability(difficulty, state.stability, recall), state.stability)
         : recallStability(difficulty, state.stability, recall, rating);
   const rawDays = stability / FACTOR * (0.9 ** (1 / DECAY) - 1);
   const intervalDays = rawDays < 1 ? 0 : Math.min(36500, Math.max(1, Math.round(rawDays)));

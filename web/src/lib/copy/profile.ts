@@ -51,7 +51,7 @@ export const PROFILE = defineArea({
     edit: "Editar",
     languagesTitle: "Idiomas",
     uiLanguage: "Idioma da interface",
-    uiLanguageLocal: "Salvo neste aparelho. Por enquanto a conta guarda só português ou inglês.",
+    uiLanguageLocal: "Salvo só neste aparelho.",
     uiLanguageSaved: "Salvo na sua conta.",
     uiLanguageSaveFailed: "Não salvou na conta; ficou só neste aparelho.",
     supportLanguage: "Idioma de apoio",
@@ -176,7 +176,7 @@ export const PROFILE = defineArea({
     edit: "Edit",
     languagesTitle: "Languages",
     uiLanguage: "Interface language",
-    uiLanguageLocal: "Saved on this device. For now the account only stores Portuguese or English.",
+    uiLanguageLocal: "Saved on this device only.",
     uiLanguageSaved: "Saved to your account.",
     uiLanguageSaveFailed: "Not saved to the account; kept on this device only.",
     supportLanguage: "Support language",
@@ -301,7 +301,7 @@ export const PROFILE = defineArea({
     edit: "Bearbeiten",
     languagesTitle: "Sprachen",
     uiLanguage: "Sprache der Oberfläche",
-    uiLanguageLocal: "Auf diesem Gerät gespeichert. Das Konto speichert vorerst nur Portugiesisch oder Englisch.",
+    uiLanguageLocal: "Nur auf diesem Gerät gespeichert.",
     uiLanguageSaved: "In deinem Konto gespeichert.",
     uiLanguageSaveFailed: "Nicht im Konto gespeichert; nur auf diesem Gerät.",
     supportLanguage: "Hilfssprache",
@@ -426,7 +426,7 @@ export const PROFILE = defineArea({
     edit: "Modifier",
     languagesTitle: "Langues",
     uiLanguage: "Langue de l'interface",
-    uiLanguageLocal: "Enregistrée sur cet appareil. Pour l'instant, le compte ne garde que le portugais ou l'anglais.",
+    uiLanguageLocal: "Enregistrée sur cet appareil uniquement.",
     uiLanguageSaved: "Enregistrée dans votre compte.",
     uiLanguageSaveFailed: "Non enregistrée dans le compte ; seulement sur cet appareil.",
     supportLanguage: "Langue d'appui",
@@ -551,7 +551,7 @@ export const PROFILE = defineArea({
     edit: "Editar",
     languagesTitle: "Idiomas",
     uiLanguage: "Idioma de la interfaz",
-    uiLanguageLocal: "Guardado en este dispositivo. Por ahora la cuenta solo guarda portugués o inglés.",
+    uiLanguageLocal: "Guardado solo en este dispositivo.",
     uiLanguageSaved: "Guardado en tu cuenta.",
     uiLanguageSaveFailed: "No se guardó en la cuenta; quedó solo en este dispositivo.",
     supportLanguage: "Idioma de apoyo",
@@ -676,7 +676,7 @@ export const PROFILE = defineArea({
     edit: "Modifica",
     languagesTitle: "Lingue",
     uiLanguage: "Lingua dell'interfaccia",
-    uiLanguageLocal: "Salvata su questo dispositivo. Per ora l'account memorizza solo portoghese o inglese.",
+    uiLanguageLocal: "Salvata solo su questo dispositivo.",
     uiLanguageSaved: "Salvata nel tuo account.",
     uiLanguageSaveFailed: "Non salvata nell'account; solo su questo dispositivo.",
     supportLanguage: "Lingua di supporto",
@@ -801,7 +801,7 @@ export const PROFILE = defineArea({
     edit: "編集",
     languagesTitle: "言語",
     uiLanguage: "表示言語",
-    uiLanguageLocal: "この端末に保存しました。いまのところ、アカウントに保存できるのはポルトガル語か英語だけです。",
+    uiLanguageLocal: "この端末にだけ保存しました。",
     uiLanguageSaved: "アカウントに保存しました。",
     uiLanguageSaveFailed: "アカウントには保存できませんでした。この端末にだけ保存しています。",
     supportLanguage: "サポート言語",
@@ -897,9 +897,14 @@ export function mindLine(id: string, copy: Pick<ProfileCopy, "minds">): string {
   return copy.minds[id as MindId]?.line ?? "";
 }
 
-/** O backend (até o M2) só guarda pt ou en como idioma de interface da conta. */
-export function accountLocale(locale: DisplayLocale): "pt" | "en" | null {
-  return locale === "pt" || locale === "en" ? locale : null;
+const ACCOUNT_LOCALES: readonly string[] = ["pt", "en", "de", "fr", "es", "it", "ja"];
+
+/**
+ * Idioma de interface a gravar na conta. Desde o M2 o backend guarda os 7 idiomas de
+ * interface; null só para um valor fora da lista (fica só neste aparelho).
+ */
+export function accountLocale(locale: DisplayLocale): DisplayLocale | null {
+  return ACCOUNT_LOCALES.includes(locale) ? locale : null;
 }
 
 /** Faixa CEFR estimada da escuta a partir do índice 0–100 do servidor (mesma régua de CompetenceLine). */

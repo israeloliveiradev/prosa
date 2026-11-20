@@ -1,4 +1,11 @@
+import type { DisplayLocale } from "@/lib/i18n";
 import { request } from "./http";
+import {
+  AccountSettingsSchema,
+  type AccountGoal,
+  type AccountMinutes,
+  type AccountSettings,
+} from "./schemas/auth";
 import {
   OnboardingResponseSchema,
   type OnboardingInput,
@@ -28,5 +35,29 @@ export async function submitOnboarding(
     body: input,
     schema: OnboardingResponseSchema,
     auth: "required",
+  });
+}
+
+/** Preferências do plano que moram na conta (PATCH /api/v1/account/settings, backend M2). */
+export interface AccountPrefsPatch {
+  /** null apaga o objetivo. */
+  goal?: AccountGoal | null;
+  /** null ou "" apaga a nota. */
+  goal_note?: string | null;
+  daily_minutes?: AccountMinutes;
+  display_locale?: DisplayLocale;
+}
+
+/**
+ * Grava objetivo, nota, minutos por dia e/ou idioma de interface na conta e devolve
+ * os ajustes como o servidor guardou.
+ */
+export async function saveAccountPrefs(patch: AccountPrefsPatch, options: { signal?: AbortSignal } = {}): Promise<AccountSettings> {
+  return request<AccountSettings>("/api/v1/account/settings", {
+    method: "PATCH",
+    body: patch,
+    schema: AccountSettingsSchema,
+    auth: "required",
+    ...(options.signal ? { signal: options.signal } : {}),
   });
 }

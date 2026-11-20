@@ -1,24 +1,43 @@
 // Prosa — worker de síntese de voz no aparelho (servido cru em /workers/ttsWorker.js, sem bundler).
 //
-// - Kokoro-82M (kokoro-js 1.2.1, q8, WASM, 24 kHz) para inglês.
-// - Piper (@mintplex-labs/piper-tts-web 1.0.5) para de, fr, es, it, ru e pt.
+// - Kokoro-82M (kokoro-js 1.2.1, 24 kHz) para inglês: pela placa de vídeo (WebGPU, fp32) quando o
+//   aparelho tem um adaptador de verdade, senão no processador (WASM, q8). Se o WebGPU falhar ao
+//   carregar, devolver áudio inválido ou cair no meio do uso, o worker volta sozinho para o WASM.
+// - Piper (@mintplex-labs/piper-tts-web 1.0.5) para de, fr, es, it, ru e pt, e as vozes rápidas em
+//   inglês (en_US/en_GB) que o guarda de velocidade usa quando o Kokoro é lento no aparelho.
 // - Japonês não passa por aqui: ele usa Web Speech no AudioService.
 //
-// Protocolo (tipos em src/workers/ttsWorker.ts):
-//   SYNTHESIZE {engine, voice, lang, chunks[], priority} → SYNTH_PART (um por trecho) … SYNTHESIZED
+// Protocolo (tipos em src/workers/ttsWorker.ts; os campos novos estão em src/services/speechService.ts):
+//   SYNTHESIZE {engine, voice, lang, chunks[], priority} → SYNTH_PART (um por trecho, com inferMs,
+//                                                           cold e device) … SYNTHESIZED
 //   PRELOAD {engine, voice, lang}                         → MODEL_PROGRESS … MODEL_READY, PRELOADED
+//   BENCH {engine, voice, lang, text}                     → BENCHED {inferMs, audioMs, device}
 //   PRIORITIZE {id}                                       → passa um pedido de pré-carga para a frente
-//   INSPECT                                               → INSPECTED {piperStored, kokoroCached}
+//   DROP {ids[]}                                          → tira da fila (ou para no próximo trecho) a pré-carga
+//   CONFIG {kokoroDevice: auto|webgpu|wasm}               → escolha do dispositivo do Kokoro (testes)
+//   INSPECT                                               → INSPECTED {piperStored, kokoroCached, kokoroDevice}
 //
 // Carregar modelos acontece fora da fila; a inferência é uma por vez (sessões ONNX não são reentrantes).
-// Os mapas entre <voice-maps> são cópia literal de src/workers/ttsWorker.ts (teste de paridade).
+// Os mapas entre <voice-maps> são cópia literal de src/workers/ttsWorker.ts; o mapa das vozes
+// rápidas em inglês (fast-en-voices) é cópia de src/services/audio/fastVoices.ts (testes de paridade).
 
 const ORT_VERSION = "1.22.0-dev.20250409-89f8206ba4"; // mesmo build dos arquivos em /ort
 const KOKORO_MODULE_URL = "https://esm.sh/kokoro-js@1.2.1/dist/kokoro.web.js";
 const KOKORO_MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
-const KOKORO_MODEL_FILE_URL = `https://huggingface.co/${KOKORO_MODEL_ID}/resolve/main/onnx/model_quantized.onnx`;
+// fp32 é o recomendado pelo kokoro-js para WebGPU. Medido (Intel Iris Xe): fp16 e q4f16 são um pouco
+// mais rápidos, mas a saída passa de 1,0 (estoura); q8 no WebGPU é tão lento quanto o WASM.
+const KOKORO_DTYPE = { webgpu: "fp32", wasm: "q8" };
+const KOKORO_MODEL_FILE = { webgpu: "model.onnx", wasm: "model_quantized.onnx" };
+const kokoroFileUrl = (device) => `https://huggingface.co/${KOKORO_MODEL_ID}/resolve/main/onnx/${KOKORO_MODEL_FILE[device]}`;
+// Adaptadores por software (CPU emulando GPU) são mais lentos que o WASM.
+const SOFTWARE_GPU = /swiftshader|llvmpipe|lavapipe|softpipe|basic render/i;
 const PIPER_MODULE_URL = `https://esm.sh/@mintplex-labs/piper-tts-web@1.0.5?deps=onnxruntime-web@${ORT_VERSION}`;
 const PIPER_WASM_BASE = "https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize";
+// O ORT do Piper vem do jsdelivr, no mesmo build de /ort (bytes idênticos, conferido por sha256).
+// Servido pelo Metro em desenvolvimento, o .wasm de 11 MB levava minutos; pelo CDN, menos de 1 s.
+const ORT_WASM_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+// O mesmo módulo do ORT que o piper-tts-web importa pelo esm.sh (mesma URL = mesma instância).
+const PIPER_ORT_MODULE_URL = `https://esm.sh/onnxruntime-web@${ORT_VERSION}/es2022/wasm.mjs`;
 const PIPER_SESSION_LIMIT = 3;
 const WARM_TEXT = "OK.";
 
@@ -144,14 +163,29 @@ export const PIPER_MENTOR_VOICES = {
 };
 // </voice-maps>
 
+// <fast-en-voices>
+export const PIPER_EN_VOICES = {
+  "en_US-lessac-medium": { lang: "en", name: "Lessac", gender: "female", accent: "US", sampleRate: 22050 },
+  "en_US-ryan-medium": { lang: "en", name: "Ryan", gender: "male", accent: "US", sampleRate: 22050 },
+  "en_GB-cori-medium": { lang: "en", name: "Cori", gender: "female", accent: "GB", sampleRate: 22050 },
+  "en_GB-alan-medium": { lang: "en", name: "Alan", gender: "male", accent: "GB", sampleRate: 22050 },
+};
+// </fast-en-voices>
+
 let kokoroPromise = null;
+let kokoroInfo = null; // { device, dtype } do Kokoro carregado
+let kokoroDevicePref = "auto"; // CONFIG: auto | webgpu | wasm
 const kokoroFiles = new Map();
 let piperModulePromise = null;
 const piperSessions = new Map();
+// Vozes que já rodaram uma vez desde o carregamento (a primeira inferência inclui compilação e o
+// download do estilo da voz, então não serve para medir a velocidade).
+const warmed = new Set();
 
 const queue = [];
 const waiting = new Map();
 let running = false;
+let current = null; // job em execução (DROP pode pará-lo entre um trecho e outro)
 let sequence = 0;
 
 function post(message, transfer) {
@@ -168,6 +202,11 @@ function shortLang(lang) {
   return String(lang || "").trim().toLowerCase().slice(0, 2);
 }
 
+function piperInfo(voice) {
+  if (!voice) return null;
+  return PIPER_VOICES[voice] || PIPER_EN_VOICES[voice] || null;
+}
+
 // Resolve motor e voz com os mesmos mapas do app; ids desconhecidos caem na voz padrão do idioma.
 function resolveVoice(payload) {
   const lang = shortLang(payload.lang);
@@ -177,7 +216,7 @@ function resolveVoice(payload) {
     return { engine, voice };
   }
   if (engine === "piper") {
-    const info = payload.voice ? PIPER_VOICES[payload.voice] : null;
+    const info = piperInfo(payload.voice);
     if (info && (!lang || info.lang === lang)) return { engine, voice: payload.voice };
     const fallback = DEFAULT_VOICE_BY_LANG[lang];
     if (fallback && PIPER_VOICES[fallback]) return { engine, voice: fallback };
@@ -186,41 +225,177 @@ function resolveVoice(payload) {
   throw new Error(`unsupported-engine:${engine || lang}`);
 }
 
+async function gpuAdapter() {
+  try {
+    if (!self.navigator || !navigator.gpu) return null;
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) return null;
+    const info = adapter.info || {};
+    return {
+      vendor: String(info.vendor || ""),
+      architecture: String(info.architecture || ""),
+      fallback: Boolean(info.isFallbackAdapter || adapter.isFallbackAdapter),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// WebGPU só com adaptador de verdade (não o de software); CONFIG pode forçar um dos dois.
+async function pickKokoroDevice() {
+  if (kokoroDevicePref === "wasm") return { device: "wasm", gpu: null };
+  const gpu = await gpuAdapter();
+  if (!gpu) return { device: "wasm", gpu: null };
+  if (kokoroDevicePref === "webgpu") return { device: "webgpu", gpu };
+  if (gpu.fallback || SOFTWARE_GPU.test(`${gpu.vendor} ${gpu.architecture}`)) return { device: "wasm", gpu };
+  return { device: "webgpu", gpu };
+}
+
+// Áudio utilizável: tem amostras, nenhuma NaN/infinita e não é silêncio.
+function audioLooksValid(samples) {
+  if (!samples || !samples.length) return false;
+  let peak = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const value = samples[index];
+    if (!Number.isFinite(value)) return false;
+    const magnitude = Math.abs(value);
+    if (magnitude > peak) peak = magnitude;
+  }
+  return peak > 0.005;
+}
+
+function kokoroProgress(info) {
+  if (!info || !info.file) return;
+  if (info.status === "progress" && typeof info.total === "number" && info.total > 0) {
+    kokoroFiles.set(info.file, { loaded: info.loaded || 0, total: info.total });
+  } else if (info.status === "done") {
+    const previous = kokoroFiles.get(info.file);
+    if (!previous) return;
+    kokoroFiles.set(info.file, { loaded: previous.total, total: previous.total });
+  } else {
+    return;
+  }
+  let loaded = 0;
+  let total = 0;
+  for (const file of kokoroFiles.values()) {
+    loaded += file.loaded;
+    total += file.total;
+  }
+  post({ type: "MODEL_PROGRESS", engine: "kokoro", voice: null, loaded, total, file: info.file });
+}
+
 function loadKokoro() {
   if (!kokoroPromise) {
-    kokoroPromise = (async () => {
+    const promise = (async () => {
       const { KokoroTTS } = await import(KOKORO_MODULE_URL);
-      const tts = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
-        dtype: "q8",
-        device: "wasm",
-        progress_callback: (info) => {
-          if (!info || !info.file) return;
-          if (info.status === "progress" && typeof info.total === "number" && info.total > 0) {
-            kokoroFiles.set(info.file, { loaded: info.loaded || 0, total: info.total });
-          } else if (info.status === "done") {
-            const previous = kokoroFiles.get(info.file);
-            if (!previous) return;
-            kokoroFiles.set(info.file, { loaded: previous.total, total: previous.total });
-          } else {
-            return;
-          }
-          let loaded = 0;
-          let total = 0;
-          for (const file of kokoroFiles.values()) {
-            loaded += file.loaded;
-            total += file.total;
-          }
-          post({ type: "MODEL_PROGRESS", engine: "kokoro", voice: null, loaded, total, file: info.file });
-        },
-      });
-      post({ type: "MODEL_READY", engine: "kokoro", voice: null });
+      const attempt = async (device) => {
+        kokoroFiles.clear();
+        const tts = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
+          dtype: KOKORO_DTYPE[device],
+          device,
+          progress_callback: kokoroProgress,
+        });
+        // Confere a saída antes de usar: driver ruim pode devolver NaN ou silêncio no WebGPU.
+        // Também compila o grafo (no WebGPU a primeira inferência leva vários segundos).
+        const probe = await tts.generate(WARM_TEXT, { voice: DEFAULT_VOICE_BY_LANG.en, speed: 1 });
+        if (!audioLooksValid(probe.audio)) throw new Error(`kokoro-${device}-invalid-output`);
+        warmed.add(`kokoro:${DEFAULT_VOICE_BY_LANG.en}`);
+        return tts;
+      };
+      const pick = await pickKokoroDevice();
+      let device = pick.device;
+      let tts;
+      try {
+        tts = await attempt(device);
+      } catch (error) {
+        if (device !== "webgpu") throw error;
+        post({ type: "MODEL_FALLBACK", engine: "kokoro", voice: null, from: "webgpu", device: "wasm", error: errorText(error, "webgpu-failed") });
+        device = "wasm";
+        tts = await attempt(device);
+      }
+      kokoroInfo = { device, dtype: KOKORO_DTYPE[device] };
+      post({ type: "MODEL_READY", engine: "kokoro", voice: null, device, dtype: KOKORO_DTYPE[device], gpu: pick.gpu });
       return tts;
     })();
-    kokoroPromise.catch(() => {
-      kokoroPromise = null;
+    kokoroPromise = promise;
+    promise.catch(() => {
+      if (kokoroPromise === promise) kokoroPromise = null;
     });
   }
   return kokoroPromise;
+}
+
+// O WebGPU caiu no meio do uso (dispositivo perdido, erro do driver): descarta e volta ao WASM.
+function dropKokoroGpu(error) {
+  for (const key of [...warmed]) {
+    if (key.startsWith("kokoro:")) warmed.delete(key);
+  }
+  kokoroPromise = null;
+  kokoroInfo = null;
+  kokoroDevicePref = "wasm";
+  post({ type: "MODEL_FALLBACK", engine: "kokoro", voice: null, from: "webgpu", device: "wasm", error: errorText(error, "webgpu-failed") });
+}
+
+// <legacy-phonemes>
+// Modelos Piper antigos (piper 0.2.0: as vozes low/x_low do catálogo) têm 130 símbolos; o fonemizador
+// do piper-tts-web usa a tabela nova (até 151), sem olhar a do modelo, e a inferência quebra em
+// palavras comuns ("Geschichte", "bonjour"). A tabela antiga é prefixo exato da nova: o que passa do
+// limite são dígitos, diacríticos combinantes e marcas de entonação, que o fonemizador antigo pulava.
+// Única exceção: "ç" saía pré-composto (id 40); o novo manda "c" (16) + cedilha combinante (140).
+function remapLegacyPhonemeIds(ids, maxId) {
+  const PAD = 0;
+  const C = 16;
+  const C_CEDILLA = 40;
+  const COMBINING_CEDILLA = 140;
+  const out = [];
+  for (let index = 0; index < ids.length; index += 1) {
+    const id = ids[index];
+    if (id <= maxId) {
+      out.push(id);
+      continue;
+    }
+    if (id === COMBINING_CEDILLA && C_CEDILLA <= maxId) {
+      let last = out.length - 1;
+      while (last >= 0 && out[last] === PAD) last -= 1;
+      if (last >= 0 && out[last] === C) out[last] = C_CEDILLA;
+    }
+    // Cada fonema vem seguido de um PAD: some junto com o fonema descartado.
+    if (ids[index + 1] === PAD && out[out.length - 1] === PAD) index += 1;
+  }
+  return out;
+}
+// </legacy-phonemes>
+
+// Se o ORT recusar ids fora da tabela do modelo, refaz uma vez com a tabela antiga.
+let piperOrtPatch = null;
+function patchPiperOrt() {
+  if (!piperOrtPatch) {
+    piperOrtPatch = import(PIPER_ORT_MODULE_URL)
+      .then((module) => {
+        const ort = module.default || module;
+        const proto = ort && ort.InferenceSession && ort.InferenceSession.prototype;
+        if (!proto || proto.__prosaLegacyPhonemes) return;
+        const run = proto.run;
+        proto.run = async function runWithLegacyPhonemes(feeds, ...rest) {
+          try {
+            return await run.call(this, feeds, ...rest);
+          } catch (error) {
+            const match = /inclusive range \[-?\d+,\s*(\d+)\]/.exec(errorText(error, ""));
+            if (!match || !feeds || !feeds.input || !feeds.input_lengths) throw error;
+            const ids = remapLegacyPhonemeIds(Array.from(feeds.input.data, Number), Number(match[1]));
+            const fixed = {
+              ...feeds,
+              input: new ort.Tensor("int64", ids, [1, ids.length]),
+              input_lengths: new ort.Tensor("int64", [ids.length]),
+            };
+            return run.call(this, fixed, ...rest);
+          }
+        };
+        proto.__prosaLegacyPhonemes = true;
+      })
+      .catch(() => undefined);
+  }
+  return piperOrtPatch;
 }
 
 function loadPiperModule() {
@@ -233,7 +408,7 @@ function loadPiperModule() {
   return piperModulePromise;
 }
 
-function loadPiper(voiceId, origin) {
+function loadPiper(voiceId) {
   const existing = piperSessions.get(voiceId);
   if (existing) {
     piperSessions.delete(voiceId);
@@ -241,15 +416,14 @@ function loadPiper(voiceId, origin) {
     return existing;
   }
   const promise = (async () => {
-    const { TtsSession } = await loadPiperModule();
-    const base = origin || (self.location ? self.location.origin : "");
+    const [{ TtsSession }] = await Promise.all([loadPiperModule(), patchPiperOrt()]);
     // O TtsSession guarda um singleton e devolve o PRIMEIRO modelo para qualquer voiceId.
     // Zerar antes de criar garante um modelo por voz (o construtor roda na mesma volta síncrona).
     TtsSession._instance = null;
     const session = await TtsSession.create({
       voiceId,
       wasmPaths: {
-        onnxWasm: `${base}/ort/`,
+        onnxWasm: ORT_WASM_BASE,
         piperData: `${PIPER_WASM_BASE}.data`,
         piperWasm: `${PIPER_WASM_BASE}.wasm`,
       },
@@ -259,7 +433,7 @@ function loadPiper(voiceId, origin) {
       },
     });
     TtsSession._instance = null;
-    post({ type: "MODEL_READY", engine: "piper", voice: voiceId });
+    post({ type: "MODEL_READY", engine: "piper", voice: voiceId, device: "wasm" });
     return session;
   })();
   piperSessions.set(voiceId, promise);
@@ -269,12 +443,13 @@ function loadPiper(voiceId, origin) {
   while (piperSessions.size > PIPER_SESSION_LIMIT) {
     const oldest = piperSessions.keys().next().value;
     piperSessions.delete(oldest);
+    warmed.delete(`piper:${oldest}`);
   }
   return promise;
 }
 
-function loadModel(engine, voice, origin) {
-  return engine === "kokoro" ? loadKokoro() : loadPiper(voice, origin);
+function loadModel(engine, voice) {
+  return engine === "kokoro" ? loadKokoro() : loadPiper(voice);
 }
 
 function wavToFloat32(arrayBuffer) {
@@ -314,16 +489,41 @@ function ownBuffer(samples) {
   return samples.slice();
 }
 
-async function inferChunk(engine, voice, origin, text) {
+// Uma inferência, com o tempo gasto nela (sem download), o dispositivo e se a voz estava fria.
+async function inferChunk(engine, voice, text) {
+  const key = `${engine}:${voice}`;
+  const cold = !warmed.has(key);
   if (engine === "kokoro") {
     const tts = await loadKokoro();
-    // Velocidade sempre 1: a velocidade de escuta é aplicada uma vez só, no <audio> com preservesPitch.
-    const out = await tts.generate(text, { voice, speed: 1 });
-    return { samples: out.audio, sampleRate: out.sampling_rate || 24000 };
+    const device = kokoroInfo ? kokoroInfo.device : "wasm";
+    const started = performance.now();
+    let out;
+    try {
+      // Velocidade sempre 1: a velocidade de escuta é aplicada uma vez só, no <audio> com preservesPitch.
+      out = await tts.generate(text, { voice, speed: 1 });
+      if (device === "webgpu" && !audioLooksValid(out.audio)) throw new Error("kokoro-webgpu-invalid-output");
+    } catch (error) {
+      if (device !== "webgpu") throw error;
+      dropKokoroGpu(error);
+      return inferChunk(engine, voice, text);
+    }
+    const inferMs = performance.now() - started;
+    warmed.add(key);
+    return { samples: out.audio, sampleRate: out.sampling_rate || 24000, inferMs, cold, device };
   }
-  const session = await loadPiper(voice, origin);
+  const session = await loadPiper(voice);
+  const started = performance.now();
   const blob = await session.predict(text);
-  return wavToFloat32(await blob.arrayBuffer());
+  const decoded = wavToFloat32(await blob.arrayBuffer());
+  const inferMs = performance.now() - started;
+  warmed.add(key);
+  return { samples: decoded.samples, sampleRate: decoded.sampleRate, inferMs, cold, device: "wasm" };
+}
+
+// A inferência no WASM ocupa a thread do worker por segundos; entre um trecho e outro, dar a vez às
+// tarefas de rede (o download de outro modelo, como a voz rápida, não pode ficar parado).
+function yieldToEvents() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function enqueue(job) {
@@ -339,15 +539,35 @@ async function pump() {
       queue.sort((a, b) => a.priority - b.priority || a.seq - b.seq);
       const job = queue.shift();
       waiting.delete(job.id);
+      current = job;
       try {
         await job.run();
       } catch (error) {
         post({ type: "ERROR", id: job.id, error: errorText(error, "synthesis-failed") });
+      } finally {
+        current = null;
       }
+      await yieldToEvents();
     }
   } finally {
     running = false;
   }
+}
+
+// Carrega o modelo fora da fila e só então enfileira (a menos que o pedido tenha saído com DROP).
+function whenLoaded(job, target, failure) {
+  waiting.set(job.id, job);
+  loadModel(target.engine, target.voice).then(
+    () => {
+      if (job.dropped) return;
+      enqueue(job);
+    },
+    (error) => {
+      waiting.delete(job.id);
+      if (job.dropped) return;
+      post({ type: "ERROR", id: job.id, error: errorText(error, failure) });
+    },
+  );
 }
 
 function synthesize(message) {
@@ -372,11 +592,27 @@ function synthesize(message) {
     run: async () => {
       const started = performance.now();
       let sampleRate = 0;
+      let device = "wasm";
       for (let index = 0; index < texts.length; index += 1) {
-        const out = await inferChunk(target.engine, target.voice, payload.origin, texts[index]);
+        if (index > 0) await yieldToEvents();
+        if (job.dropped) throw new Error("dropped");
+        const out = await inferChunk(target.engine, target.voice, texts[index]);
         const data = ownBuffer(out.samples);
         sampleRate = out.sampleRate;
-        post({ type: "SYNTH_PART", id: message.id, index, audioData: data, samplingRate: out.sampleRate }, [data.buffer]);
+        device = out.device;
+        post(
+          {
+            type: "SYNTH_PART",
+            id: message.id,
+            index,
+            audioData: data,
+            samplingRate: out.sampleRate,
+            inferMs: Math.round(out.inferMs),
+            cold: out.cold,
+            device: out.device,
+          },
+          [data.buffer],
+        );
       }
       post({
         type: "SYNTHESIZED",
@@ -386,17 +622,11 @@ function synthesize(message) {
         samplingRate: sampleRate,
         parts: texts.length,
         latencyMs: Math.round(performance.now() - started),
+        device,
       });
     },
   };
-  waiting.set(message.id, job);
-  loadModel(target.engine, target.voice, payload.origin).then(
-    () => enqueue(job),
-    (error) => {
-      waiting.delete(message.id);
-      post({ type: "ERROR", id: message.id, error: errorText(error, "model-load-failed") });
-    },
-  );
+  whenLoaded(job, target, "model-load-failed");
 }
 
 function preload(message) {
@@ -408,43 +638,127 @@ function preload(message) {
     post({ type: "ERROR", id: message.id, error: errorText(error, "model-load-failed") });
     return;
   }
-  loadModel(target.engine, target.voice, payload.origin).then(
-    () => {
-      // Um trecho curto busca o estilo da voz (Kokoro) ou o fonemizador (Piper) e aquece a sessão.
-      enqueue({
-        id: message.id,
-        priority: 1,
-        seq: sequence++,
-        run: async () => {
-          await inferChunk(target.engine, target.voice, payload.origin, WARM_TEXT);
-          post({ type: "PRELOADED", id: message.id, engine: target.engine, voice: target.voice });
-        },
-      });
+  // Um trecho curto busca o estilo da voz (Kokoro) ou o fonemizador (Piper) e aquece a sessão.
+  // Prioridade de "agora": é curto e quem espera (download, troca para a voz rápida) não pode ficar
+  // atrás de uma fila de pré-carga.
+  whenLoaded(
+    {
+      id: message.id,
+      priority: 0,
+      seq: sequence++,
+      run: async () => {
+        const out = await inferChunk(target.engine, target.voice, WARM_TEXT);
+        post({ type: "PRELOADED", id: message.id, engine: target.engine, voice: target.voice, device: out.device });
+      },
     },
-    (error) => post({ type: "ERROR", id: message.id, error: errorText(error, "model-load-failed") }),
+    target,
+    "model-load-failed",
   );
+}
+
+// Mede a velocidade: aquece a voz se preciso e cronometra uma frase (o áudio não volta).
+function bench(message) {
+  const payload = message.payload || {};
+  let target;
+  try {
+    target = resolveVoice(payload);
+  } catch (error) {
+    post({ type: "ERROR", id: message.id, error: errorText(error, "model-load-failed") });
+    return;
+  }
+  const text = String(payload.text || "").trim() || WARM_TEXT;
+  whenLoaded(
+    {
+      id: message.id,
+      priority: 1,
+      seq: sequence++,
+      run: async () => {
+        if (!warmed.has(`${target.engine}:${target.voice}`)) {
+          await inferChunk(target.engine, target.voice, WARM_TEXT);
+        }
+        const out = await inferChunk(target.engine, target.voice, text);
+        post({
+          type: "BENCHED",
+          id: message.id,
+          engine: target.engine,
+          voice: target.voice,
+          device: out.device,
+          inferMs: Math.round(out.inferMs),
+          audioMs: Math.round((out.samples.length / out.sampleRate) * 1000),
+          samplingRate: out.sampleRate,
+          cold: out.cold,
+        });
+      },
+    },
+    target,
+    "model-load-failed",
+  );
+}
+
+// Tira da fila a pré-carga que ficou para trás numa troca de voz; a que está rodando para no fim do
+// trecho atual.
+function drop(message) {
+  const ids = new Set(Array.isArray(message.payload && message.payload.ids) ? message.payload.ids : []);
+  if (ids.size === 0) return;
+  if (current && ids.has(current.id)) {
+    current.dropped = true;
+    ids.delete(current.id);
+  }
+  for (let index = queue.length - 1; index >= 0; index -= 1) {
+    const job = queue[index];
+    if (ids.has(job.id)) {
+      queue.splice(index, 1);
+      waiting.delete(job.id);
+      post({ type: "ERROR", id: job.id, error: "dropped" });
+      ids.delete(job.id);
+    }
+  }
+  for (const id of ids) {
+    const job = waiting.get(id);
+    if (job) {
+      job.dropped = true;
+      waiting.delete(id);
+      post({ type: "ERROR", id, error: "dropped" });
+    }
+  }
+}
+
+function configure(message) {
+  const wanted = message.payload && message.payload.kokoroDevice;
+  if (wanted !== "auto" && wanted !== "webgpu" && wanted !== "wasm") return;
+  kokoroDevicePref = wanted;
+  // Já carregado em outro dispositivo: o próximo pedido carrega de novo.
+  if (kokoroInfo && wanted !== "auto" && kokoroInfo.device !== wanted) {
+    kokoroPromise = null;
+    kokoroInfo = null;
+    for (const key of [...warmed]) {
+      if (key.startsWith("kokoro:")) warmed.delete(key);
+    }
+  }
 }
 
 async function inspect(message) {
   const piperStored = [];
   let kokoroCached = false;
+  let kokoroDevice = kokoroInfo ? kokoroInfo.device : "wasm";
   try {
     const root = await navigator.storage.getDirectory();
     const dir = await root.getDirectoryHandle("piper", { create: true });
     for await (const name of dir.keys()) {
       const id = name.endsWith(".onnx") ? name.slice(0, -5) : "";
-      if (id && PIPER_VOICES[id]) piperStored.push(id);
+      if (id && piperInfo(id)) piperStored.push(id);
     }
   } catch {
     // OPFS indisponível: nada guardado.
   }
   try {
+    if (!kokoroInfo) kokoroDevice = (await pickKokoroDevice()).device;
     const cache = await caches.open("transformers-cache");
-    kokoroCached = Boolean(await cache.match(KOKORO_MODEL_FILE_URL));
+    kokoroCached = Boolean(await cache.match(kokoroFileUrl(kokoroDevice)));
   } catch {
     kokoroCached = false;
   }
-  post({ type: "INSPECTED", id: message.id, piperStored, kokoroCached });
+  post({ type: "INSPECTED", id: message.id, piperStored, kokoroCached, kokoroDevice });
 }
 
 self.onmessage = (event) => {
@@ -457,11 +771,20 @@ self.onmessage = (event) => {
     case "WARMUP":
       preload(message);
       return;
+    case "BENCH":
+      bench(message);
+      return;
     case "PRIORITIZE": {
       const job = waiting.get(message.id);
       if (job) job.priority = 0;
       return;
     }
+    case "DROP":
+      drop(message);
+      return;
+    case "CONFIG":
+      configure(message);
+      return;
     case "INSPECT":
       void inspect(message);
       return;

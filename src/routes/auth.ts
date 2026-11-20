@@ -4,8 +4,15 @@ import type { Pool } from "pg";
 import { AppError } from "../http/errors.js";
 import { promoteAdmin } from "../auth/admin.js";
 import { readBearer, requireUser, revokeSession, issueSession, type AuthUser } from "../auth/session.js";
-import { forgotBodySchema, resetBodySchema, secondFactorBodySchema, verifyBodySchema } from "../schemas/account.js";
-import { loginBodySchema, registerBodySchema } from "../schemas/auth.js";
+import {
+  forgotBodySchema,
+  resetBodySchema,
+  secondFactorBodySchema,
+  verifyBodySchema,
+  type AccountGoal,
+  type DailyMinutes,
+} from "../schemas/account.js";
+import { loginBodySchema, registerBodySchema, type DisplayLocale } from "../schemas/auth.js";
 import { acquireOnce } from "../security/idempotency.js";
 import { assertNotLocked, clearFailures, lockoutKey, recordFailure } from "../security/lockout.js";
 import { publicInboxUrl } from "../security/origins.js";
@@ -17,6 +24,18 @@ import type { PasswordReset } from "../services/password-reset.js";
 import type { SecondFactor } from "../services/second-factor.js";
 
 let fillerHash: Promise<string> | null = null;
+
+/** Colunas do usuário nas respostas de login, verificação e 2FA (com o idioma de interface da conta). */
+const SESSION_USER_COLUMNS = "id, email, native_lang, target_lang, level, plan, role, display_locale";
+
+type SessionUserRow = AuthUser & { display_locale: DisplayLocale };
+
+/** O usuário devolvido com o token: AuthUser + display_locale, para o cliente adotar o idioma da conta. */
+async function sessionUser(pool: Pool, row: SessionUserRow, emails: ReadonlySet<string>): Promise<SessionUserRow> {
+  const { display_locale, ...base } = row;
+  const user = await promoteAdmin(pool, base, emails);
+  return { ...user, display_locale };
+}
 
 function filler(): Promise<string> {
   fillerHash ??= hashPassword("prosa-timing-filler");
@@ -52,7 +71,7 @@ export function registerAuthRoutes(
       const lock = lockoutKey("otp-send", body.email);
       await assertNotLocked(redis, lock);
 
-      const found = await pool.query<{ id: string; email: string; display_locale: "pt" | "en" }>(
+      const found = await pool.query<{ id: string; email: string; display_locale: DisplayLocale }>(
         `SELECT id, email, display_locale FROM users WHERE email = $1`,
         [body.email],
       );
@@ -60,7 +79,7 @@ export function registerAuthRoutes(
 
       if (!user) {
         const dummyPassword = await hashPassword(sixDigitCode() + sixDigitCode() + "prosa-pwless");
-        const created = await pool.query<{ id: string; email: string; display_locale: "pt" | "en" }>(
+        const created = await pool.query<{ id: string; email: string; display_locale: DisplayLocale }>(
           `INSERT INTO users (email, password_hash, native_lang, target_lang, level, streak_freeze_count, display_locale)
            VALUES ($1, $2, 'pt', 'en', 'A2', 1, 'pt')
            ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
@@ -95,7 +114,7 @@ export function registerAuthRoutes(
       await acquireOnce(redis, `prosa:once:register:${digestCode(body.email)}`, 8);
       const passwordHash = await hashPassword(body.password);
       try {
-        const inserted = await pool.query<AuthUser & { display_locale: "pt" | "en" }>(
+        const inserted = await pool.query<SessionUserRow>(
           `INSERT INTO users (email, password_hash, native_lang, target_lang, level, streak_freeze_count, display_locale)
            VALUES ($1, $2, $3, $4, $5, 1, $6)
            RETURNING id, email, native_lang, target_lang, level, plan, role, display_locale`,
@@ -105,7 +124,7 @@ export function registerAuthRoutes(
         if (!created) {
           throw new AppError(500, "Account was not created");
         }
-        await verify.send(created.id, created.email, created.display_locale);
+        await verify.send(created.id, created.email, created.display_locale, "verify");
         return reply.code(201).send({ requires_verify: true, email: created.email });
       } catch (error) {
         if (isUniqueViolation(error)) {
@@ -131,9 +150,9 @@ export function registerAuthRoutes(
       const lock = lockoutKey("login", body.email);
       await assertNotLocked(redis, lock);
       const found = await pool.query<
-        AuthUser & { password_hash: string; email_verified_at: Date | null; display_locale: "pt" | "en" }
+        SessionUserRow & { password_hash: string; email_verified_at: Date | null }
       >(
-        `SELECT id, email, native_lang, target_lang, level, plan, role, password_hash, email_verified_at, display_locale
+        `SELECT ${SESSION_USER_COLUMNS}, password_hash, email_verified_at
          FROM users
          WHERE email = $1`,
         [body.email],
@@ -148,7 +167,7 @@ export function registerAuthRoutes(
       await clearFailures(redis, lock);
       if (!row.email_verified_at) {
         try {
-          await verify.send(row.id, row.email, row.display_locale);
+          await verify.send(row.id, row.email, row.display_locale, "verify");
         } catch {
           /* the client still enters the code; resend is on the screen */
         }
@@ -158,15 +177,20 @@ export function registerAuthRoutes(
       if (challenge) {
         return { requires_2fa: true, ticket: challenge.ticket, methods: challenge.methods };
       }
-      const user = await promoteAdmin(pool, {
-        id: row.id,
-        email: row.email,
-        native_lang: row.native_lang,
-        target_lang: row.target_lang,
-        level: row.level,
-        plan: row.plan,
-        role: row.role,
-      }, emails);
+      const user = await sessionUser(
+        pool,
+        {
+          id: row.id,
+          email: row.email,
+          native_lang: row.native_lang,
+          target_lang: row.target_lang,
+          level: row.level,
+          plan: row.plan,
+          role: row.role,
+          display_locale: row.display_locale,
+        },
+        emails,
+      );
       const token = await issueSession(pool, user.id);
       return { token, user };
     },
@@ -189,15 +213,12 @@ export function registerAuthRoutes(
       try {
         const userId = await verify.consume(body.email, body.code);
         await clearFailures(redis, lock);
-        const found = await pool.query<AuthUser>(
-          `SELECT id, email, native_lang, target_lang, level, plan, role FROM users WHERE id = $1`,
-          [userId],
-        );
+        const found = await pool.query<SessionUserRow>(`SELECT ${SESSION_USER_COLUMNS} FROM users WHERE id = $1`, [userId]);
         const row = found.rows[0];
         if (!row) {
           throw new AppError(400, "Verify code expired");
         }
-        const user = await promoteAdmin(pool, row, emails);
+        const user = await sessionUser(pool, row, emails);
         const token = await issueSession(pool, user.id);
         return reply.code(200).send({ token, user });
       } catch (error) {
@@ -224,13 +245,13 @@ export function registerAuthRoutes(
       const lock = lockoutKey("verify-resend", body.email);
       await assertNotLocked(redis, lock);
       await recordFailure(redis, lock);
-      const found = await pool.query<{ id: string; email: string; display_locale: "pt" | "en"; email_verified_at: Date | null }>(
+      const found = await pool.query<{ id: string; email: string; display_locale: DisplayLocale; email_verified_at: Date | null }>(
         `SELECT id, email, display_locale, email_verified_at FROM users WHERE email = $1`,
         [body.email],
       );
       const row = found.rows[0];
       if (row) {
-        await verify.send(row.id, row.email, row.display_locale ?? "pt");
+        await verify.send(row.id, row.email, row.display_locale ?? "pt", "verify");
       }
       return { ok: true };
     },
@@ -253,15 +274,12 @@ export function registerAuthRoutes(
       try {
         const userId = await factors.finishLogin(body.ticket, body.code);
         await clearFailures(redis, lock);
-        const found = await pool.query<AuthUser>(
-          `SELECT id, email, native_lang, target_lang, level, plan, role FROM users WHERE id = $1`,
-          [userId],
-        );
+        const found = await pool.query<SessionUserRow>(`SELECT ${SESSION_USER_COLUMNS} FROM users WHERE id = $1`, [userId]);
         const row = found.rows[0];
         if (!row) {
           throw new AppError(401, "Authentication required");
         }
-        const user = await promoteAdmin(pool, row, emails);
+        const user = await sessionUser(pool, row, emails);
         const token = await issueSession(pool, user.id);
         return { token, user };
       } catch (error) {
@@ -336,17 +354,21 @@ export function registerAuthRoutes(
       streak_freeze_count: number;
       last_lesson_at: Date | null;
       display_name: string | null;
-      display_locale: "pt" | "en";
+      display_locale: DisplayLocale;
       reminder_enabled: boolean;
       reminder_hour: number;
       mind_reading: string;
       mind_memory: string;
       mind_speech: string;
       mind_journal: string;
+      goal: AccountGoal | null;
+      goal_note: string | null;
+      daily_minutes: DailyMinutes;
     }>(
       `SELECT interests, streak_count, streak_freeze_count, last_lesson_at,
               display_name, display_locale, reminder_enabled, reminder_hour,
-              mind_reading, mind_memory, mind_speech, mind_journal
+              mind_reading, mind_memory, mind_speech, mind_journal,
+              goal, goal_note, daily_minutes
        FROM users
        WHERE id = $1`,
       [user.id],
@@ -367,6 +389,9 @@ export function registerAuthRoutes(
         mind_memory: extra?.mind_memory ?? "curie",
         mind_speech: extra?.mind_speech ?? "feynman",
         mind_journal: extra?.mind_journal ?? "davinci",
+        goal: extra?.goal ?? null,
+        goal_note: extra?.goal_note ?? null,
+        daily_minutes: extra?.daily_minutes ?? 20,
       },
     };
   });

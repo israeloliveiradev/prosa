@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { emailSchema, passwordSchema } from "./auth.js";
+import { displayLocaleSchema, emailSchema, passwordSchema } from "./auth.js";
 import { normalizeOtp } from "../services/codes.js";
 import { JOURNAL_MINDS, MEMORY_MINDS, READING_MINDS, SPEECH_MINDS } from "../services/minds.js";
 
@@ -8,7 +8,26 @@ const memoryMindSchema = z.enum(MEMORY_MINDS);
 const speechMindSchema = z.enum(SPEECH_MINDS);
 const journalMindSchema = z.enum(JOURNAL_MINDS);
 
-export const displayLocaleSchema = z.enum(["pt", "en"]);
+export { displayLocaleSchema };
+
+/** Objetivos do primeiro dia (`users.goal`, migração 032). */
+export const ACCOUNT_GOALS = ["career", "travel", "studies", "culture", "family", "relocation"] as const;
+export type AccountGoal = (typeof ACCOUNT_GOALS)[number];
+export const accountGoalSchema = z.enum(ACCOUNT_GOALS);
+
+/** Meta diária em minutos (`users.daily_minutes`): a sessão central tem 20. */
+export const DAILY_MINUTES = [10, 20, 30] as const;
+export type DailyMinutes = (typeof DAILY_MINUTES)[number];
+export const dailyMinutesSchema = z.union([z.literal(10), z.literal(20), z.literal(30)]);
+
+/** Texto livre do objetivo: vazio vira null (apaga). */
+export const goalNoteSchema = z
+  .string()
+  .trim()
+  .max(200)
+  .transform((value) => (value.length > 0 ? value : null))
+  .nullable();
+
 export const otpCodeSchema = z
   .string()
   .transform(normalizeOtp)
@@ -71,6 +90,11 @@ export const accountSettingsBodySchema = z
     mind_memory: memoryMindSchema.optional(),
     mind_speech: speechMindSchema.optional(),
     mind_journal: journalMindSchema.optional(),
+    /** null apaga o objetivo. */
+    goal: accountGoalSchema.nullable().optional(),
+    /** null ou "" apaga a nota. */
+    goal_note: goalNoteSchema.optional(),
+    daily_minutes: dailyMinutesSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, { message: "Empty patch" });
 

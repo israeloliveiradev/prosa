@@ -2,7 +2,7 @@ import type { Redis } from "ioredis";
 import type { Pool } from "pg";
 import { AppError } from "../http/errors.js";
 import { digestCode, sameDigest, sixDigitCode } from "./codes.js";
-import { brandedMail } from "./mail-templates.js";
+import { brandedMail, type MailLocale } from "./mail-templates.js";
 import type { Mailer } from "./mailer.js";
 import { hashPassword } from "./passwords.js";
 
@@ -16,7 +16,7 @@ export class PasswordReset {
   ) {}
 
   async request(email: string): Promise<void> {
-    const found = await this.pool.query<{ id: string; display_locale: "pt" | "en" }>(
+    const found = await this.pool.query<{ id: string; display_locale: MailLocale }>(
       "SELECT id, display_locale FROM users WHERE email = $1",
       [email],
     );

@@ -1,4 +1,12 @@
-export type MailLocale = "pt" | "en";
+/** Idioma de interface da conta (`users.display_locale`). */
+export type MailLocale = "pt" | "en" | "de" | "fr" | "es" | "it" | "ja";
+/** Idiomas com carta própria. */
+export type MailCopyLocale = "pt" | "en";
+
+/** Só pt e en têm carta escrita; de, fr, es, it e ja (e qualquer valor desconhecido) recebem a carta em inglês. */
+export function mailCopyLocale(locale: string | null | undefined): MailCopyLocale {
+  return locale === "pt" ? "pt" : "en";
+}
 export type MailKind = "reset" | "email-change" | "login" | "enable-email" | "reminder" | "verify";
 
 export interface BrandedMail {
@@ -56,7 +64,9 @@ const COPY = {
     },
     footer: "20 minutos por dia. Fluência real através de outro idioma.",
     codeLabel: "Seu código de 6 dígitos",
-    ignore: "Se você não solicitou este código, fique tranquilo: sua conta permanece segura e protegida por criptografia de chave única.",
+    ignore: "Se você não pediu este código, pode ignorar este e-mail: sem ele, o pedido não vai adiante.",
+    accountLabel: "Conta",
+    openLabel: "Abrir o Prosa",
     signoff: "Bons estudos,\nEquipe Prosa & Mentores Históricos",
   },
   en: {
@@ -104,7 +114,9 @@ const COPY = {
     },
     footer: "20 minutes a day. Real fluency learned through another language.",
     codeLabel: "Your 6-digit code",
-    ignore: "If you didn't request this code, no worries: your account remains safe and protected with unique key encryption.",
+    ignore: "If you didn't ask for this code, you can ignore this email: without it, the request goes nowhere.",
+    accountLabel: "Account",
+    openLabel: "Open Prosa",
     signoff: "Happy learning,\nThe Prosa Team & Historical Mentors",
   },
 } as const;
@@ -117,20 +129,20 @@ export function brandedMail(input: {
   email?: string;
   magicUrl?: string;
 }): BrandedMail {
-  const locale = COPY[input.locale];
+  const lang = mailCopyLocale(input.locale);
+  const locale = COPY[lang];
   const piece = locale[input.kind];
   const name = escapeHtml((input.name ?? "").trim());
   const greeting = name
-    ? input.locale === "en"
+    ? lang === "en"
       ? `Hello, ${name}!`
       : `Olá, ${name}!`
-    : input.locale === "en"
+    : lang === "en"
       ? "Hello!"
       : "Olá!";
   const code = input.code ? escapeHtml(input.code) : "";
   const codeFormatted = code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
-  const targetEmail = input.email ? escapeHtml(input.email) : "sua conta";
-  const magicLink = input.magicUrl || "http://localhost:8081/account";
+  const accountLine = input.email ? `${locale.accountLabel}: ${input.email}` : "";
 
   const fullSubject = codeFormatted
     ? `${piece.subject}: ${codeFormatted}`
@@ -139,8 +151,11 @@ export function brandedMail(input: {
   const text = [
     greeting,
     piece.body,
+    accountLine,
     code ? `${locale.codeLabel}: ${code} (${codeFormatted})` : "",
     piece.action,
+    input.magicUrl ? `${locale.openLabel}: ${input.magicUrl}` : "",
+    code ? locale.ignore : "",
     locale.signoff,
     locale.footer,
   ]
@@ -150,9 +165,28 @@ export function brandedMail(input: {
   const codePlateHtml = code
     ? codePlate(code, locale.codeLabel, piece.action)
     : "";
+  // Sem código, o aviso de "expira em…" ainda vale como nota final (ex.: lembrete).
+  const actionHtml = code
+    ? ""
+    : `<tr><td style="padding:0 36px 16px;"><p style="margin:0;font:600 13px/1.5 ${SANS};color:#78716C;">${escapeHtml(piece.action)}</p></td></tr>`;
+  const openHtml = input.magicUrl
+    ? `<tr>
+        <td align="center" style="padding:12px 36px 28px;">
+          <a href="${escapeHtml(input.magicUrl)}" style="display:inline-block;padding:15px 32px;background-color:#0D9488;border-radius:16px;font:800 15px/1 ${SANS};color:#FFFFFF;text-decoration:none;box-shadow:0 4px 0 #0F766E;">
+            ${escapeHtml(locale.openLabel)}
+          </a>
+        </td>
+      </tr>`
+    : "";
+  const accountHtml = accountLine
+    ? `<p style="margin:0 0 20px;font:600 13px/1.5 ${SANS};color:#78716C;">${escapeHtml(locale.accountLabel)}: <strong style="color:#1C1917;">${escapeHtml(input.email ?? "")}</strong></p>`
+    : "";
+  const ignoreHtml = code
+    ? `<p style="margin:0 0 16px;font:500 12px/1.6 ${SANS};color:#A8A29E;">${escapeHtml(locale.ignore)}</p>`
+    : "";
 
   const html = `<!DOCTYPE html>
-<html lang="${input.locale}">
+<html lang="${lang}">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -162,29 +196,13 @@ export function brandedMail(input: {
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     body { background-color: #F4F1EA; font-family: ${SANS}; color: #1C1917; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
-    .tactile-btn { box-shadow: 0 4px 0 #0F766E; transition: all 0.15s ease-in-out; }
-    .keycap-box { box-shadow: 0 3px 0 #D6D3CD; }
   </style>
 </head>
 <body style="margin:0;padding:24px 12px;background-color:#F4F1EA;font-family:${SANS};color:#1C1917;">
   <div style="max-width:620px;margin:0 auto;">
-
-    <!-- Top Email Meta / Preview Bar -->
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#EAE5DC;border:1px solid #DDD7CD;border-radius:12px;margin-bottom:14px;padding:8px 16px;">
-      <tr>
-        <td style="font:600 12px/1.4 ${SANS};color:#78716C;">
-          De: <strong style="color:#1C1917;">Prosa Autenticação &lt;login@prosa.app&gt;</strong>
-        </td>
-        <td align="right" style="font:600 12px/1.4 ${SANS};color:#78716C;">
-          Assunto: <strong style="color:#1C1917;">${escapeHtml(fullSubject)}</strong>
-        </td>
-      </tr>
-    </table>
-
-    <!-- MAIN EMAIL WRAPPER CARD -->
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#FDFBF7;border:2px solid #E7E5E4;border-radius:24px;box-shadow:0 12px 32px rgba(28,25,23,0.06),0 4px 0 #E2DDD2;overflow:hidden;">
-      
-      <!-- Top Brand Header -->
+
+      <!-- Marca -->
       <tr>
         <td style="padding:28px 36px 20px;border-bottom:1px solid #E7E5E4;background:linear-gradient(180deg,#FAF6EE 0%,#FDFBF7 100%);">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
@@ -202,110 +220,44 @@ export function brandedMail(input: {
               </td>
               <td style="vertical-align:middle;padding-left:14px;">
                 <span style="font:900 22px/1 ${SANS};letter-spacing:0.08em;color:#1C1917;display:block;">PROSA</span>
-                <span style="font:800 10px/1.2 ${SANS};color:#0D9488;letter-spacing:0.06em;text-transform:uppercase;margin-top:2px;display:block;">Autenticação Segura</span>
-              </td>
-              <td align="right" style="vertical-align:middle;">
-                <span style="display:inline-block;padding:5px 12px;background-color:#ECFDF5;border:1px solid #A7F3D0;border-radius:9999px;font:700 11px/1 ${SANS};color:#065F46;">
-                  🛡️ Zero Senhas • Criptografia E2E
-                </span>
               </td>
             </tr>
           </table>
         </td>
       </tr>
 
-      <!-- Main Body -->
+      <!-- Corpo -->
       <tr>
         <td style="padding:32px 36px 16px;">
           <p style="margin:0 0 6px;font:700 11px/1 ${SANS};letter-spacing:0.08em;text-transform:uppercase;color:#78716C;">
             ${escapeHtml(piece.kicker)}
           </p>
-          <h1 style="margin:0 0 14px;font:800 26px/1.25 ${SANS};color:#1C1917;letter-spacing:-0.02em;">
+          <h1 style="margin:0 0 14px;font:500 28px/1.25 ${SERIF};color:#1C1917;letter-spacing:-0.01em;">
             ${greeting} ${escapeHtml(piece.title)}
           </h1>
-          <p style="margin:0 0 20px;font:500 15px/1.65 ${SANS};color:#57534E;">
-            Recebemos uma solicitação para entrar na sua conta Prosa a partir de <strong style="color:#1C1917;">${targetEmail}</strong>. Digite os 6 dígitos abaixo na tela de login para continuar seu ritual diário de fluência:
+          <p style="margin:0 0 16px;font:500 15px/1.65 ${SANS};color:#57534E;">
+            ${escapeHtml(piece.body)}
           </p>
+          ${accountHtml}
         </td>
       </tr>
 
-      <!-- 6-Digit Keycap Plate -->
       ${codePlateHtml}
+      ${actionHtml}
+      ${openHtml}
 
-      <!-- 1-Click Magic Login Button -->
-      <tr>
-        <td align="center" style="padding:12px 36px 28px;">
-          <p style="margin:0 0 12px;font:700 11px/1.2 ${SANS};letter-spacing:0.06em;text-transform:uppercase;color:#A8A29E;">
-            Ou clique para entrar diretamente no mesmo dispositivo
-          </p>
-          <a href="${magicLink}" style="display:inline-block;padding:15px 32px;background-color:#0D9488;border-radius:16px;font:800 15px/1 ${SANS};color:#FFFFFF;text-decoration:none;box-shadow:0 4px 0 #0F766E;">
-            Confirmar e Acessar Minha Conta ➔
-          </a>
-        </td>
-      </tr>
-
-      <!-- Socratic Mentor Quote (Albert Einstein) -->
-      <tr>
-        <td style="padding:0 36px 20px;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#FFFFFF;border:1px solid #E7E5E4;border-radius:18px;padding:16px 20px;box-shadow:0 2px 4px rgba(0,0,0,0.02);">
-            <tr>
-              <td style="vertical-align:top;width:44px;padding-right:12px;">
-                <div style="width:42px;height:42px;background-color:#FEF3C7;border:2px solid #FCD34D;border-radius:9999px;text-align:center;line-height:38px;font-size:22px;">
-                  🧠
-                </div>
-              </td>
-              <td style="vertical-align:middle;">
-                <div style="margin-bottom:4px;">
-                  <strong style="font:800 12px/1 ${SANS};color:#1C1917;">Albert Einstein</strong>
-                  <span style="display:inline-block;margin-left:6px;padding:2px 8px;background-color:#F5F0E8;border-radius:9999px;font:700 10px/1 ${SANS};color:#0D9488;">Seu Mentor Ativo</span>
-                </div>
-                <p style="margin:0;font:400 italic 13px/1.55 ${SERIF};color:#44403C;">
-                  “Sem senhas complexas para esquecer. O tempo é relativo, mas 20 minutos de imersão focada hoje mantêm sua ofensiva de 14 dias viva!”
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-
-      <!-- Security Audit Details -->
       <tr>
         <td style="padding:0 36px 24px;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#FAF6EE;border:1px solid #E7E2D8;border-radius:14px;padding:14px 18px;font:500 11.5px/1.6 ${SANS};color:#78716C;">
-            <tr>
-              <td colspan="2" style="font:700 12px/1.4 ${SANS};color:#1C1917;padding-bottom:6px;">
-                ℹ️ Detalhes da tentativa de acesso:
-              </td>
-            </tr>
-            <tr>
-              <td style="width:50%;">• <strong>Dispositivo:</strong> Navegador Web (Desktop/Mobile)</td>
-              <td style="width:50%;">• <strong>Horário:</strong> Hoje</td>
-            </tr>
-            <tr>
-              <td style="width:50%;">• <strong>Localização:</strong> Brasil</td>
-              <td style="width:50%;">• <strong>Criptografia:</strong> Chave E2E Auditada</td>
-            </tr>
-          </table>
-
-          <p style="margin:16px 0 0;font:500 12px/1.6 ${SANS};color:#A8A29E;">
-            ${escapeHtml(locale.ignore)}
-          </p>
-          <p style="margin:16px 0 0;font:600 13px/1.6 ${SANS};color:#78716C;white-space:pre-line;">
+          ${ignoreHtml}
+          <p style="margin:0;font:600 13px/1.6 ${SANS};color:#78716C;white-space:pre-line;">
             ${escapeHtml(locale.signoff)}
           </p>
         </td>
       </tr>
 
-      <!-- FOOTER -->
       <tr>
         <td style="padding:22px 36px;background-color:#F5F0E8;border-top:1px solid #E7E5E4;text-align:center;">
-          <p style="margin:0 0 8px;font:700 12px/1.4 ${SANS};color:#57534E;">
-            <a href="#" style="color:#57534E;text-decoration:none;">Central de Ajuda</a> &nbsp;•&nbsp; 
-            <a href="#" style="color:#57534E;text-decoration:none;">Segurança &amp; Privacidade</a> &nbsp;•&nbsp; 
-            <a href="#" style="color:#57534E;text-decoration:none;">Preferências</a>
-          </p>
           <p style="margin:0;font:500 11px/1.5 ${SANS};color:#78716C;">
-            © 2025 Prosa Learning Systems • prosa.app<br/>
             ${escapeHtml(locale.footer)}
           </p>
         </td>

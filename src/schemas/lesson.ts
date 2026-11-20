@@ -2,6 +2,9 @@ import { z } from "zod";
 import { MIND_IDS } from "../services/minds.js";
 import { CEFR_LEVELS } from "../types/database.js";
 
+/** Id de unidade da trilha: "a1-01" … "c1-03" (src/curriculum/units.ts). */
+export const unitIdSchema = z.string().regex(/^(a1|a2|b1|b2|c1)-\d{2}$/);
+
 const mindIdSchema = z.enum(MIND_IDS);
 
 export const vocabularyEntrySchema = z.object({
@@ -27,6 +30,8 @@ export const generateLessonBodySchema = z
     native_lang: z.string().trim().min(2).max(16).optional(),
     level: z.enum(CEFR_LEVELS).optional(),
     topic: z.string().trim().min(1).max(120).default("everyday life"),
+    /** Unidade da trilha (M2): a lição pratica a meta, a gramática e os lemas dela. */
+    unit_id: unitIdSchema.optional(),
     interests: z.array(z.string().trim().min(1).max(48)).max(12).optional(),
     cognate: z.boolean().optional(),
     mind_reading: mindIdSchema.optional(),

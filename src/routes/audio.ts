@@ -1,60 +1,115 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { Pool } from "pg";
 import { z } from "zod";
+import { requireUser, type AuthUser } from "../auth/session.js";
 import { AppError } from "../http/errors.js";
 import { isSupportedAudioMime, languageCodeSchema, referenceTextSchema } from "../schemas/shadowing.js";
 import { speakBatchBodySchema, speakBodySchema, speakStreamBodySchema } from "../schemas/speech.js";
+import { pronunciationSignals } from "../services/learner-profile.js";
 import type { NeuralVoice } from "../services/neural-voice.js";
+import { ProfileStore } from "../services/profile-store.js";
 import type { ShadowingService } from "../services/shadowing-service.js";
 import { voicesFor } from "../services/voice-catalog.js";
 
-export function registerAudioRoutes(app: FastifyInstance, shadowing: ShadowingService, neural: NeuralVoice): void {
-  app.post(
-    "/api/v1/audio/analyze-shadowing",
-    {
-      config: {
-        rateLimit: {
-          max: 20,
-          timeWindow: "1 minute",
-        },
-      },
-    },
-    async (request) => {
-      const payload = await readShadowingRequest(request);
-      return shadowing.analyze(payload);
-    },
-  );
+/**
+ * Chave do limite de taxa das rotas pagas: o usuário autenticado (todas as sessões dele
+ * dividem o mesmo balde por rota); sem usuário, o IP.
+ */
+export function audioRateKey(user: Pick<AuthUser, "id"> | undefined, ip: string): string {
+  return user ? `audio-user:${user.id}` : `audio-ip:${ip}`;
+}
 
-  app.post(
-    "/api/v1/audio/analyze-shadowing-phonetic",
-    {
-      config: {
-        rateLimit: {
-          max: 20,
-          timeWindow: "1 minute",
-        },
-      },
-    },
-    async (request) => {
-      const payload = await readShadowingRequest(request);
-      return shadowing.analyzePhonetic(payload);
-    },
-  );
+/** Idioma da gravação é o curso ativo? Só então a nota de pronúncia entra no perfil desse curso. */
+export function sameCourseLanguage(language: string | undefined, targetLang: string): boolean {
+  if (!language) {
+    return false;
+  }
+  return language.slice(0, 2).toLowerCase() === targetLang.slice(0, 2).toLowerCase();
+}
 
-  app.post(
-    "/api/v1/audio/transcribe",
-    {
+/**
+ * Rotas /audio/* que custam (IA de transcrição/análise e voz neural) exigem conta e têm limite
+ * por usuário. Ficam abertas só o catálogo de vozes e a leitura de um áudio já gerado
+ * (`/audio/neural/:id`, endereçado por hash e tocado por <audio>, que não manda cabeçalho).
+ *
+ * `pool` vem de src/app.ts. Sem ele não há como validar o token: as rotas pagas respondem 503
+ * em vez de ficar abertas.
+ */
+export function registerAudioRoutes(app: FastifyInstance, shadowing: ShadowingService, neural: NeuralVoice, pool?: Pool): void {
+  const users = new WeakMap<FastifyRequest, AuthUser>();
+  const profiles = pool ? new ProfileStore(pool) : null;
+  if (!pool) {
+    app.log.error("registerAudioRoutes: no database pool; paid /audio/* routes will answer 503 until src/app.ts passes it");
+  }
+
+  const authenticate = async (request: FastifyRequest): Promise<void> => {
+    if (!pool) {
+      throw new AppError(503, "Audio routes are not wired to the account store");
+    }
+    users.set(request, await requireUser(pool, request));
+  };
+
+  const accountOf = (request: FastifyRequest): AuthUser => {
+    const user = users.get(request);
+    if (!user) {
+      throw new AppError(401, "Authentication required");
+    }
+    return user;
+  };
+
+  const paid = (max: number) =>
+    ({
+      onRequest: authenticate,
       config: {
         rateLimit: {
-          max: 20,
+          max,
           timeWindow: "1 minute",
+          keyGenerator: (request: FastifyRequest) => audioRateKey(users.get(request), request.ip),
         },
       },
-    },
-    async (request) => {
-      const payload = await readTranscriptionRequest(request);
-      return shadowing.transcribe(payload);
-    },
-  );
+    }) as const;
+
+  /** A nota de pronúncia medida aqui vai para o perfil do curso (sinal do servidor, não do cliente). */
+  const recordPronunciation = async (
+    user: AuthUser,
+    language: string | undefined,
+    result: { transcription: string; accuracy_score: number; sounds?: ReadonlyArray<{ held: boolean; sound: { en: string } }> },
+  ): Promise<void> => {
+    if (!profiles || !sameCourseLanguage(language, user.target_lang)) {
+      return;
+    }
+    const signals = pronunciationSignals(result);
+    if (!signals) {
+      return;
+    }
+    try {
+      await profiles.merge(user.id, user.target_lang, signals);
+    } catch (error) {
+      app.log.warn({ err: error }, "pronunciation signal was not saved");
+    }
+  };
+
+  app.post("/api/v1/audio/analyze-shadowing", paid(20), async (request) => {
+    const user = accountOf(request);
+    const payload = await readShadowingRequest(request);
+    const result = await shadowing.analyze(payload);
+    await recordPronunciation(user, payload.language, result);
+    return result;
+  });
+
+  app.post("/api/v1/audio/analyze-shadowing-phonetic", paid(20), async (request) => {
+    const user = accountOf(request);
+    const payload = await readShadowingRequest(request);
+    const result = await shadowing.analyzePhonetic(payload);
+    await recordPronunciation(user, payload.language, result);
+    return result;
+  });
+
+  app.post("/api/v1/audio/transcribe", paid(20), async (request) => {
+    accountOf(request);
+    const payload = await readTranscriptionRequest(request);
+    return shadowing.transcribe(payload);
+  });
 
   app.get(
     "/api/v1/audio/voices",
@@ -69,24 +124,19 @@ export function registerAudioRoutes(app: FastifyInstance, shadowing: ShadowingSe
   );
 
   const synthesize = async (request: FastifyRequest) => {
+    accountOf(request);
     const body = speakBodySchema.parse(request.body);
     const spoken = await neural.speak(body);
     return { audio_url: spoken.audioUrl, words: spoken.words };
   };
 
-  const speakRoute = {
-    config: {
-      rateLimit: {
-        max: 30,
-        timeWindow: "1 minute",
-      },
-    },
-  } as const;
+  const speakRoute = paid(30);
 
   app.post("/api/v1/audio/speak", speakRoute, synthesize);
   app.post("/api/v1/tts/synthesize", speakRoute, synthesize);
 
   app.post("/api/v1/audio/speak-stream", speakRoute, async (request, reply) => {
+    accountOf(request);
     const body = speakStreamBodySchema.parse(request.body);
     reply.header("Content-Type", "text/event-stream; charset=utf-8");
     reply.header("Cache-Control", "no-store");
@@ -138,6 +188,7 @@ export function registerAudioRoutes(app: FastifyInstance, shadowing: ShadowingSe
   });
 
   app.post("/api/v1/audio/speak-batch", speakRoute, async (request) => {
+    accountOf(request);
     const body = speakBatchBodySchema.parse(request.body);
     const clips = await neural.speakMany(body.texts.map((text) => ({ text, lang: body.lang, voice: body.voice })));
     return {

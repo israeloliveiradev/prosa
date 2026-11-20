@@ -23,6 +23,7 @@ import { useFocusScrollHeight } from "../components/use-focus-scroll-height";
 import {
   canContinue,
   initialJourneyFlowState,
+  isGoalId,
   journeyFlowReducer,
   toCefrLevel,
   type CefrLevel,
@@ -52,8 +53,8 @@ type Loaded = { account: AccountUser; tracks: StudyTrackChoice[] };
 /**
  * /quiz: editor de par, objetivo, temas e tempo diário, aberto a partir de "Você".
  * Edita o que está na CONTA: carrega /auth/me e /study/tracks antes de abrir
- * (o cache da sessão pode estar velho) e salva pela mesma rota do primeiro dia,
- * voltando para /profile.
+ * (o cache da sessão pode estar velho) e salva como o primeiro dia (par e temas em
+ * /onboarding/quiz; objetivo, nota e minutos em /account/settings), voltando para /profile.
  */
 export function QuizScreen() {
   const router = useRouter();
@@ -118,13 +119,16 @@ function QuizEditor({ account, tracks }: Loaded) {
   const initial = useMemo(() => {
     const journey = getJourney();
     const own = journey.userId === account.id;
+    // O plano mora na conta (M2). Uma conta sem objetivo ainda não recebeu o plano: então
+    // os minutos dela são só o padrão (20) e vale o que este aparelho guardou.
+    const accountPlan = isGoalId(account.goal);
     return initialJourneyFlowState({
       target_lang: account.target_lang,
       through_lang: account.native_lang,
       interests: account.interests && account.interests.length > 0 ? account.interests : own ? journey.interests : [],
-      goal: own ? journey.goal || null : null,
-      goal_note: own ? journey.goal_note : "",
-      minutes: own ? journey.minutes : undefined,
+      goal: accountPlan ? account.goal : own ? journey.goal || null : null,
+      goal_note: accountPlan ? (account.goal_note ?? "") : own ? journey.goal_note : "",
+      minutes: accountPlan ? account.daily_minutes : own ? journey.minutes : account.daily_minutes,
     });
   }, [account]);
 
@@ -155,6 +159,7 @@ function QuizEditor({ account, tracks }: Loaded) {
         interests: state.interests,
         goal: state.goal,
         goal_note: state.goal_note,
+        minutes: state.minutes,
       });
       openJourney(account.id);
       patchJourney({

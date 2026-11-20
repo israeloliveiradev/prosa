@@ -44,6 +44,7 @@ import {
 } from "../model/journey-flow";
 import { errorMessage, levelFromOutcome, saveErrorKind } from "../model/plan-input";
 import { activatePair, savePlan } from "../save-plan";
+import { VoiceWarmupLine, useVoiceWarmup } from "@/components/session/voice-picker";
 
 /**
  * Estado inicial: retoma a jornada gravada deste aluno (sobrevive ao F5) ou
@@ -89,6 +90,8 @@ export function StartScreen() {
   const lastLevel = useRef<{ level: CefrLevel; source: LevelSource } | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const scrollHeight = useFocusScrollHeight();
+  // A voz do idioma-alvo começa a baixar assim que o par é escolhido (o nivelamento dá tempo).
+  useVoiceWarmup(state.step === "welcome" || state.step === "pair" ? null : state.target_lang);
 
   const userId = user?.id ?? null;
 
@@ -160,6 +163,7 @@ export function StartScreen() {
         interests: state.interests,
         goal: state.goal,
         goal_note: state.goal_note,
+        minutes: state.minutes,
       });
       remember({
         target_lang: state.target_lang,
@@ -342,6 +346,7 @@ export function StartScreen() {
 
         {state.step === "level" ? (
           <View style={styles.levelStep} testID="onboarding-step-level">
+            <VoiceWarmupLine lang={state.target_lang} />
             {state.error ? (
               <InlineError
                 message={errorMessage(t, state.error)}

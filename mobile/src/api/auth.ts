@@ -20,7 +20,7 @@ export interface RegisterInput {
   /** Opcional: sem nível, o servidor usa o padrão dele (o nivelamento do primeiro dia decide). */
   level?: AccountUser["level"];
   /** O servidor guarda só pt ou en. */
-  display_locale?: "pt" | "en";
+  display_locale?: "pt" | "en" | "de" | "fr" | "es" | "it" | "ja";
 }
 
 /**

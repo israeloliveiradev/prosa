@@ -12,7 +12,6 @@ import {
   isOutOfSync,
   placementErrorKind,
   placementFlowReducer,
-  skillSignals,
   toOutcome,
   applyAnswer,
   type PlacementOutcome,
@@ -21,8 +20,9 @@ import { Question } from "@/features/placement/components/question";
 import { Result } from "@/features/placement/components/result";
 import { StatusPanel } from "@/features/placement/components/status-panel";
 import { LoadingLine, PlacementNotice, SectionLabel } from "@/features/placement/components/parts";
-import { postProfileSignals } from "@/lib/api";
-import { canDoSignals } from "@/lib/can-do";
+import { pathKeys } from "@/api/path";
+import { kv } from "@/lib/kv";
+import { queryClient } from "@/api/query-client";
 import { useAreaCopy } from "@/lib/copy/area";
 import { PLACEMENT_COPY } from "@/lib/copy/placement";
 import { tap } from "@/lib/haptics";
@@ -96,13 +96,10 @@ export function PlacementScreen({ embedded = false, autoStart, onFinished }: Pla
 
   const applyLevel = useCallback(async (result: PlacementFinish) => {
     if (result.skills.length > 0) {
+      // As notas por habilidade já foram gravadas pelo servidor (placement-service → learner_profile).
       rememberSkills(result.skills);
-      const signals = skillSignals(result.skills);
-      const current = getSession();
-      if (current && Object.keys(signals).length > 0) {
-        void postProfileSignals(current.token, result.target_lang, signals).catch(() => undefined);
-      }
     }
+    void queryClient.invalidateQueries({ queryKey: pathKeys.all });
     // O servidor já gravou o nível; a sessão local busca o usuário de novo (/auth/me).
     await refreshSession();
     const fresh = getSession();
@@ -234,12 +231,12 @@ export function PlacementScreen({ embedded = false, autoStart, onFinished }: Pla
 
   const saveCanDo = useCallback(
     async (held: string[]) => {
-      const current = getSession();
       const result = stateRef.current.result;
-      if (!current || !result) {
-        throw new Error("no-session");
+      if (!result) {
+        throw new Error("no-result");
       }
-      await postProfileSignals(current.token, result.target_lang, canDoSignals(held, result.level));
+      // Autoavaliação "eu consigo": fica no aparelho. O perfil do servidor só aceita sinais medidos por ele.
+      kv.set(`prosa.can-do.${result.target_lang}`, JSON.stringify({ level: result.level, held, at: new Date().toISOString() }));
     },
     [],
   );

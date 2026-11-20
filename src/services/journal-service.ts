@@ -13,6 +13,21 @@ import {
 } from "./learner-memory.js";
 import { calqueCards, countOf, recurringCorrectionCards, recurringGrammarCards, type RepairCard } from "./repair-cards.js";
 import { ProfileStore } from "./profile-store.js";
+import { recordJournalClosure } from "./path-service.js";
+
+const PATH_LANGS = ["en", "es", "de", "ru", "fr", "it", "ja"];
+
+/**
+ * Um diário conta para a trilha quando tem corpo de verdade: 6 palavras ou mais
+ * (em ja, 12 caracteres ou mais, já que não há espaços).
+ */
+export function journalCountsForPath(text: string, targetLang: string): boolean {
+  const clean = text.trim();
+  if (targetLang.toLowerCase() === "ja") {
+    return clean.replace(/[\s　]/g, "").length >= 12;
+  }
+  return clean.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length >= 6;
+}
 
 export interface JournalCorrectionView {
   original: string;
@@ -80,6 +95,21 @@ export class JournalService {
     const cards = input.attempt === 1 ? recurringCorrectionCards(evaluation.corrections, memory.errors, stored.errors) : [];
     if (user && cards.length > 0) {
       await this.keepCards(user.id, input.target_lang, cards);
+    }
+    // Escada fechada (correção completa à vista ou texto sem erros): o servidor registra o
+    // diário do dia para o domínio da unidade. Nenhuma flag do cliente entra nisso.
+    const targetLang = input.target_lang.toLowerCase();
+    if (user && step === "correction" && PATH_LANGS.includes(targetLang) && journalCountsForPath(input.text, targetLang)) {
+      try {
+        await recordJournalClosure(this.pool, {
+          userId: user.id,
+          targetLang,
+          attempt: input.attempt,
+          score: evaluation.score,
+        });
+      } catch {
+        // A correção já chegou ao aluno; o registro da trilha não derruba o diário.
+      }
     }
     return {
       score: evaluation.score,

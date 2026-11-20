@@ -3,9 +3,9 @@ import type { SessionCard } from "./types";
 /**
  * FSRS (Free Spaced Repetition Scheduler) do lado do cliente.
  *
- * Espelha `src/services/fsrs.ts` do backend (mesmos pesos, retenÃ§Ã£o desejada de 90%),
- * para que o cartÃ£o agende na hora, offline, e o servidor confirme no `/srs/sync`.
- * A nota 0|3|4|5 do app vira a avaliaÃ§Ã£o FSRS 1 (de novo) | 2 (difÃ­cil) | 3 (bom) | 4 (fÃ¡cil).
+ * Espelha `src/services/fsrs.ts` do backend (mesmos pesos, retenção desejada de 90%),
+ * para que o cartão agende na hora, offline, e o servidor confirme no `/srs/sync`.
+ * A nota 0|3|4|5 do app vira a avaliação FSRS 1 (de novo) | 2 (difícil) | 3 (bom) | 4 (fácil).
  */
 const WEIGHTS = [
   0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192, 1.01925, 1.9395, 0.11, 0.29605,
@@ -15,7 +15,7 @@ const WEIGHTS = [
 const DECAY = -0.5;
 const FACTOR = 0.9 ** (1 / DECAY) - 1;
 export const DAY_MS = 24 * 60 * 60 * 1000;
-/** Depois de um "de novo", o cartÃ£o volta em 10 minutos no mÃ­nimo. */
+/** Depois de um "de novo", o cartão volta em 10 minutos no mínimo. */
 const RELEARN_MS = 10 * 60 * 1000;
 
 export type ReviewQuality = 0 | 3 | 4 | 5;
@@ -99,7 +99,7 @@ function recallStability(difficulty: number, stability: number, recall: number, 
 function forgetStability(difficulty: number, stability: number, recall: number): number {
   const next =
     WEIGHTS[11]! * difficulty ** -WEIGHTS[12]! * ((stability + 1) ** WEIGHTS[13]! - 1) * Math.exp(WEIGHTS[14]! * (1 - recall));
-  // FSRS-5: esquecer nunca deixa o cartÃ£o mais estÃ¡vel do que estava antes do lapso.
+  // FSRS-5: esquecer nunca deixa o cartão mais estável do que estava antes do lapso.
   return Math.min(next, stability);
 }
 
@@ -117,9 +117,9 @@ export function scheduleFsrs(state: FsrsState, quality: FsrsQuality, now = Date.
     first
       ? WEIGHTS[rating - 1]!
       : rating === 1
-        ? forgetStability(difficulty, state.stability, recall)
+        ? Math.min(forgetStability(difficulty, state.stability, recall), state.stability) // FSRS-5: o lapso nunca aumenta a estabilidade (igual ao servidor)
         : recallStability(difficulty, state.stability, recall, rating);
-  // Com retenÃ§Ã£o desejada de 0,9 o intervalo ideal em dias Ã© a prÃ³pria estabilidade.
+  // Com retenção desejada de 0,9 o intervalo ideal em dias é a própria estabilidade.
   const rawDays = (stability / FACTOR) * (0.9 ** (1 / DECAY) - 1);
   const intervalDays = rawDays < 1 ? 0 : Math.min(36500, Math.max(1, Math.round(rawDays)));
   const dueAt = rawDays < 1 ? now + Math.max(rawDays * DAY_MS, RELEARN_MS) : now + intervalDays * DAY_MS;
@@ -143,7 +143,7 @@ function parseTime(value: string | undefined): number | null {
   return Number.isFinite(at) ? at : null;
 }
 
-/** Estado FSRS gravado no cartÃ£o (cartÃ£o novo â‡’ estabilidade 0, sem revisÃ£o). */
+/** Estado FSRS gravado no cartão (cartão novo ⇒ estabilidade 0, sem revisão). */
 export function fsrsStateOf(card: SessionCard): FsrsState {
   return {
     stability: typeof card.stability === "number" && Number.isFinite(card.stability) ? card.stability : 0,
@@ -168,7 +168,7 @@ export function applyFsrs(card: SessionCard, quality: ReviewQuality, now = Date.
   };
 }
 
-/** Momento (ms) em que o cartÃ£o vence; `null` para cartÃ£o novo, que ainda nÃ£o foi revisado. */
+/** Momento (ms) em que o cartão vence; `null` para cartão novo, que ainda não foi revisado. */
 export function dueTime(card: Pick<SessionCard, "due">): number | null {
   return parseTime(card.due);
 }
@@ -178,12 +178,12 @@ export function isDue(card: Pick<SessionCard, "due">, now = Date.now()): boolean
   return at !== null && at <= now;
 }
 
-/** CartÃ£o que nunca recebeu nota (sem data de vencimento). */
+/** Cartão que nunca recebeu nota (sem data de vencimento). */
 export function isNewCard(card: Pick<SessionCard, "due" | "repetition_count">): boolean {
   return dueTime(card) === null;
 }
 
-/** Ordena pelo vencimento, o mais atrasado primeiro; empate pela frase, para ser estÃ¡vel. */
+/** Ordena pelo vencimento, o mais atrasado primeiro; empate pela frase, para ser estável. */
 export function compareDue(a: SessionCard, b: SessionCard): number {
   const left = dueTime(a) ?? Number.POSITIVE_INFINITY;
   const right = dueTime(b) ?? Number.POSITIVE_INFINITY;
@@ -193,12 +193,12 @@ export function compareDue(a: SessionCard, b: SessionCard): number {
   return a.front_phrase.localeCompare(b.front_phrase);
 }
 
-/** CartÃµes vencidos em `now`, ordenados pelo vencimento (o mais atrasado primeiro). */
+/** Cartões vencidos em `now`, ordenados pelo vencimento (o mais atrasado primeiro). */
 export function dueCards<T extends SessionCard>(cards: readonly T[], now = Date.now()): T[] {
   return cards.filter((card) => isDue(card, now)).sort(compareDue);
 }
 
-/** Chance estimada (0..1) de lembrar o cartÃ£o agora; `null` para cartÃ£o novo. */
+/** Chance estimada (0..1) de lembrar o cartão agora; `null` para cartão novo. */
 export function cardRetrievability(card: SessionCard, now = Date.now()): number | null {
   const state = fsrsStateOf(card);
   if (state.stability <= 0 || state.lastReviewAt === null) {
@@ -208,9 +208,9 @@ export function cardRetrievability(card: SessionCard, now = Date.now()): number 
 }
 
 /**
- * CartÃµes gravados no tempo do SM-2 (intervalo e repetiÃ§Ãµes, sem estabilidade nem vencimento)
- * entram no FSRS com a estabilidade igual ao Ãºltimo intervalo e vencidos agora, para que a
- * prÃ³xima revisÃ£o recalibre a memÃ³ria em vez de o cartÃ£o sumir da fila para sempre.
+ * Cartões gravados no tempo do SM-2 (intervalo e repetições, sem estabilidade nem vencimento)
+ * entram no FSRS com a estabilidade igual ao último intervalo e vencidos agora, para que a
+ * próxima revisão recalibre a memória em vez de o cartão sumir da fila para sempre.
  */
 export function seedFromSm2(card: SessionCard, now = Date.now()): SessionCard {
   const hasFsrs = typeof card.stability === "number" && card.stability > 0;

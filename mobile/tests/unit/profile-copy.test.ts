@@ -9,11 +9,9 @@ function placeholders(text: string): string[] {
 }
 
 test.describe("Você: regras puras", () => {
-  test("só pt e en vão para a conta (o backend aceita só esses até o M2)", () => {
-    expect(accountLocale("pt")).toBe("pt");
-    expect(accountLocale("en")).toBe("en");
-    for (const locale of ["de", "fr", "es", "it", "ja"] as const) {
-      expect(accountLocale(locale)).toBeNull();
+  test("os 7 idiomas de interface vão para a conta (backend M2)", () => {
+    for (const locale of DISPLAY_LOCALES) {
+      expect(accountLocale(locale)).toBe(locale);
     }
   });
 

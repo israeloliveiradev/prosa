@@ -4,6 +4,7 @@ import { getCast } from "@/lib/cast";
 import { copy } from "@/lib/i18n";
 import { clipReferenceBytes, speechService, type SpeechClip } from "@/services/speechService";
 import { recordingHasVoice } from "@/lib/voice-activity";
+import { getSession } from "@/lib/session";
 import type { CognateAnchor, CourseProfile, JournalEvaluation, LessonPayload, LessonRequest, ReconstructionReport, RepairCard, SessionCard, ShadowingResult, SoundNote, VocabularyEntry } from "@/lib/types";
 import type { AccountUser, AccountSettings, LoginChallenge, VerifyChallenge } from "@/api/schemas/auth";
 import type { PlacementHistoryEntry, PlacementStatus } from "@/api/schemas/placement";
@@ -69,13 +70,16 @@ function readAnchors(value: unknown): CognateAnchor[] {
   );
 }
 
-export async function generateLesson(input: LessonRequest & { cognate?: boolean }, token?: string): Promise<LessonPayload> {
+/** `unit_id` (M2): a lição pratica a meta, a gramática e os lemas-núcleo da unidade da trilha. */
+export async function generateLesson(input: LessonRequest & { cognate?: boolean; unit_id?: string | null }, token?: string): Promise<LessonPayload> {
   const picks = getCast();
+  const { unit_id: unitId, ...rest } = input;
   const response = await fetch(`${apiUrl()}/api/v1/lessons/generate`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({
-      ...input,
+      ...rest,
+      ...(unitId ? { unit_id: unitId } : {}),
       mind_reading: picks.reading,
       mind_memory: picks.memory,
       mind_speech: picks.speech,
@@ -122,9 +126,12 @@ export async function analyzeShadowing(uri: string, referenceText: string, langu
   body.append("reference_text", referenceText);
   body.append("language", language);
 
+  // Rota paga: exige conta (o servidor responde 401 sem token). Sem content-type: o FormData define o boundary.
+  const token = getSession()?.token;
   const response = await fetch(`${apiUrl()}/api/v1/audio/analyze-shadowing-phonetic`, {
     method: "POST",
     body,
+    ...(token ? { headers: { authorization: `Bearer ${token}` } } : {}),
   });
   if (!response.ok) {
     throw new Error(await readError(response));
@@ -410,7 +417,13 @@ export async function transcribeSpeech(uri: string, language: string): Promise<s
     body.append("audio", { uri, name, type } as unknown as Blob);
   }
   body.append("language", language);
-  const response = await fetch(`${apiUrl()}/api/v1/audio/transcribe`, { method: "POST", body });
+  // Rota paga: exige conta (o servidor responde 401 sem token).
+  const token = getSession()?.token;
+  const response = await fetch(`${apiUrl()}/api/v1/audio/transcribe`, {
+    method: "POST",
+    body,
+    ...(token ? { headers: { authorization: `Bearer ${token}` } } : {}),
+  });
   if (!response.ok) {
     throw new Error(await readError(response));
   }
@@ -1477,11 +1490,12 @@ export interface SpokenStory {
 
 export { submitOnboarding } from "@/api/onboarding";
 
-export async function generatePersonalized(token: string, selectedTopic: string): Promise<LessonPayload> {
+/** `unitId` (M2): a lição personalizada também pratica a unidade da trilha. */
+export async function generatePersonalized(token: string, selectedTopic: string, unitId?: string | null): Promise<LessonPayload> {
   const response = await fetch(`${apiUrl()}/api/v1/lessons/generate-personalized`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({ selected_topic: selectedTopic }),
+    body: JSON.stringify({ selected_topic: selectedTopic, ...(unitId ? { unit_id: unitId } : {}) }),
   });
   if (!response.ok) {
     throw new Error(await readError(response));

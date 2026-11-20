@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CEFR_LEVELS, TARGET_LANGS, THROUGH_LANGS } from "../types/database.js";
+import { unitIdSchema } from "./lesson.js";
 
 export const studyTrackSchema = z
   .object({
@@ -78,6 +79,8 @@ export const topicMatrixSchema = z.object({
 
 export const personalizedLessonBodySchema = z.object({
   selected_topic: z.string().trim().min(1).max(120),
+  /** Unidade da trilha (M2). */
+  unit_id: unitIdSchema.optional(),
 });
 
 export const activateTrackBodySchema = z

@@ -11,32 +11,38 @@ import {
   disableFactorBodySchema,
   passwordOnlyBodySchema,
   totpConfirmBodySchema,
+  type AccountGoal,
+  type DailyMinutes,
 } from "../schemas/account.js";
+import type { DisplayLocale } from "../schemas/auth.js";
 import { hashPassword, verifyPassword } from "../services/passwords.js";
 import type { Mailer } from "../services/mailer.js";
 import type { SecondFactor } from "../services/second-factor.js";
 
+/** Colunas de GET e PATCH /account/settings (as mesmas nas duas respostas). */
+const SETTINGS_COLUMNS = `display_name, display_locale, reminder_enabled, reminder_hour, totp_enabled, email_2fa,
+       mind_reading, mind_memory, mind_speech, mind_journal, goal, goal_note, daily_minutes`;
+
+interface SettingsRow {
+  display_name: string | null;
+  display_locale: DisplayLocale;
+  reminder_enabled: boolean;
+  reminder_hour: number;
+  totp_enabled: boolean;
+  email_2fa: boolean;
+  mind_reading: string;
+  mind_memory: string;
+  mind_speech: string;
+  mind_journal: string;
+  goal: AccountGoal | null;
+  goal_note: string | null;
+  daily_minutes: DailyMinutes;
+}
+
 export function registerAccountRoutes(app: FastifyInstance, pool: Pool, mailer: Mailer, factors: SecondFactor): void {
   app.get("/api/v1/account/settings", async (request) => {
     const user = await requireUser(pool, request);
-    const found = await pool.query<{
-      display_name: string | null;
-      display_locale: "pt" | "en";
-      reminder_enabled: boolean;
-      reminder_hour: number;
-      totp_enabled: boolean;
-      email_2fa: boolean;
-      mind_reading: string;
-      mind_memory: string;
-      mind_speech: string;
-      mind_journal: string;
-    }>(
-      `SELECT display_name, display_locale, reminder_enabled, reminder_hour, totp_enabled, email_2fa,
-              mind_reading, mind_memory, mind_speech, mind_journal
-       FROM users
-       WHERE id = $1`,
-      [user.id],
-    );
+    const found = await pool.query<SettingsRow>(`SELECT ${SETTINGS_COLUMNS} FROM users WHERE id = $1`, [user.id]);
     const row = found.rows[0];
     if (!row) {
       throw new AppError(404, "Account not found");
@@ -47,7 +53,8 @@ export function registerAccountRoutes(app: FastifyInstance, pool: Pool, mailer: 
   app.patch("/api/v1/account/settings", async (request) => {
     const user = await requireUser(pool, request);
     const body = accountSettingsBodySchema.parse(request.body);
-    const found = await pool.query(
+    // goal e goal_note aceitam null para apagar; por isso cada um leva um sinal "veio no corpo".
+    const found = await pool.query<SettingsRow>(
       `UPDATE users
        SET display_name = COALESCE($2, display_name),
            display_locale = COALESCE($3, display_locale),
@@ -56,10 +63,12 @@ export function registerAccountRoutes(app: FastifyInstance, pool: Pool, mailer: 
            mind_reading = COALESCE($6, mind_reading),
            mind_memory = COALESCE($7, mind_memory),
            mind_speech = COALESCE($8, mind_speech),
-           mind_journal = COALESCE($9, mind_journal)
+           mind_journal = COALESCE($9, mind_journal),
+           goal = CASE WHEN $10::boolean THEN $11::text ELSE goal END,
+           goal_note = CASE WHEN $12::boolean THEN $13::text ELSE goal_note END,
+           daily_minutes = COALESCE($14::smallint, daily_minutes)
        WHERE id = $1
-       RETURNING display_name, display_locale, reminder_enabled, reminder_hour, totp_enabled, email_2fa,
-                 mind_reading, mind_memory, mind_speech, mind_journal`,
+       RETURNING ${SETTINGS_COLUMNS}`,
       [
         user.id,
         body.display_name ?? null,
@@ -70,6 +79,11 @@ export function registerAccountRoutes(app: FastifyInstance, pool: Pool, mailer: 
         body.mind_memory ?? null,
         body.mind_speech ?? null,
         body.mind_journal ?? null,
+        body.goal !== undefined,
+        body.goal ?? null,
+        body.goal_note !== undefined,
+        body.goal_note ?? null,
+        body.daily_minutes ?? null,
       ],
     );
     const row = found.rows[0];
