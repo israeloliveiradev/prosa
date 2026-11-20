@@ -44,7 +44,7 @@ export class ShadowingService {
       referenceText: input.referenceText,
       ...(input.language ? { language: input.language.slice(0, 2) } : {}),
     });
-    const base = this.report(input.referenceText, prosody.transcription, input.language);
+    const base = { ...this.report(input.referenceText, prosody.transcription, input.language), rhythm_measured: prosody.rhythmMeasured };
     // Sem fala reconhecida não há o que pontuar: tudo zero (nada de ritmo "de cortesia").
     if (!prosody.transcription.trim() || base.accuracy_score === 0) {
       return { ...base, accuracy_score: 0, pitch_rhythm_match: 0, cadence_match: 0, bars: [] };
@@ -52,6 +52,10 @@ export class ShadowingService {
     // Ritmo e cadência só valem quando a frase foi reconhecida em boa parte: o ritmo de
     // outra coisa (ex.: um "Hello" alucinado sobre silêncio) não é o ritmo desta frase.
     if (base.accuracy_score < MIN_ACCURACY_FOR_RHYTHM) {
+      return { ...base, pitch_rhythm_match: 0, cadence_match: 0, bars: [] };
+    }
+    // O provedor de reserva só transcreve: sem medida de ritmo, nada de nota de ritmo.
+    if (!prosody.rhythmMeasured) {
       return { ...base, pitch_rhythm_match: 0, cadence_match: 0, bars: [] };
     }
     let cadence = { score: prosody.rhythmScore, bars: [] as ReturnType<typeof cadenceReport>["bars"] };
@@ -97,6 +101,7 @@ export class ShadowingService {
       accuracy_score: report.accuracyScore,
       mispronounced_words: report.mispronouncedWords,
       sounds: soundNotes(referenceText, transcription, language ?? ""),
+      rhythm_measured: false,
     };
   }
 }

@@ -32,6 +32,11 @@ const envSchema = z.object({
   SMTP_HOST: z.string().default(""),
   SMTP_PORT: z.coerce.number().int().positive().default(1025),
   MAIL_INBOX_URL: z.string().default(""),
+  /** Pré-carga diária das notícias no tick de 15 min (gasta cota de IA): só com "true". */
+  NEWS_PRELOAD_ENABLED: z
+    .string()
+    .default("false")
+    .transform((value) => value.trim().toLowerCase() === "true"),
 });
 
 export type Env = z.infer<typeof envSchema>;

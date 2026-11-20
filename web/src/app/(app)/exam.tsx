@@ -1,5 +1,5 @@
-import { PlacementScreen } from "@/features/placement/screens/placement-screen";
+import { ExamScreen } from "@/components/exam/exam-screen";
 
 export default function ExamRoute() {
-  return <PlacementScreen />;
+  return <ExamScreen />;
 }

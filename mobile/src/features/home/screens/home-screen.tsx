@@ -1,5 +1,6 @@
+import { useCallback } from "react";
 import { Image, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { useRouter, type Href } from "expo-router";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { TactileButton } from "@/components/tactile/tactile-button";
 import { TactileIcon } from "@/components/tactile/tactile-icon";
 import { PanelKicker, TactilePanel } from "@/components/tactile/tactile-panel";
@@ -18,7 +19,8 @@ import { PATH_COPY } from "@/lib/copy/path";
 import { SHELL_COPY } from "@/lib/copy/shell";
 import { LOCALE_BCP47, givenName, phaseName, useLocale } from "@/lib/i18n";
 import { dailyGoalMinutes, useJourney } from "@/lib/journey";
-import { useSession } from "@/lib/session";
+import { refreshSession, useSession } from "@/lib/session";
+import { displayStreak } from "@/features/shell/model/streak-model";
 import { themeLabel } from "@/lib/themes";
 
 function joinList(items: string[], bcp47: string): string {
@@ -48,6 +50,12 @@ export function HomeScreen() {
   const plan = useTodayPlan();
   const path = usePath();
   usePathFocusRefresh(path);
+  // A ofensiva da conta vem do servidor: relê o usuário quando Hoje ganha foco.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSession();
+    }, []),
+  );
   const dailyMinutes = dailyGoalMinutes(useJourney());
   const cast = useCast();
   const { width } = useWindowDimensions();
@@ -150,14 +158,18 @@ export function HomeScreen() {
     </TactilePanel>
   );
 
+  const streak = displayStreak(session.user, snapshot.streak, snapshot.today);
   const streakCard = (
     <TactilePanel testID="home-streak" style={{ flex: 1, minWidth: phone ? undefined : 220 }}>
-      <PanelKicker icon="flame" color={snapshot.streak > 0 ? tactile.streak : tactile.muted}>{t.streakTitle}</PanelKicker>
+      <PanelKicker icon="flame" color={streak.count > 0 ? tactile.streak : tactile.muted}>{t.streakTitle}</PanelKicker>
       <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <Text testID="home-streak-count" style={{ fontFamily: tactile.font, fontSize: 22, fontWeight: "800", color: tactile.ink }}>
-          {t.streakDays(snapshot.streak)}
+          {t.streakDays(streak.count)}
         </Text>
-        <Text style={{ fontFamily: tactile.font, fontSize: 13, fontWeight: "700", color: tactile.muted }}>{t.bestStreak(snapshot.bestStreak)}</Text>
+        <Text style={{ fontFamily: tactile.font, fontSize: 13, fontWeight: "700", color: tactile.muted }}>{t.bestStreak(Math.max(snapshot.bestStreak, streak.count))}</Text>
+        {streak.source === "device" && streak.count > 0 ? (
+          <Text testID="home-streak-device" style={{ fontFamily: tactile.font, fontSize: 12, fontWeight: "700", color: tactile.faint }}>{t.streakDeviceNote}</Text>
+        ) : null}
       </View>
       <View accessibilityLabel={t.weekLabel} style={{ flexDirection: "row", justifyContent: "space-between", gap: 4 }}>
         {snapshot.week.map((done, index) => {

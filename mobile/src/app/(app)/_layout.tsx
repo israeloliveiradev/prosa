@@ -32,6 +32,9 @@ export default function AppLayout() {
         <Stack.Screen name="profile" />
         <Stack.Screen name="practice" />
         <Stack.Screen name="memory" />
+        <Stack.Screen name="memory-palace" options={{ animation: "default" }} />
+        <Stack.Screen name="pronunciation" options={{ animation: "default" }} />
+        <Stack.Screen name="syntax-workshop" options={{ animation: "default" }} />
         <Stack.Screen name="settings" options={{ animation: "default" }} />
         <Stack.Screen name="guide" options={{ animation: "default" }} />
         <Stack.Screen name="paywall" options={{ animation: "default" }} />

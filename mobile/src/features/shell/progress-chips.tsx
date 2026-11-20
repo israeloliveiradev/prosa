@@ -3,12 +3,16 @@ import { TactileIcon } from "@/components/tactile/tactile-icon";
 import { tactile } from "@/components/tactile/tokens";
 import { useAreaCopy } from "@/lib/copy/area";
 import { SHELL_COPY } from "@/lib/copy/shell";
+import { useSession } from "@/lib/session";
 import type { TodaySnapshot } from "@/lib/today";
+import { displayStreak } from "./model/streak-model";
 
 /** Ofensiva real (dias seguidos com sessão completa) e XP de hoje contra a meta. */
 export function ProgressChips({ snapshot, compact = false }: { snapshot: TodaySnapshot; compact?: boolean }) {
   const t = useAreaCopy(SHELL_COPY);
-  const lit = snapshot.streak > 0;
+  const session = useSession();
+  const streak = displayStreak(session?.user, snapshot.streak, snapshot.today).count;
+  const lit = streak > 0;
   const goalMet = snapshot.xpGoal > 0 && snapshot.xpToday >= snapshot.xpGoal;
 
   return (
@@ -17,7 +21,7 @@ export function ProgressChips({ snapshot, compact = false }: { snapshot: TodaySn
         testID="shell-streak"
         accessible
         accessibilityRole="text"
-        accessibilityLabel={t.streakA11y(snapshot.streak)}
+        accessibilityLabel={t.streakA11y(streak)}
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -32,7 +36,7 @@ export function ProgressChips({ snapshot, compact = false }: { snapshot: TodaySn
       >
         <TactileIcon name="flame" size={16} color={lit ? tactile.streak : tactile.faint} fill={lit ? "#FDBA74" : "none"} />
         <Text style={{ fontFamily: tactile.font, fontSize: 14, fontWeight: "800", color: lit ? tactile.streak : tactile.muted, fontVariant: ["tabular-nums"] }}>
-          {snapshot.streak}
+          {streak}
         </Text>
       </View>
       {compact ? null : (

@@ -1,9 +1,6 @@
 import { Redirect } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { ActionRow } from "@/components/shell/action-row";
-import { AppFrame } from "@/components/shell/app-frame";
-import { PageMasthead } from "@/components/shell/page-masthead";
 import {
   chooseExam,
   fetchExamMock,
@@ -20,14 +17,15 @@ import { useCopy } from "@/lib/i18n";
 import { narratorVoice } from "@/lib/narrator";
 import { useSession } from "@/lib/session";
 import { startNeuralPlayback, type PlaybackHandle } from "@/lib/voice";
-import { useTheme } from "@/theme/ThemeContext";
+import { TactilePage } from "@/features/shell/tactile-page";
+import { TactileButton } from "@/components/tactile/tactile-button";
+import { tactile } from "@/components/tactile/tokens";
 
 type Phase = "pick" | "item" | "write" | "speak" | "result" | "error";
 
 export function ExamScreen() {
   const session = useSession();
   const copy = useCopy();
-  const { palette } = useTheme();
   const token = session?.token;
   const targetLang = session?.user?.target_lang ?? "en";
   const [phase, setPhase] = useState<Phase>("pick");
@@ -202,58 +200,50 @@ export function ExamScreen() {
   const clock = `${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, "0")}`;
 
   return (
-    <AppFrame>
-      <View className="gap-8">
-        <PageMasthead
-          kicker={copy.examKicker}
-          title={copy.examTitle}
-          dek={phase === "pick" ? copy.examDek : undefined}
-          trailing={phase !== "pick" && phase !== "result" && phase !== "error" ? (
-            <Text className="font-label text-sm text-ember">{`${copy.examClock} ${clock}`}</Text>
-          ) : undefined}
-        />
-        {error && phase !== "error" ? <Text className="text-base text-ember">{error}</Text> : null}
+    <TactilePage testID="exam-screen" kicker={copy.examKicker} title={copy.examTitle} dek={phase === "pick" ? copy.examDek : undefined}>
+        {phase !== "pick" && phase !== "result" && phase !== "error" ? (
+            <Text className="text-sm font-bold text-[#B45309]">{`${copy.examClock} ${clock}`}</Text>
+          ) : null}
+        {error && phase !== "error" ? <Text className="text-base text-[#B45309]">{error}</Text> : null}
 
         {phase === "pick" ? (
           <View className="gap-4">
-            {status && status.exams.length === 0 ? <Text className="text-base leading-7 text-muted">{copy.examEmpty}</Text> : null}
+            {status && status.exams.length === 0 ? <Text className="text-base leading-7 text-[#64748B]">{copy.examEmpty}</Text> : null}
             {status?.forecast ? (
-              <View className="rounded-3xl border border-line bg-card px-5 py-4">
-                <Text className="font-label text-xs uppercase tracking-widest text-muted">{copy.examForecast}</Text>
-                <Text className="mt-2 font-displayItalic text-headline text-ink">{status.forecast.display}</Text>
-                <Text className="mt-1 text-base text-muted">{`${copy.examBand} ${status.forecast.band}`}</Text>
+              <View className="rounded-3xl border-2 border-[#E7E5E4] bg-white px-5 py-4">
+                <Text className="text-xs font-extrabold uppercase tracking-widest text-[#64748B]">{copy.examForecast}</Text>
+                <Text className="mt-2 font-display text-4xl font-extrabold text-[#111C2D]">{status.forecast.display}</Text>
+                <Text className="mt-1 text-base text-[#64748B]">{`${copy.examBand} ${status.forecast.band}`}</Text>
               </View>
             ) : null}
             {status?.exams.map((exam) => (
-              <ActionRow
+              <Pressable
                 key={exam.id}
-                title={exam.title}
-                detail={status.track === exam.id && status.forecast ? `${copy.examForecast} ${status.forecast.display}` : copy.examDetail}
+                testID={`exam-track-${exam.id}`}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: status.track === exam.id, disabled: pending }}
                 onPress={() => void pickTrack(exam.id)}
                 disabled={pending}
-              />
+                className={`rounded-2xl border-2 px-4 py-3 ${status.track === exam.id ? "border-[#0F766E] bg-[#F0FDFA]" : "border-[#E7E5E4] bg-white"}`}
+              >
+                <Text className="text-base font-extrabold text-[#111C2D]">{exam.title}</Text>
+                <Text className="mt-0.5 text-sm text-[#64748B]">
+                  {status.track === exam.id && status.forecast ? `${copy.examForecast} ${status.forecast.display}` : copy.examDetail}
+                </Text>
+              </Pressable>
             ))}
             {status?.track ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => void begin()}
-                disabled={pending}
-                className="min-h-12 items-center justify-center self-start rounded-full bg-ember px-6"
-              >
-                <Text className="text-base font-semibold text-paper">{copy.examStart}</Text>
-              </Pressable>
+              <TactileButton testID="exam-start" label={copy.examStart} variant="primary" size="md" style={{ alignSelf: "flex-start" }} onPress={() => void begin()} disabled={pending} />
             ) : null}
           </View>
         ) : null}
 
         {phase === "item" && item ? (
           <View className="gap-4">
-            {item.passage ? <Text className="text-lg leading-8 text-ink">{item.passage}</Text> : null}
-            <Text className="text-lg leading-7 text-ink">{item.prompt}</Text>
+            {item.passage ? <Text className="text-lg leading-8 text-[#111C2D]">{item.passage}</Text> : null}
+            <Text className="text-lg leading-7 text-[#111C2D]">{item.prompt}</Text>
             {item.audio ? (
-              <Pressable accessibilityRole="button" onPress={() => void hear(item)} className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5">
-                <Text className="text-base font-semibold text-ink">{copy.examListen}</Text>
-              </Pressable>
+              <TactileButton label={copy.examListen} variant="secondary" size="md" style={{ alignSelf: "flex-start" }} onPress={() => void hear(item)} />
             ) : null}
             {item.options.map((option, optionIndex) => {
               const on = picked === optionIndex;
@@ -263,94 +253,67 @@ export function ExamScreen() {
                   accessibilityRole="radio"
                   accessibilityState={{ checked: on }}
                   onPress={() => keepChoice(optionIndex)}
-                  className={`min-h-12 justify-center rounded-2xl border px-4 py-3 ${on ? "border-ember bg-emberSoft" : "border-line bg-paper"}`}
+                  className={`min-h-12 justify-center rounded-2xl border px-4 py-3 ${on ? "border-[#0F766E] bg-[#F0FDFA]" : "border-[#E7E5E4] bg-white"}`}
                 >
-                  <Text className="text-base leading-6 text-ink">{option}</Text>
+                  <Text className="text-base leading-6 text-[#111C2D]">{option}</Text>
                 </Pressable>
               );
             })}
-            <Pressable
-              accessibilityRole="button"
-              onPress={nextItem}
-              disabled={picked === null}
-              className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-            >
-              <Text className="text-base font-semibold text-ink">{copy.placeNext}</Text>
-            </Pressable>
+            <TactileButton testID="exam-next" label={copy.placeNext} variant="secondary" size="md" style={{ alignSelf: "flex-start" }} onPress={nextItem} disabled={picked === null} />
           </View>
         ) : null}
 
         {phase === "write" && mock ? (
           <View>
-            <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.examWrite}</Text>
-            <Text className="mt-2 text-lg leading-8 text-ink">{mock.writing}</Text>
+            <Text className="text-xs font-extrabold uppercase tracking-widest text-[#B45309]">{copy.examWrite}</Text>
+            <Text className="mt-2 text-lg leading-8 text-[#111C2D]">{mock.writing}</Text>
             <TextInput
               value={writing}
               onChangeText={setWriting}
               multiline
               textAlignVertical="top"
               accessibilityLabel={copy.examWrite}
-              placeholderTextColor={palette.onSurfaceVariant}
-              className="mt-4 min-h-40 rounded-[28px] bg-card px-5 py-4 text-lg leading-7 text-ink"
+              placeholderTextColor={tactile.faint}
+              className="mt-4 min-h-40 rounded-2xl border-2 border-[#E7E5E4] bg-white px-5 py-4 text-lg leading-7 text-[#111C2D]"
             />
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setPhase("speak")}
-              className="mt-4 min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-            >
-              <Text className="text-base font-semibold text-ink">{copy.placeNext}</Text>
-            </Pressable>
+            <TactileButton testID="exam-to-speak" label={copy.placeNext} variant="secondary" size="md" style={{ marginTop: 16, alignSelf: "flex-start" }} onPress={() => setPhase("speak")} />
           </View>
         ) : null}
 
         {phase === "speak" && mock ? (
           <View>
-            <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.examSpeak}</Text>
-            <Text className="mt-2 text-lg leading-8 text-ink">{mock.speaking}</Text>
+            <Text className="text-xs font-extrabold uppercase tracking-widest text-[#B45309]">{copy.examSpeak}</Text>
+            <Text className="mt-2 text-lg leading-8 text-[#111C2D]">{mock.speaking}</Text>
             <TextInput
               value={speaking}
               onChangeText={setSpeaking}
               multiline
               textAlignVertical="top"
               accessibilityLabel={copy.examSpeak}
-              placeholderTextColor={palette.onSurfaceVariant}
-              className="mt-4 min-h-32 rounded-[28px] bg-card px-5 py-4 text-lg leading-7 text-ink"
+              placeholderTextColor={tactile.faint}
+              className="mt-4 min-h-32 rounded-2xl border-2 border-[#E7E5E4] bg-white px-5 py-4 text-lg leading-7 text-[#111C2D]"
             />
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void close(auth, mock, answers, writing, speaking)}
-              disabled={pending}
-              className="mt-4 min-h-12 items-center justify-center self-start rounded-full bg-ember px-6"
-            >
-              <Text className="text-base font-semibold text-paper">{copy.examSubmit}</Text>
-            </Pressable>
+            <TactileButton label={copy.examSubmit} variant="primary" size="md" style={{ marginTop: 16, alignSelf: "flex-start" }} onPress={() => void close(auth, mock, answers, writing, speaking)} disabled={pending} />
           </View>
         ) : null}
 
         {phase === "result" && result ? (
           <View className="gap-3">
-            <Text className="font-label text-xs uppercase tracking-widest text-muted">{copy.examForecast}</Text>
-            <Text className="font-displayItalic text-display text-ink">{result.display}</Text>
-            <Text className="text-base text-muted">{`${copy.examBand} ${result.band}`}</Text>
-            <Text className="text-base text-muted">{`${copy.examRaw} ${result.raw}`}</Text>
-            {result.previous !== null ? <Text className="text-base text-muted">{`${copy.examWas} ${result.previous}`}</Text> : null}
-            <Text className="text-base text-ember">{copy.examSaved}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
+            <Text className="text-xs font-extrabold uppercase tracking-widest text-[#64748B]">{copy.examForecast}</Text>
+            <Text className="font-display text-5xl font-extrabold text-[#111C2D]">{result.display}</Text>
+            <Text className="text-base text-[#64748B]">{`${copy.examBand} ${result.band}`}</Text>
+            <Text className="text-base text-[#64748B]">{`${copy.examRaw} ${result.raw}`}</Text>
+            {result.previous !== null ? <Text className="text-base text-[#64748B]">{`${copy.examWas} ${result.previous}`}</Text> : null}
+            <Text className="text-base text-[#B45309]">{copy.examSaved}</Text>
+            <TactileButton label={copy.examStart} variant="secondary" size="md" style={{ marginTop: 8, alignSelf: "flex-start" }} onPress={() => {
                 setPhase("pick");
                 setMock(null);
                 setResult(null);
-              }}
-              className="mt-2 min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-            >
-              <Text className="text-base font-semibold text-ink">{copy.examStart}</Text>
-            </Pressable>
+              }} />
           </View>
         ) : null}
 
-        {phase === "error" ? <Text className="text-base leading-7 text-ember">{error}</Text> : null}
-      </View>
-    </AppFrame>
+        {phase === "error" ? <Text className="text-base leading-7 text-[#B45309]">{error}</Text> : null}
+    </TactilePage>
   );
 }

@@ -1,8 +1,11 @@
+import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { TactileButton } from "@/components/tactile/tactile-button";
 import { TactileIcon } from "@/components/tactile/tactile-icon";
 import { tactile } from "@/components/tactile/tokens";
+import { useAreaCopy } from "@/lib/copy/area";
+import { DUEL } from "@/lib/copy/duel";
 import type { PathCopy } from "@/lib/copy/path";
 import type { UnitView } from "@/features/path/model/path-model";
 import { MasteryChecklist } from "./mastery-checklist";
@@ -37,6 +40,7 @@ function nodeColors(status: UnitView["status"]) {
 export function UnitNode({ view, number, last, t, onStudy, onTest }: UnitNodeProps) {
   const { unit, status } = view;
   const [open, setOpen] = useState(view.expanded);
+  const duel = useAreaCopy(DUEL);
   const colors = nodeColors(status);
   const active = status === "active";
   const locked = status === "locked";
@@ -170,6 +174,18 @@ export function UnitNode({ view, number, last, t, onStudy, onTest }: UnitNodePro
                   icon={<TactileIcon name="target" size={16} color="#2A1700" />}
                 />
               ) : null}
+            </View>
+          ) : null}
+
+          {active ? (
+            <View style={{ alignSelf: "flex-start" }}>
+              <TactileButton
+                testID="path-unit-duel"
+                label={duel.unitLink}
+                variant="secondary"
+                size="sm"
+                onPress={() => router.push({ pathname: "/duel", params: { unit: unit.id } })}
+              />
             </View>
           ) : null}
         </View>

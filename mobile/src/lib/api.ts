@@ -4,6 +4,8 @@ import { getCast } from "@/lib/cast";
 import { copy } from "@/lib/i18n";
 import { clipReferenceBytes, speechService, type SpeechClip } from "@/services/speechService";
 import { recordingHasVoice } from "@/lib/voice-activity";
+import { parseDuelRound } from "@/features/practice/model/duel-model";
+import { parseScenesResponse, type PersonaScene, type ScenesResponse } from "@/features/practice/model/scenes";
 import { getSession } from "@/lib/session";
 import type { CognateAnchor, CourseProfile, JournalEvaluation, LessonPayload, LessonRequest, ReconstructionReport, RepairCard, SessionCard, ShadowingResult, SoundNote, VocabularyEntry } from "@/lib/types";
 import type { AccountUser, AccountSettings, LoginChallenge, VerifyChallenge } from "@/api/schemas/auth";
@@ -105,7 +107,12 @@ function silentAttempt(referenceText: string): ShadowingResult {
   return { transcription: "", accuracy_score: 0, mispronounced_words: words, sounds: [], pitch_rhythm_match: 0, cadence_match: 0, bars: [] };
 }
 
-export async function analyzeShadowing(uri: string, referenceText: string, language: string): Promise<ShadowingResult> {
+/** `rhythm_measured` false: o provedor não mediu o ritmo (então rhythm_score é 0 e o app não paga XP de ritmo). Ausente em servidores antigos. */
+export interface MeasuredShadowing extends ShadowingResult {
+  rhythm_measured?: boolean;
+}
+
+export async function analyzeShadowing(uri: string, referenceText: string, language: string): Promise<MeasuredShadowing> {
   const body = new FormData();
   if (Platform.OS === "web") {
     const file = await fetch(uri);
@@ -136,7 +143,7 @@ export async function analyzeShadowing(uri: string, referenceText: string, langu
   if (!response.ok) {
     throw new Error(await readError(response));
   }
-  const report = (await response.json()) as ShadowingResult;
+  const report = (await response.json()) as MeasuredShadowing;
   const bars = Array.isArray(report.bars)
     ? report.bars.filter(
         (bar) =>
@@ -146,7 +153,12 @@ export async function analyzeShadowing(uri: string, referenceText: string, langu
           (bar.note === "apressou" || bar.note === "alongou" || bar.note === "no tempo"),
       )
     : [];
-  return { ...report, bars, sounds: readSounds(report.sounds) };
+  return {
+    ...report,
+    bars,
+    sounds: readSounds(report.sounds),
+    ...(typeof report.rhythm_measured === "boolean" ? { rhythm_measured: report.rhythm_measured } : {}),
+  };
 }
 
 function readSounds(value: unknown): SoundNote[] {
@@ -251,29 +263,36 @@ export interface DuelBoardEntry {
   you: boolean;
 }
 
-export async function fetchDuelRound(token: string): Promise<{ drills: DuelDrill[]; focus: string[] }> {
+export interface DuelRound {
+  drills: DuelDrill[];
+  focus: string[];
+  /** Eco do `unit_id` pedido (rodada-chefe da unidade); null no modo livre. */
+  unit_id: string | null;
+  /** Melhor pontuação da pessoa neste idioma e unidade (ou no modo livre); null se nunca jogou. */
+  best: number | null;
+}
+
+export async function fetchDuelRound(token: string, unitId?: string | null): Promise<DuelRound> {
   const response = await fetch(`${apiUrl()}/api/v1/duel/round`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({}),
+    body: JSON.stringify(unitId ? { unit_id: unitId } : {}),
   });
   if (!response.ok) {
     throw new Error(await readError(response));
   }
-  const body = (await response.json()) as { drills?: DuelDrill[]; focus?: string[] };
-  const drills = Array.isArray(body.drills) ? body.drills.filter((drill) => Array.isArray(drill.options) && drill.options.length === 4 && typeof drill.answer === "number") : [];
-  if (drills.length < 8) {
-    throw new Error("O duelo não trouxe frases suficientes.");
-  }
-  const focus = Array.isArray(body.focus) ? body.focus.filter((item) => typeof item === "string" && item.trim().length > 0) : [];
-  return { drills, focus };
+  return parseDuelRound(await response.json());
 }
 
-export async function saveDuelScore(token: string, score: { score: number; best_combo: number; correct_count: number }): Promise<void> {
+export async function saveDuelScore(
+  token: string,
+  score: { score: number; best_combo: number; correct_count: number; unit_id?: string | null },
+): Promise<void> {
+  const { unit_id: unitId, ...rest } = score;
   const response = await fetch(`${apiUrl()}/api/v1/duel/score`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify(score),
+    body: JSON.stringify(unitId ? { ...rest, unit_id: unitId } : rest),
   });
   if (!response.ok) {
     throw new Error(await readError(response));
@@ -291,16 +310,7 @@ export async function fetchDuelBoard(token: string): Promise<DuelBoardEntry[]> {
   return Array.isArray(body.entries) ? body.entries : [];
 }
 
-export interface PersonaScene {
-  id: string;
-  register: "formal" | "informal";
-  title: string;
-  place: string;
-  role: string;
-  brief: string;
-  opener: string;
-  hitch?: string;
-}
+export type { PersonaScene, SceneSource } from "@/features/practice/model/scenes";
 
 export interface PersonaTurnResult {
   reply: string;
@@ -309,25 +319,26 @@ export interface PersonaTurnResult {
   register: "formal" | "informal";
 }
 
-export async function fetchPersonaScenes(token: string): Promise<PersonaScene[]> {
-  const response = await fetch(`${apiUrl()}/api/v1/persona/scenes`, { headers: authHeaders(token) });
+export async function fetchPersonaScenes(token: string, targetLang: string): Promise<ScenesResponse> {
+  const response = await fetch(`${apiUrl()}/api/v1/persona/scenes?target_lang=${encodeURIComponent(targetLang)}`, {
+    headers: authHeaders(token),
+  });
   if (!response.ok) {
     throw new Error(await readError(response));
   }
-  const body = (await response.json()) as { scenes?: PersonaScene[] };
-  return Array.isArray(body.scenes) ? body.scenes : [];
+  return parseScenesResponse(await response.json());
 }
 
 export async function sendPersonaTurn(
   token: string,
-  sceneId: string,
+  scene: PersonaScene,
   userLine: string,
   history: Array<{ role: "persona" | "learner"; text: string }>,
 ): Promise<PersonaTurnResult> {
   const response = await fetch(`${apiUrl()}/api/v1/persona/turn`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({ scene_id: sceneId, user_line: userLine, history }),
+    body: JSON.stringify({ scene_id: scene.id, scene, user_line: userLine, history }),
   });
   if (!response.ok) {
     throw new Error(await readError(response));
@@ -1577,8 +1588,11 @@ export interface AdaptedNews {
   translation: string;
   vocabulary: VocabularyEntry[];
   journal_prompt: string;
-  source_url: string;
+  /** Link da matéria original; null quando o servidor não tem um. */
+  source_url: string | null;
   source_title: string;
+  /** "full": o texto do artigo; "summary": só título e resumo do RSS (texto mais curto, sem fatos novos). Ausente em servidores antigos. */
+  source_depth?: "full" | "summary";
   published?: string;
   /** Áudio do servidor (só quando uma voz Edge foi pedida). O app narra no aparelho. */
   audioUrl: string | null;
@@ -1612,13 +1626,16 @@ export async function fetchAdaptedNews(
     translation?: string;
     vocabulary?: VocabularyEntry[];
     journal_prompt?: string;
-    source_url?: string;
+    source_url?: string | null;
     source_title?: string;
+    source_name?: string | null;
+    source_depth?: string;
     published?: string | null;
     audio_url?: string;
     words?: Array<{ text?: string; offset_ms?: number }>;
   };
-  if (!body.title || !body.story_text || !body.translation || !body.source_url || !body.source_title) {
+  const sourceName = body.source_name?.trim() || body.source_title?.trim() || "";
+  if (!body.title || !body.story_text || !body.translation) {
     throw new Error("A notícia não voltou completa.");
   }
   const vocabulary = Array.isArray(body.vocabulary)
@@ -1633,8 +1650,9 @@ export async function fetchAdaptedNews(
     translation: body.translation,
     vocabulary,
     journal_prompt: body.journal_prompt?.trim() || "O que esta notícia muda no seu dia?",
-    source_url: body.source_url,
-    source_title: body.source_title,
+    source_url: body.source_url?.trim() || null,
+    source_title: sourceName,
+    ...(body.source_depth === "full" || body.source_depth === "summary" ? { source_depth: body.source_depth } : {}),
     ...(body.published ? { published: body.published } : {}),
     audioUrl: body.audio_url ? (body.audio_url.startsWith("http") ? body.audio_url : `${apiUrl()}${body.audio_url}`) : null,
     words,

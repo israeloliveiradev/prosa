@@ -8,6 +8,21 @@ import { checkoutBodySchema, checkoutSessionParamsSchema } from "../schemas/bill
 import { acquireOnce } from "../security/idempotency.js";
 import { isAllowedReturnUrl } from "../security/return-url.js";
 
+/** Mensagem pública (503) de quando o Stripe não está configurado: o checkout nunca abre. */
+export const PAYMENTS_NOT_CONFIGURED = "Payments are not configured";
+
+export interface BillingStatus {
+  configured: boolean;
+  checkout_available: boolean;
+  reason: "not_configured" | null;
+}
+
+/** O checkout só existe com chave e preço do Stripe. Sem eles nada vira Pro. */
+export function billingStatus(env: Pick<Env, "STRIPE_SECRET_KEY" | "STRIPE_PRICE_ID">): BillingStatus {
+  const configured = Boolean(env.STRIPE_SECRET_KEY.trim() && env.STRIPE_PRICE_ID.trim());
+  return { configured, checkout_available: configured, reason: configured ? null : "not_configured" };
+}
+
 export function registerBillingRoutes(app: FastifyInstance, env: Env, pool: Pool, redis: Redis): void {
   app.get(
     "/api/v1/billing/status",
@@ -16,9 +31,7 @@ export function registerBillingRoutes(app: FastifyInstance, env: Env, pool: Pool
         rateLimit: { max: 30, timeWindow: "1 minute" },
       },
     },
-    async () => ({
-      configured: Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID),
-    }),
+    async () => billingStatus(env),
   );
 
   app.post(
@@ -32,15 +45,15 @@ export function registerBillingRoutes(app: FastifyInstance, env: Env, pool: Pool
       },
     },
     async (request) => {
+      const account = await requireUser(pool, request);
+      const secret = env.STRIPE_SECRET_KEY.trim();
+      const price = env.STRIPE_PRICE_ID.trim();
+      if (!billingStatus(env).checkout_available) {
+        throw new AppError(503, PAYMENTS_NOT_CONFIGURED);
+      }
       const body = checkoutBodySchema.parse(request.body);
       if (!isAllowedReturnUrl(body.success_url, env) || !isAllowedReturnUrl(body.cancel_url, env)) {
         throw new AppError(400, "Checkout return URL is not allowed");
-      }
-      const account = await requireUser(pool, request);
-      const secret = env.STRIPE_SECRET_KEY;
-      const price = env.STRIPE_PRICE_ID;
-      if (!secret || !price) {
-        throw new AppError(503, "Stripe is not configured");
       }
       await acquireOnce(redis, `prosa:once:checkout:${account.id}`, 20);
 
@@ -76,9 +89,9 @@ export function registerBillingRoutes(app: FastifyInstance, env: Env, pool: Pool
     async (request) => {
       const account = await requireUser(pool, request);
       const params = checkoutSessionParamsSchema.parse(request.params);
-      const secret = env.STRIPE_SECRET_KEY;
+      const secret = env.STRIPE_SECRET_KEY.trim();
       if (!secret) {
-        throw new AppError(503, "Stripe is not configured");
+        throw new AppError(503, PAYMENTS_NOT_CONFIGURED);
       }
       const session = await stripeRequest<{
         status?: string;

@@ -101,6 +101,7 @@ export const SESSION_COPY = defineArea({
     cadenceRushed: "apressou",
     cadenceStretched: "alongou",
     cadenceOnTime: "no tempo",
+    rhythmNotMeasured: "Ritmo não medido nesta tentativa",
     retry: "Tentar de novo",
   },
   en: {
@@ -199,6 +200,7 @@ export const SESSION_COPY = defineArea({
     cadenceRushed: "rushed",
     cadenceStretched: "stretched",
     cadenceOnTime: "on time",
+    rhythmNotMeasured: "Rhythm not measured on this attempt",
     retry: "Try again",
   },
   de: {
@@ -297,6 +299,7 @@ export const SESSION_COPY = defineArea({
     cadenceRushed: "zu schnell",
     cadenceStretched: "zu gedehnt",
     cadenceOnTime: "im Takt",
+    rhythmNotMeasured: "Rhythmus bei diesem Versuch nicht gemessen",
     retry: "Noch einmal versuchen",
   },
   fr: {
@@ -395,6 +398,7 @@ export const SESSION_COPY = defineArea({
     cadenceRushed: "trop rapide",
     cadenceStretched: "trop étiré",
     cadenceOnTime: "dans le rythme",
+    rhythmNotMeasured: "Rythme non mesuré pour cet essai",
     retry: "Réessayer",
   },
   es: {
@@ -493,6 +497,7 @@ export const SESSION_COPY = defineArea({
     cadenceRushed: "apresurado",
     cadenceStretched: "alargado",
     cadenceOnTime: "a tiempo",
+    rhythmNotMeasured: "Ritmo no medido en este intento",
     retry: "Intentar de nuevo",
   },
   it: {
@@ -591,6 +596,7 @@ export const SESSION_COPY = defineArea({
     cadenceRushed: "troppo veloce",
     cadenceStretched: "troppo allungato",
     cadenceOnTime: "a tempo",
+    rhythmNotMeasured: "Ritmo non misurato in questo tentativo",
     retry: "Riprova",
   },
   ja: {
@@ -689,6 +695,7 @@ export const SESSION_COPY = defineArea({
     cadenceRushed: "速すぎ",
     cadenceStretched: "伸びすぎ",
     cadenceOnTime: "ちょうどよい",
+    rhythmNotMeasured: "今回はリズムを測定できませんでした",
     retry: "もう一度",
   },
 });

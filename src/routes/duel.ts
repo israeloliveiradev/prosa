@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { requireUser } from "../auth/session.js";
-import { duelScoreBodySchema } from "../schemas/duel.js";
+import { duelRoundBodySchema, duelScoreBodySchema } from "../schemas/duel.js";
 import type { DuelService } from "../services/duel-service.js";
 
 export function registerDuelRoutes(app: FastifyInstance, pool: Pool, duel: DuelService): void {
@@ -14,7 +14,8 @@ export function registerDuelRoutes(app: FastifyInstance, pool: Pool, duel: DuelS
     },
     async (request) => {
       const user = await requireUser(pool, request);
-      return duel.round(user);
+      const body = duelRoundBodySchema.parse(request.body ?? {});
+      return duel.round(user, body.unit_id);
     },
   );
 

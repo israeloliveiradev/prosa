@@ -603,7 +603,7 @@ export function DailyNews() {
                         setEarKey(key);
                       }}
                     />
-                    <TactileButton label={t.study} variant="primary" onPress={() => study(story)} />
+                    <TactileButton testID="news-study" label={t.study} variant="primary" onPress={() => study(story)} />
                   </View>
                   <Text className="mt-2 text-xs text-[#64748B]">{t.studyHint}</Text>
                   <ListenPace />
@@ -614,17 +614,35 @@ export function DailyNews() {
                   ) : null}
                 </>
               )}
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel={`${t.source}: ${story.source_title}`}
-                onPress={() => void Linking.openURL(story.source_url)}
-                className="mt-5 min-h-11 cursor-pointer justify-center self-start"
-              >
-                <Text className="text-sm text-[#64748B]">
-                  {`${t.source}: `}
-                  <Text className="font-semibold text-[#0F766E] underline">{story.source_title}</Text>
+              {story.source_depth ? (
+                <View
+                  testID={`news-depth-${story.source_depth}`}
+                  className="mt-4 self-start rounded-lg px-3 py-1.5"
+                  style={{ backgroundColor: story.source_depth === "summary" ? "#FEF3C7" : "#E6F4F1" }}
+                >
+                  <Text className="text-xs font-bold" style={{ color: story.source_depth === "summary" ? "#78350F" : "#00685F" }}>
+                    {story.source_depth === "summary" ? t.depthSummary : t.depthFull}
+                  </Text>
+                </View>
+              ) : null}
+              {story.source_url ? (
+                <Pressable
+                  testID="news-source-link"
+                  accessibilityRole="link"
+                  accessibilityLabel={`${t.source}: ${story.source_title}`}
+                  onPress={() => void Linking.openURL(story.source_url as string)}
+                  className="mt-3 min-h-11 cursor-pointer justify-center self-start"
+                >
+                  <Text className="text-sm text-[#64748B]">
+                    {`${t.source}: `}
+                    <Text className="font-semibold text-[#0F766E] underline">{story.source_title || story.source_url}</Text>
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text testID="news-source-missing" className="mt-3 text-sm text-[#64748B]">
+                  {story.source_title ? `${t.source}: ${story.source_title}` : t.sourceMissing}
                 </Text>
-              </Pressable>
+              )}
             </View>
           </TactileCard>
         );

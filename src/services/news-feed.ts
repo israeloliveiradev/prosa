@@ -178,6 +178,8 @@ export interface NewsHeadline {
   url: string;
   summary: string;
   published?: string;
+  /** Nome do editor (`<source>` do Google News), quando o feed traz. */
+  source?: string;
 }
 
 export function newsFeedUrl(targetLang: string, interest?: string): string {
@@ -236,10 +238,11 @@ export function parseRssItems(xml: string, limit = 15): NewsHeadline[] {
     const url = firstHttps(textOf(block, "link")) ?? firstHttps(textOf(block, "guid"));
     const summary = decodeXml(stripTags(unwrap(textOf(block, "description"))));
     const published = decodeXml(unwrap(textOf(block, "pubDate") || textOf(block, "updated")));
+    const source = decodeXml(stripTags(unwrap(textOf(block, "source")))).slice(0, 120);
     if (!title || !url) {
       continue;
     }
-    items.push({ title, url, summary, ...(published ? { published } : {}) });
+    items.push({ title, url, summary, ...(published ? { published } : {}), ...(source ? { source } : {}) });
     if (items.length >= limit) {
       break;
     }

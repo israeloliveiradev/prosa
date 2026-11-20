@@ -2,6 +2,7 @@ import { completeSession, pathKeys } from "@/api/path";
 import { queryClient } from "@/api/query-client";
 import type { SessionCompleteBody, SessionCompleteResponse } from "@/api/schemas/path";
 import { kv } from "@/lib/kv";
+import { rememberProfile } from "@/lib/session";
 import { completionRetriable, parseOutbox, type OutboxState } from "./outbox-model";
 
 /**
@@ -51,6 +52,9 @@ export function sendCompletion(key: string, body: SessionCompleteBody): Promise<
     try {
       const response = await completeSession(body);
       writeOutbox(key, { pending: null, last: { date: body.date, streak: response.streak_count } });
+      if (typeof response.streak_count === "number") {
+        rememberProfile({ streak_count: response.streak_count, last_session_date: body.date });
+      }
       void queryClient.invalidateQueries({ queryKey: pathKeys.all });
       return { kind: "saved", response };
     } catch (error) {

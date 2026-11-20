@@ -138,7 +138,7 @@ export const SHELL_COPY = defineArea<ShellCopy>({
     focusClose: "Schließen",
     focusProgress: "Fortschritt des Schritts",
     focusExitTitle: "Jetzt verlassen?",
-    focusExitMessage: "Was Sie in diesem Schritt noch nicht gespeichert haben, geht verloren.",
+    focusExitMessage: "Was du in diesem Schritt noch nicht gespeichert hast, geht verloren.",
     focusExitConfirm: "Trotzdem verlassen",
     focusExitCancel: "Weitermachen",
     rulerDone: "Die heutige Einheit ist abgeschlossen.",

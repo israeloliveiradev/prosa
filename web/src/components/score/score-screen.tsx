@@ -1,8 +1,6 @@
 import { Redirect } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { AppFrame } from "@/components/shell/app-frame";
-import { PageMasthead } from "@/components/shell/page-masthead";
 import {
   answerScore,
   fetchScoreStatus,
@@ -21,7 +19,9 @@ import { languageName } from "@/lib/languages";
 import { narratorVoice } from "@/lib/narrator";
 import { useSession } from "@/lib/session";
 import { startNeuralPlayback, type PlaybackHandle } from "@/lib/voice";
-import { useTheme } from "@/theme/ThemeContext";
+import { TactilePage } from "@/features/shell/tactile-page";
+import { TactileButton } from "@/components/tactile/tactile-button";
+import { tactile } from "@/components/tactile/tokens";
 
 type Phase = "intro" | "item" | "write" | "speak" | "result" | "error";
 
@@ -39,7 +39,6 @@ function shareUrl(token: string): string {
 export function ScoreScreen() {
   const session = useSession();
   const copy = useCopy();
-  const { palette } = useTheme();
   const token = session?.token;
   const targetLang = session?.user?.target_lang ?? "en";
   const throughLang = session?.user?.native_lang ?? "pt";
@@ -186,59 +185,42 @@ export function ScoreScreen() {
   const canStart = Boolean(status?.due || status?.open_attempt_id);
 
   return (
-    <AppFrame>
-      <View className="gap-8">
-        <PageMasthead
-          kicker={copy.scoreKicker}
-          title={copy.scoreTitle}
-          dek={phase === "intro" ? copy.scoreDek : undefined}
-        />
-        {error && phase !== "error" ? <Text className="text-base text-ember">{error}</Text> : null}
+    <TactilePage testID="score-screen" kicker={copy.scoreKicker} title={copy.scoreTitle} dek={phase === "intro" ? copy.scoreDek : undefined}>
+        {error && phase !== "error" ? <Text className="text-base text-[#B45309]">{error}</Text> : null}
 
         {phase === "intro" ? (
           <View className="gap-4">
             {status?.latest ? (
-              <View className="rounded-3xl border border-line bg-card px-5 py-4">
-                <Text className="font-displayItalic text-headline text-ink">{status.latest.score}</Text>
-                <Text className="mt-1 text-base text-muted">{status.latest.band}</Text>
+              <View className="rounded-3xl border-2 border-[#E7E5E4] bg-white px-5 py-4">
+                <Text className="font-display text-4xl font-extrabold text-[#111C2D]">{status.latest.score}</Text>
+                <Text className="mt-1 text-base text-[#64748B]">{status.latest.band}</Text>
                 {status.latest.share_token ? (
-                  <Text className="mt-2 text-sm text-muted">{shareUrl(status.latest.share_token)}</Text>
+                  <Text className="mt-2 text-sm text-[#64748B]">{shareUrl(status.latest.share_token)}</Text>
                 ) : null}
               </View>
             ) : (
-              <Text className="text-base leading-7 text-muted">{copy.scoreNever}</Text>
+              <Text className="text-base leading-7 text-[#64748B]">{copy.scoreNever}</Text>
             )}
             {wait ? (
-              <Text className="text-base text-muted">{fill(copy.scoreWait, { days: status.days_until ?? 0 })}</Text>
+              <Text className="text-base text-[#64748B]">{fill(copy.scoreWait, { days: status.days_until ?? 0 })}</Text>
             ) : status?.due && status.latest ? (
-              <Text className="text-base text-muted">{copy.scoreDue}</Text>
+              <Text className="text-base text-[#64748B]">{copy.scoreDue}</Text>
             ) : null}
             {canStart ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => void begin()}
-                disabled={pending}
-                className="min-h-12 items-center justify-center self-start rounded-full bg-ember px-6"
-              >
-                <Text className="text-base font-semibold text-paper">
-                  {status?.open_attempt_id ? copy.scoreContinue : copy.scoreStart}
-                </Text>
-              </Pressable>
+              <TactileButton testID="score-start" label={status?.open_attempt_id ? copy.scoreContinue : copy.scoreStart} variant="primary" size="md" style={{ alignSelf: "flex-start" }} onPress={() => void begin()} disabled={pending} />
             ) : null}
           </View>
         ) : null}
 
         {phase === "item" && item ? (
           <View className="gap-4">
-            <Text className="font-label text-xs uppercase tracking-widest text-muted">
+            <Text className="text-xs font-extrabold uppercase tracking-widest text-[#64748B]">
               {fill(copy.scoreLive, { n: asked + 1 })}
             </Text>
-            {item.passage ? <Text className="text-lg leading-8 text-ink">{item.passage}</Text> : null}
-            <Text className="text-lg leading-7 text-ink">{item.prompt}</Text>
+            {item.passage ? <Text className="text-lg leading-8 text-[#111C2D]">{item.passage}</Text> : null}
+            <Text className="text-lg leading-7 text-[#111C2D]">{item.prompt}</Text>
             {item.audio_text ? (
-              <Pressable accessibilityRole="button" onPress={() => void hear(item)} className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5">
-                <Text className="text-base font-semibold text-ink">{copy.examListen}</Text>
-              </Pressable>
+              <TactileButton label={copy.examListen} variant="secondary" size="md" style={{ alignSelf: "flex-start" }} onPress={() => void hear(item)} />
             ) : null}
             {item.options.map((option, optionIndex) => {
               const on = picked === optionIndex;
@@ -251,100 +233,72 @@ export function ScoreScreen() {
                     setPicked(optionIndex);
                     void tap("light");
                   }}
-                  className={`min-h-12 justify-center rounded-2xl border px-4 py-3 ${on ? "border-ember bg-emberSoft" : "border-line bg-paper"}`}
+                  className={`min-h-12 justify-center rounded-2xl border px-4 py-3 ${on ? "border-[#0F766E] bg-[#F0FDFA]" : "border-[#E7E5E4] bg-white"}`}
                 >
-                  <Text className="text-base leading-6 text-ink">{option}</Text>
+                  <Text className="text-base leading-6 text-[#111C2D]">{option}</Text>
                 </Pressable>
               );
             })}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void forward()}
-              disabled={picked === null || pending}
-              className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-            >
-              <Text className="text-base font-semibold text-ink">{copy.placeNext}</Text>
-            </Pressable>
+            <TactileButton testID="score-next" label={copy.placeNext} variant="secondary" size="md" style={{ alignSelf: "flex-start" }} onPress={() => void forward()} disabled={picked === null || pending} />
           </View>
         ) : null}
 
         {phase === "write" && prompts ? (
           <View>
-            <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.examWrite}</Text>
-            <Text className="mt-2 text-lg leading-8 text-ink">{prompts.writing}</Text>
+            <Text className="text-xs font-extrabold uppercase tracking-widest text-[#B45309]">{copy.examWrite}</Text>
+            <Text className="mt-2 text-lg leading-8 text-[#111C2D]">{prompts.writing}</Text>
             <TextInput
               value={writing}
               onChangeText={setWriting}
               multiline
               textAlignVertical="top"
               accessibilityLabel={copy.examWrite}
-              placeholderTextColor={palette.onSurfaceVariant}
-              className="mt-4 min-h-40 rounded-[28px] bg-card px-5 py-4 text-lg leading-7 text-ink"
+              placeholderTextColor={tactile.faint}
+              className="mt-4 min-h-40 rounded-2xl border-2 border-[#E7E5E4] bg-white px-5 py-4 text-lg leading-7 text-[#111C2D]"
             />
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setPhase("speak")}
-              disabled={writing.trim().length === 0}
-              className="mt-4 min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-            >
-              <Text className="text-base font-semibold text-ink">{copy.placeNext}</Text>
-            </Pressable>
+            <TactileButton testID="score-to-speak" label={copy.placeNext} variant="secondary" size="md" style={{ marginTop: 16, alignSelf: "flex-start" }} onPress={() => setPhase("speak")} disabled={writing.trim().length === 0} />
           </View>
         ) : null}
 
         {phase === "speak" && prompts ? (
           <View>
-            <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.examSpeak}</Text>
-            <Text className="mt-2 text-lg leading-8 text-ink">{prompts.speaking}</Text>
+            <Text className="text-xs font-extrabold uppercase tracking-widest text-[#B45309]">{copy.examSpeak}</Text>
+            <Text className="mt-2 text-lg leading-8 text-[#111C2D]">{prompts.speaking}</Text>
             <TextInput
               value={speaking}
               onChangeText={setSpeaking}
               multiline
               textAlignVertical="top"
               accessibilityLabel={copy.examSpeak}
-              placeholderTextColor={palette.onSurfaceVariant}
-              className="mt-4 min-h-32 rounded-[28px] bg-card px-5 py-4 text-lg leading-7 text-ink"
+              placeholderTextColor={tactile.faint}
+              className="mt-4 min-h-32 rounded-2xl border-2 border-[#E7E5E4] bg-white px-5 py-4 text-lg leading-7 text-[#111C2D]"
             />
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void close()}
-              disabled={pending || speaking.trim().length === 0}
-              className="mt-4 min-h-12 items-center justify-center self-start rounded-full bg-ember px-6"
-            >
-              <Text className="text-base font-semibold text-paper">{copy.scoreFinish}</Text>
-            </Pressable>
+            <TactileButton testID="score-finish" label={copy.scoreFinish} variant="primary" size="md" style={{ marginTop: 16, alignSelf: "flex-start" }} onPress={() => void close()} disabled={pending || speaking.trim().length === 0} />
           </View>
         ) : null}
 
         {phase === "result" && result ? (
           <View className="gap-3">
-            <Text className="font-displayItalic text-display text-ink">{result.score}</Text>
-            <Text className="text-base text-muted">{`${result.band} · ${languageName(result.target_lang)}`}</Text>
-            {result.previous !== null ? <Text className="text-base text-muted">{`${copy.examWas} ${result.previous}`}</Text> : null}
-            {result.held ? <Text className="text-base text-ember">{copy.scoreHeld}</Text> : null}
+            <Text className="font-display text-5xl font-extrabold text-[#111C2D]">{result.score}</Text>
+            <Text className="text-base text-[#64748B]">{`${result.band} · ${languageName(result.target_lang)}`}</Text>
+            {result.previous !== null ? <Text className="text-base text-[#64748B]">{`${copy.examWas} ${result.previous}`}</Text> : null}
+            {result.held ? <Text className="text-base text-[#B45309]">{copy.scoreHeld}</Text> : null}
             {result.share_token ? (
               <View className="gap-2">
-                <Text className="text-sm text-muted">{shareUrl(result.share_token)}</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
+                <Text className="text-sm text-[#64748B]">{shareUrl(result.share_token)}</Text>
+                <TactileButton label={copied ? copy.scoreCopied : copy.scoreCopy} variant="secondary" size="md" style={{ alignSelf: "flex-start" }} onPress={() => {
                     void writeClipboard(shareUrl(result.share_token ?? "")).then((ok) => {
                       if (ok) {
                         setCopied(true);
                       }
                     });
-                  }}
-                  className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-                >
-                  <Text className="text-base font-semibold text-ink">{copied ? copy.scoreCopied : copy.scoreCopy}</Text>
-                </Pressable>
+                  }} />
               </View>
             ) : null}
           </View>
         ) : null}
 
-        {phase === "error" ? <Text className="text-base leading-7 text-ember">{error}</Text> : null}
-      </View>
-    </AppFrame>
+        {phase === "error" ? <Text className="text-base leading-7 text-[#B45309]">{error}</Text> : null}
+    </TactilePage>
   );
 }

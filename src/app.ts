@@ -59,6 +59,7 @@ import { ReminderService } from "./services/reminders.js";
 import { SecondFactor } from "./services/second-factor.js";
 import { EmailVerify } from "./services/email-verify.js";
 import { PersonalizationService } from "./services/personalization-service.js";
+import { NewsPreload } from "./services/news-preload.js";
 import { PathService } from "./services/path-service.js";
 import { PlacementService } from "./services/placement-service.js";
 import { ProfileStore } from "./services/profile-store.js";
@@ -172,7 +173,7 @@ export async function buildApp(env: Env) {
   const mnemonics = new MnemonicService(pool, gemini);
   const grammar = new GrammarService(gemini, neural);
   const duel = new DuelService(pool, gemini);
-  const persona = new PersonaService(pool, gemini);
+  const persona = new PersonaService(pool, gemini, redis);
   const prose = new ProseService(pool, gemini);
   const profiles = new ProfileStore(pool);
   const exams = new ExamService(pool, profiles);
@@ -189,9 +190,15 @@ export async function buildApp(env: Env) {
   const factors = new SecondFactor(pool, redis, mailer);
   const verify = new EmailVerify(pool, redis, mailer);
   const reminders = new ReminderService(pool, redis, mailer);
+  const newsPreload = new NewsPreload(pool, redis, personalization, { enabled: env.NEWS_PRELOAD_ENABLED }, ops, {
+    isPaused: () => ops.isGenerationPaused(),
+  });
   void reminders.tick();
   const reminderTick = setInterval(() => {
     void reminders.tick();
+    void newsPreload.tick().catch((error: unknown) => {
+      app.log.warn({ err: error }, "news preload tick failed");
+    });
   }, 15 * 60 * 1000);
   registerHealthRoute(app, pool, redis);
   registerAuthRoutes(app, pool, redis, emails, reset, factors, verify, mailer);

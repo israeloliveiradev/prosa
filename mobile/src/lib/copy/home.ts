@@ -20,6 +20,8 @@ const pt = {
   newCards: (n: number) => (n === 1 ? "1 cartão novo guardado" : `${n} cartões novos guardados`),
   streakTitle: "Ofensiva",
   streakDays: (n: number) => (n === 1 ? "1 dia seguido" : `${n} dias seguidos`),
+
+  streakDeviceNote: "Deste aparelho",
   bestStreak: (n: number) => `Recorde: ${n}`,
   dayDone: (day: string) => `${day}: sessão feita`,
   dayMissed: (day: string) => `${day}: sem sessão`,
@@ -74,6 +76,8 @@ export const HOME_COPY = defineArea<HomeCopy>({
     newCards: (n: number) => (n === 1 ? "1 new card saved" : `${n} new cards saved`),
     streakTitle: "Streak",
     streakDays: (n: number) => (n === 1 ? "1 day in a row" : `${n} days in a row`),
+
+    streakDeviceNote: "On this device",
     bestStreak: (n: number) => `Best: ${n}`,
     dayDone: (day: string) => `${day}: session done`,
     dayMissed: (day: string) => `${day}: no session`,
@@ -123,6 +127,8 @@ export const HOME_COPY = defineArea<HomeCopy>({
     newCards: (n: number) => (n === 1 ? "1 neue Karte gespeichert" : `${n} neue Karten gespeichert`),
     streakTitle: "Serie",
     streakDays: (n: number) => (n === 1 ? "1 Tag in Folge" : `${n} Tage in Folge`),
+
+    streakDeviceNote: "Auf diesem Gerät",
     bestStreak: (n: number) => `Rekord: ${n}`,
     dayDone: (day: string) => `${day}: Sitzung erledigt`,
     dayMissed: (day: string) => `${day}: keine Sitzung`,
@@ -172,6 +178,8 @@ export const HOME_COPY = defineArea<HomeCopy>({
     newCards: (n: number) => (n === 1 ? "1 nouvelle carte gardée" : `${n} nouvelles cartes gardées`),
     streakTitle: "Série",
     streakDays: (n: number) => (n === 1 ? "1 jour d'affilée" : `${n} jours d'affilée`),
+
+    streakDeviceNote: "Sur cet appareil",
     bestStreak: (n: number) => `Record : ${n}`,
     dayDone: (day: string) => `${day} : séance faite`,
     dayMissed: (day: string) => `${day} : pas de séance`,
@@ -221,6 +229,8 @@ export const HOME_COPY = defineArea<HomeCopy>({
     newCards: (n: number) => (n === 1 ? "1 tarjeta nueva guardada" : `${n} tarjetas nuevas guardadas`),
     streakTitle: "Racha",
     streakDays: (n: number) => (n === 1 ? "1 día seguido" : `${n} días seguidos`),
+
+    streakDeviceNote: "En este dispositivo",
     bestStreak: (n: number) => `Récord: ${n}`,
     dayDone: (day: string) => `${day}: sesión hecha`,
     dayMissed: (day: string) => `${day}: sin sesión`,
@@ -270,6 +280,8 @@ export const HOME_COPY = defineArea<HomeCopy>({
     newCards: (n: number) => (n === 1 ? "1 carta nuova salvata" : `${n} carte nuove salvate`),
     streakTitle: "Serie",
     streakDays: (n: number) => (n === 1 ? "1 giorno di fila" : `${n} giorni di fila`),
+
+    streakDeviceNote: "Su questo dispositivo",
     bestStreak: (n: number) => `Record: ${n}`,
     dayDone: (day: string) => `${day}: sessione fatta`,
     dayMissed: (day: string) => `${day}: nessuna sessione`,
@@ -319,6 +331,8 @@ export const HOME_COPY = defineArea<HomeCopy>({
     newCards: (n: number) => `新しく保存したカード ${n} 枚`,
     streakTitle: "連続記録",
     streakDays: (n: number) => `${n}日連続`,
+
+    streakDeviceNote: "この端末の記録",
     bestStreak: (n: number) => `最高記録：${n}`,
     dayDone: (day: string) => `${day}：セッション完了`,
     dayMissed: (day: string) => `${day}：セッションなし`,

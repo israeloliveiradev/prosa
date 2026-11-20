@@ -25,6 +25,8 @@ export const AccountUserSchema = z
     role: z.enum(["learner", "admin"]).optional(),
     interests: z.array(z.string()).optional(),
     streak_count: z.number().optional(),
+    // Dia (UTC, AAAA-MM-DD) da última sessão concluída; servidor antigo não manda.
+    last_session_date: z.string().nullable().optional().catch(undefined),
     streak_freeze_count: z.number().optional(),
     last_lesson_at: z.string().nullable().optional(),
     name: z.string().nullable().optional(),

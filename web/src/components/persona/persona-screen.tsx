@@ -6,7 +6,7 @@ import { classifyFailure, fill, languageLabel, trimHistory } from "@/components/
 import { TalkFailure, type TalkFailureState } from "@/components/session/prose-screen";
 import { TactileButton } from "@/components/tactile/tactile-button";
 import { TactileCard } from "@/components/tactile/tactile-card";
-import { fetchPersonaScenes, sendPersonaTurn, speakStory, transcribeSpeech, type PersonaScene, type PersonaTurnResult } from "@/lib/api";
+import { fetchPersonaScenes, sendPersonaTurn, speakStory, transcribeSpeech, type PersonaScene, type PersonaTurnResult, type SceneSource } from "@/lib/api";
 import { useAreaCopy } from "@/lib/copy/area";
 import { TALK, type TalkCopy } from "@/lib/copy/talk";
 import { tap } from "@/lib/haptics";
@@ -39,14 +39,14 @@ function toneText(tone: Tone, t: TalkCopy): string {
   return t.toneInadequate;
 }
 
-function RegisterTag({ formal, label }: { formal: boolean; label: string }) {
-  return (
-    <View className="rounded-md px-2 py-0.5" style={{ backgroundColor: formal ? "#E0F2FE" : "#FEF3C7" }}>
-      <Text className="text-[11px] font-extrabold" style={{ color: formal ? "#075985" : "#78350F" }}>
-        {label}
-      </Text>
-    </View>
-  );
+function kindLabel(kind: PersonaScene["kind"], t: TalkCopy): string {
+  if (kind === "goal") {
+    return t.fromGoal;
+  }
+  if (kind === "unit") {
+    return t.fromUnit;
+  }
+  return t.fromInterest;
 }
 
 function failureOf(caught: unknown) {
@@ -69,6 +69,7 @@ export function PersonaScreen() {
   const recorderRef = useRef(recorder);
   recorderRef.current = recorder;
   const [scenes, setScenes] = useState<PersonaScene[]>([]);
+  const [source, setSource] = useState<SceneSource>("ai");
   const [scene, setScene] = useState<PersonaScene | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
@@ -94,10 +95,11 @@ export function PersonaScreen() {
     let active = true;
     setPhase("loading");
     setFailure(null);
-    void fetchPersonaScenes(token)
+    void fetchPersonaScenes(token, targetLang)
       .then((next) => {
         if (active) {
-          setScenes(next);
+          setScenes(next.scenes);
+          setSource(next.source);
           setPhase("list");
         }
       })
@@ -110,7 +112,7 @@ export function PersonaScreen() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, targetLang]);
 
   useEffect(() => loadScenes(), [loadScenes]);
 
@@ -151,13 +153,12 @@ export function PersonaScreen() {
     AudioService.stopAndUnload();
     setSpeakingIndex(null);
     setScene(next);
-    setTurns([{ role: "persona", text: next.opener }]);
+    setTurns([]);
     setDraft("");
     setFailure(null);
     setVoiceFailed(false);
     setPhase("talk");
     void tap("light");
-    void playLine(next.opener, 0);
   }
 
   function leaveScene() {
@@ -225,7 +226,7 @@ export function PersonaScreen() {
     if (!line) {
       return;
     }
-    const history = trimHistory(turns.slice(1), 12);
+    const history = trimHistory(turns, 12);
     const index = turns.length + 1;
     setDraft("");
     setTurns((current) => [...current, { role: "learner", text: line }]);
@@ -234,7 +235,7 @@ export function PersonaScreen() {
     AudioService.stopAndUnload();
     setSpeakingIndex(null);
     try {
-      const result = await sendPersonaTurn(token, scene.id, line, history);
+      const result = await sendPersonaTurn(token, scene, line, history);
       setTurns((current) => [...current, { role: "persona", text: result.reply, tone: result.tone, note: result.cultural_note }]);
       void tap(result.tone === "adequate" ? "success" : "medium");
       void playLine(result.reply, index);
@@ -271,36 +272,41 @@ export function PersonaScreen() {
       {phase === "list" ? (
         <View className="gap-4">
           <Text className="text-base leading-6 text-[#3D4947]">{fill(t.scenesDek, { lang })}</Text>
+          {source === "fallback" ? (
+            <View testID="talk-scenes-offline" accessibilityRole="alert" className="self-start rounded-lg px-3 py-1.5" style={{ backgroundColor: "#FEF3C7" }}>
+              <Text className="text-xs font-bold" style={{ color: "#78350F" }}>
+                {t.fallbackBadge}
+              </Text>
+            </View>
+          ) : null}
           {scenes.length === 0 ? <Text className="text-base text-[#64748B]">{t.scenesEmpty}</Text> : null}
           <View className="flex-row flex-wrap gap-4">
-            {scenes.map((item) => {
-              const register = item.register === "formal" ? t.formal : t.informal;
-              return (
-                <Pressable
-                  key={item.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${item.title}, ${item.role}, ${register}. ${t.openScene}`}
-                  onPress={() => openScene(item)}
-                  className="flex-1 cursor-pointer rounded-2xl border border-[#E2E8F0] bg-white p-5"
-                  style={{ minWidth: 260, flexBasis: 300, boxShadow: "0 4px 0 #E2E8F0" } as ViewStyle}
-                >
-                  <View className="flex-row flex-wrap items-center gap-2">
-                    <Text className="text-[11px] font-extrabold uppercase tracking-wider text-[#0D9488]">{item.place}</Text>
-                    <RegisterTag formal={item.register === "formal"} label={register} />
-                  </View>
-                  <Text className="mt-2 font-display text-xl font-extrabold text-[#111C2D]">{item.title}</Text>
-                  <Text className="mt-1 text-sm font-semibold text-[#3D4947]">{item.role}</Text>
-                  <Text className="mt-2 text-sm leading-5 text-[#64748B]">{item.brief}</Text>
-                  {item.hitch ? (
-                    <Text className="mt-2 text-sm leading-5 text-[#111C2D]">
-                      <Text className="font-bold">{`${t.hitch}: `}</Text>
-                      {item.hitch}
-                    </Text>
-                  ) : null}
-                  <Text className="mt-3 text-sm font-extrabold text-[#0F766E]">{`${t.openScene} →`}</Text>
-                </Pressable>
-              );
-            })}
+            {scenes.map((item) => (
+              <Pressable
+                key={item.id}
+                testID={`talk-scene-${item.id}`}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.title}. ${item.objective}. ${t.openScene}`}
+                onPress={() => openScene(item)}
+                className="flex-1 cursor-pointer rounded-2xl border border-[#E2E8F0] bg-white p-5"
+                style={{ minWidth: 260, flexBasis: 300, boxShadow: "0 4px 0 #E2E8F0" } as ViewStyle}
+              >
+                <Text className="text-[11px] font-extrabold uppercase tracking-wider text-[#0D9488]">{kindLabel(item.kind, t)}</Text>
+                <Text className="mt-2 font-display text-xl font-extrabold text-[#111C2D]">{item.title}</Text>
+                <Text className="mt-1 text-sm leading-5 text-[#64748B]">{item.setting}</Text>
+                <Text className="mt-2 text-sm leading-5 text-[#3D4947]">
+                  <Text className="font-bold">{`${t.objective}: `}</Text>
+                  {item.objective}
+                </Text>
+                {item.twist ? (
+                  <Text className="mt-2 text-sm leading-5 text-[#111C2D]">
+                    <Text className="font-bold">{`${t.twist}: `}</Text>
+                    {item.twist}
+                  </Text>
+                ) : null}
+                <Text className="mt-3 text-sm font-extrabold text-[#0F766E]">{`${t.openScene} →`}</Text>
+              </Pressable>
+            ))}
           </View>
         </View>
       ) : null}
@@ -309,25 +315,40 @@ export function PersonaScreen() {
         <View className="gap-4">
           <TactileCard className="p-5" animateEntry={false}>
             <View>
-              <View className="flex-row flex-wrap items-center gap-2">
-                <Text className="text-[11px] font-extrabold uppercase tracking-wider text-[#0D9488]">{scene.place}</Text>
-                <RegisterTag formal={scene.register === "formal"} label={scene.register === "formal" ? t.formal : t.informal} />
-              </View>
+              <Text className="text-[11px] font-extrabold uppercase tracking-wider text-[#0D9488]">{kindLabel(scene.kind, t)}</Text>
               <Text className="mt-2 font-display text-xl font-extrabold text-[#111C2D]">{scene.title}</Text>
-              <Text className="mt-1 text-sm text-[#3D4947]">{scene.role}</Text>
-              {scene.hitch ? (
-                <Text className="mt-2 text-sm leading-5 text-[#111C2D]">
-                  <Text className="font-bold">{`${t.hitch}: `}</Text>
-                  {scene.hitch}
+              <Text className="mt-1 text-sm leading-5 text-[#64748B]">{scene.setting}</Text>
+              <Text className="mt-2 text-sm leading-5 text-[#3D4947]">
+                <Text className="font-bold">{`${t.youAre}: `}</Text>
+                {scene.learner_role}
+              </Text>
+              <Text className="text-sm leading-5 text-[#3D4947]">
+                <Text className="font-bold">{`${t.partnerIs}: `}</Text>
+                {scene.partner_role}
+              </Text>
+              <Text className="mt-2 text-sm leading-5 text-[#111C2D]">
+                <Text className="font-bold">{`${t.objective}: `}</Text>
+                {scene.objective}
+              </Text>
+              {scene.twist ? (
+                <Text className="mt-1 text-sm leading-5 text-[#111C2D]">
+                  <Text className="font-bold">{`${t.twist}: `}</Text>
+                  {scene.twist}
+                </Text>
+              ) : null}
+              {source === "fallback" ? (
+                <Text className="mt-2 text-xs font-bold" style={{ color: "#78350F" }}>
+                  {t.fallbackBadge}
                 </Text>
               ) : null}
               <View className="mt-3 self-start">
-                <TactileButton label={t.otherScenes} variant="secondary" size="sm" onPress={leaveScene} />
+                <TactileButton testID="talk-other-scenes" label={t.otherScenes} variant="secondary" size="sm" onPress={leaveScene} />
               </View>
             </View>
           </TactileCard>
 
           <View className="gap-3">
+            {turns.length === 0 ? <Text className="text-base leading-6 text-[#3D4947]">{fill(t.youStart, { lang })}</Text> : null}
             {turns.map((turn, index) => (
               <View key={`${turn.role}-${index}`} className={turn.role === "learner" ? "items-end" : "items-start"}>
                 {turn.role === "persona" ? (
@@ -402,7 +423,7 @@ export function PersonaScreen() {
                 className="mt-2 min-h-24 rounded-xl border border-[#E2E8F0] bg-[#FDFBF7] px-4 py-3 text-lg leading-7 text-[#111C2D]"
               />
               <View className="mt-3 flex-row flex-wrap gap-3">
-                <TactileButton label={t.send} variant="primary" disabled={!canSend} onPress={() => void send()} />
+                <TactileButton testID="talk-send" label={t.send} variant="primary" disabled={!canSend} onPress={() => void send()} />
                 <TactileButton
                   label={recording ? t.stopAndTranscribe : t.dictate}
                   variant={recording ? "crimson" : "secondary"}

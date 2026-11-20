@@ -89,6 +89,9 @@ export function registerPersonalizationRoutes(
       return {
         ...result.news,
         published: result.news.published ?? null,
+        source_url: result.news.source_url,
+        source_name: result.news.source_name ?? null,
+        source_depth: result.news.source_depth ?? "summary",
         audio_url: result.audio_url,
         words: result.words,
       };

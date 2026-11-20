@@ -4,7 +4,6 @@ import { Pressable, Text, View, type ViewStyle } from "react-native";
 import { CefrHistory, CompetenceLine, MeasureBoard } from "@/components/home/measure-panel";
 import { Portrait } from "@/components/persona/portrait";
 import { fill, languageLabel } from "@/components/persona/talk-logic";
-import { VoicePicker } from "@/components/session/voice-picker";
 import { Flag } from "@/components/shell/flag";
 import { TactileButton } from "@/components/tactile/tactile-button";
 import { TactileCard } from "@/components/tactile/tactile-card";
@@ -16,7 +15,9 @@ import {
   saveAccountSettings,
   type StudyTrackChoice,
 } from "@/lib/api";
-import { canDoFor } from "@/lib/can-do";
+import { usePath } from "@/features/path/model/use-path";
+import { summarizeCanDo } from "@/features/shell/model/profile-stats";
+import { displayStreak } from "@/features/shell/model/streak-model";
 import { setCastSlot, useCast } from "@/lib/cast";
 import { useAreaCopy } from "@/lib/copy/area";
 import { PROFILE, accountLocale, mindLine, mindName, orderTracks, streakText, type ProfileCopy } from "@/lib/copy/profile";
@@ -24,7 +25,7 @@ import { READING, themeLabel } from "@/lib/copy/reading";
 import { tap } from "@/lib/haptics";
 import { DISPLAY_LOCALES, LOCALE_BCP47, getLocale, givenName, setLocale, useLocale, type DisplayLocale } from "@/lib/i18n";
 import { CEFR_LEVELS, type CourseLevel } from "@/lib/languages";
-import { dropForeignGlosses, switchProgressLang } from "@/lib/progress";
+import { dropForeignGlosses, isoDate, switchProgressLang } from "@/lib/progress";
 import { refreshSession, rememberProfile, signOut, useSession } from "@/lib/session";
 
 type SaveState = "saving" | "saved" | "failed" | "local";
@@ -35,13 +36,6 @@ const SLOT_LABEL: Record<CastSlot, keyof ProfileCopy> = {
   speech: "roleSpeech",
   journal: "roleJournal",
 };
-
-const SKILL_LABEL = {
-  reading: "skillReading",
-  listening: "skillListening",
-  speaking: "skillSpeaking",
-  writing: "skillWriting",
-} as const;
 
 function asLevel(value: string | undefined, fallback: CourseLevel): CourseLevel {
   return CEFR_LEVELS.includes((value ?? "") as CourseLevel) ? (value as CourseLevel) : fallback;
@@ -78,6 +72,34 @@ function Section({ title, dek, action, children }: { title: string; dek?: string
         {children}
       </View>
     </TactileCard>
+  );
+}
+
+interface LinkItem {
+  id: string;
+  href: Href;
+  title: string;
+  detail: string;
+}
+
+function LinkGrid({ links }: { links: LinkItem[] }) {
+  return (
+    <View className="flex-row flex-wrap gap-3">
+      {links.map((link) => (
+        <Pressable
+          key={link.id}
+          testID={`profile-link-${link.id}`}
+          accessibilityRole="link"
+          accessibilityLabel={`${link.title}. ${link.detail}`}
+          onPress={() => router.push(link.href)}
+          className="flex-1 cursor-pointer rounded-xl border border-[#E2E8F0] bg-white px-4 py-3"
+          style={{ minWidth: 200, flexBasis: 240, boxShadow: "0 3px 0 #E2E8F0" } as ViewStyle}
+        >
+          <Text className="text-base font-extrabold text-[#111C2D]">{`${link.title} →`}</Text>
+          <Text className="mt-0.5 text-sm text-[#64748B]">{link.detail}</Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
@@ -125,6 +147,7 @@ export default function ProfileScreen() {
   const [localeState, setLocaleState] = useState<SaveState | undefined>(undefined);
   const [mindState, setMindState] = useState<Partial<Record<CastSlot, SaveState>>>({});
   const [leaving, setLeaving] = useState(false);
+  const path = usePath();
   const token = session?.token;
   const targetLang = session?.user?.target_lang ?? "en";
 
@@ -173,8 +196,8 @@ export default function ProfileScreen() {
   const target = languageLabel(targetLang, tag);
   const support = languageLabel(user.native_lang ?? "pt", tag);
   const interests = (user.interests ?? []).filter((item) => item.trim().length > 0);
-  const streak = typeof user.streak_count === "number" && user.streak_count > 0 ? user.streak_count : 0;
-  const canDo = canDoFor(level);
+  const streak = displayStreak(user, 0, isoDate());
+  const canDo = path.data ? summarizeCanDo(path.data.units, path.data.current_unit_id) : null;
   const courseList = tracks
     ? orderTracks(
         tracks.length > 0
@@ -267,13 +290,21 @@ export default function ProfileScreen() {
     }
   }
 
-  const links: Array<{ href: Href; title: string; detail: string }> = [
-    { href: "/memory", title: t.linkMemory, detail: t.linkMemoryDetail },
-    { href: "/dossier", title: t.linkDossier, detail: t.linkDossierDetail },
-    { href: "/life", title: t.linkLife, detail: t.linkLifeDetail },
-    { href: "/pairs", title: t.linkPairs, detail: t.linkPairsDetail },
-    { href: "/guide", title: t.linkGuide, detail: t.linkGuideDetail },
-    { href: "/settings", title: t.linkSettings, detail: t.linkSettingsDetail },
+  const practices: LinkItem[] = [
+    { id: "practice", href: "/practice", title: t.linkPractice, detail: t.linkPracticeDetail },
+    { id: "memory", href: "/memory", title: t.linkMemory, detail: t.linkMemoryDetail },
+    { id: "pronunciation", href: "/pronunciation" as Href, title: t.linkPronunciation, detail: t.linkPronunciationDetail },
+    { id: "syntax-workshop", href: "/syntax-workshop" as Href, title: t.linkSyntax, detail: t.linkSyntaxDetail },
+    { id: "duel", href: "/duel", title: t.linkDuel, detail: t.linkDuelDetail },
+  ];
+  const links: LinkItem[] = [
+    { id: "dossier", href: "/dossier", title: t.linkDossier, detail: t.linkDossierDetail },
+    { id: "score", href: "/score", title: t.linkScore, detail: t.linkScoreDetail },
+    { id: "exam", href: "/exam", title: t.linkExams, detail: t.linkExamsDetail },
+    { id: "pairs", href: "/pairs", title: t.linkPairs, detail: t.linkPairsDetail },
+    { id: "life", href: "/life", title: t.linkLife, detail: t.linkLifeDetail },
+    { id: "guide", href: "/guide", title: t.linkGuide, detail: t.linkGuideDetail },
+    { id: "settings", href: "/settings", title: t.linkSettings, detail: t.linkSettingsDetail },
   ];
 
   return (
@@ -297,7 +328,7 @@ export default function ProfileScreen() {
               <View className="mt-2 flex-row flex-wrap gap-2">
                 <Pill label={fill(t.levelBadge, { level })} tone="teal" />
                 <Pill label={user.plan === "pro" ? t.planPro : t.planFree} tone={user.plan === "pro" ? "amber" : "neutral"} />
-                {streak > 0 ? <Pill label={streakText(streak, t)} /> : null}
+                {streak.count > 0 ? <Pill label={streakText(streak.count, t)} /> : null}
               </View>
             </View>
           </View>
@@ -318,17 +349,25 @@ export default function ProfileScreen() {
         <CefrHistory targetLang={targetLang} />
       </Section>
 
-      <Section title={fill(t.canDoTitle, { level })} dek={t.canDoDek}>
-        <View className="gap-2">
-          {canDo.map((item) => (
-            <View key={item.id} className="flex-row items-start gap-3 rounded-xl bg-[#FDFBF7] px-4 py-3">
-              <View className="rounded-md bg-[#CCFBF1] px-2 py-0.5" style={{ minWidth: 80 }}>
-                <Text className="text-center text-[11px] font-extrabold uppercase text-[#0F766E]">{t[SKILL_LABEL[item.skill]]}</Text>
-              </View>
-              <Text className="flex-1 text-base leading-6 text-[#111C2D]">{t.canDo[item.id] ?? item.text.en}</Text>
+      <Section title={t.canDoPathTitle} dek={canDo ? fill(t.canDoPathDek, { done: String(canDo.done), total: String(canDo.total) }) : undefined}>
+        {path.isError ? (
+          <View accessibilityRole="alert" className="gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4">
+            <Text className="text-base" style={{ color: "#9F1239" }}>{t.canDoError}</Text>
+            <View className="self-start">
+              <TactileButton label={t.retry} variant="secondary" size="sm" testID="profile-cando-retry" onPress={() => void path.refetch()} />
             </View>
-          ))}
-        </View>
+          </View>
+        ) : canDo ? (
+          <View testID="profile-cando" className="gap-2">
+            {canDo.current ? <Text className="text-sm font-bold text-[#3D4947]">{fill(t.canDoCurrent, { unit: canDo.current.title })}</Text> : null}
+            {canDo.current?.goals.map((goal) => (
+              <View key={goal} className="rounded-xl bg-[#FDFBF7] px-4 py-3">
+                <Text className="text-base leading-6 text-[#111C2D]">{goal}</Text>
+              </View>
+            ))}
+            {canDo.done === 0 ? <Text className="text-base text-[#64748B]">{t.canDoNone}</Text> : null}
+          </View>
+        ) : null}
       </Section>
 
       <Section
@@ -492,26 +531,12 @@ export default function ProfileScreen() {
         </View>
       </Section>
 
-      <Section title={t.voiceTitle} dek={t.voiceDek}>
-        <VoicePicker language={targetLang} />
+      <Section title={t.practicesTitle} dek={t.practicesDek}>
+        <LinkGrid links={practices} />
       </Section>
 
       <Section title={t.moreTitle}>
-        <View className="flex-row flex-wrap gap-3">
-          {links.map((link) => (
-            <Pressable
-              key={String(link.href)}
-              accessibilityRole="link"
-              accessibilityLabel={`${link.title}. ${link.detail}`}
-              onPress={() => router.push(link.href)}
-              className="flex-1 cursor-pointer rounded-xl border border-[#E2E8F0] bg-white px-4 py-3"
-              style={{ minWidth: 200, flexBasis: 240, boxShadow: "0 3px 0 #E2E8F0" } as ViewStyle}
-            >
-              <Text className="text-base font-extrabold text-[#111C2D]">{`${link.title} →`}</Text>
-              <Text className="mt-0.5 text-sm text-[#64748B]">{link.detail}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <LinkGrid links={links} />
       </Section>
 
       <View className="self-start">

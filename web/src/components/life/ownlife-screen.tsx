@@ -1,19 +1,18 @@
 import { Redirect } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
-import { AppFrame } from "@/components/shell/app-frame";
-import { PageMasthead } from "@/components/shell/page-masthead";
+import { Text, TextInput, View } from "react-native";
+import { TactileButton } from "@/components/tactile/tactile-button";
+import { TactilePanel } from "@/components/tactile/tactile-panel";
+import { tactile } from "@/components/tactile/tokens";
 import { calibrateOwnlife, checkOwnlifeMission, fetchOwnlife, transcribeSpeech, type OwnlifeNote } from "@/lib/api";
 import { tap } from "@/lib/haptics";
 import { useCopy } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
-import { useTheme } from "@/theme/ThemeContext";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from "expo-audio";
 
 export function OwnlifeScreen() {
   const session = useSession();
   const copy = useCopy();
-  const { palette } = useTheme();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const token = session?.token;
   const targetLang = session?.user?.target_lang ?? "en";
@@ -91,49 +90,86 @@ export function OwnlifeScreen() {
   }
 
   return (
-    <AppFrame>
-      <View className="gap-8">
-        <PageMasthead kicker={copy.lifeKicker} title={copy.lifeTitle} dek={copy.lifeDek} />
-        <View>
-          <TextInput
-            value={source}
-            onChangeText={setSource}
-            multiline
-            textAlignVertical="top"
-            accessibilityLabel={copy.lifePaste}
-            placeholder={copy.lifePaste}
-            placeholderTextColor={palette.onSurfaceVariant}
-            className="min-h-40 rounded-[28px] bg-card px-5 py-4 text-lg leading-7 text-ink"
-          />
-          <Pressable
-            accessibilityRole="button"
+    <View testID="life-screen" className="w-full gap-6 pb-16" style={{ maxWidth: 852, alignSelf: "center", paddingHorizontal: 16 }}>
+      <View className="gap-2">
+        <Text style={{ color: tactile.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" }}>{copy.lifeKicker}</Text>
+        <Text accessibilityRole="header" className="font-display text-3xl font-extrabold tracking-tight" style={{ color: tactile.ink }}>
+          {copy.lifeTitle}
+        </Text>
+        <Text className="text-base leading-6" style={{ color: tactile.body }}>
+          {copy.lifeDek}
+        </Text>
+      </View>
+      <TactilePanel>
+        <TextInput
+          testID="life-source-input"
+          value={source}
+          onChangeText={setSource}
+          multiline
+          textAlignVertical="top"
+          accessibilityLabel={copy.lifePaste}
+          placeholder={copy.lifePaste}
+          placeholderTextColor={tactile.muted}
+          className="min-h-40 rounded-xl border px-4 py-3 text-lg leading-7"
+          style={{ borderColor: tactile.border, backgroundColor: tactile.bg, color: tactile.ink }}
+        />
+        <View className="mt-4 self-start">
+          <TactileButton
+            testID="life-calibrate"
+            label={copy.lifeCalibrate}
+            variant="primary"
             onPress={() => void calibrate()}
             disabled={pending || source.trim().length < 12}
-            className="mt-4 min-h-12 items-center justify-center self-start rounded-full bg-ember px-6"
-          >
-            <Text className="text-base font-semibold text-paper">{copy.lifeCalibrate}</Text>
-          </Pressable>
+          />
         </View>
-        {note ? (
-          <View className="gap-3">
-            <Text className="text-lg leading-8 text-ink">{note.calibrated}</Text>
-            {note.through_note ? <Text className="text-base leading-7 text-muted">{note.through_note}</Text> : null}
-            {note.vocabulary?.map((entry) => (
-              <View key={entry.word}>
-                <Text className="font-label text-base text-ink">{entry.word}</Text>
-                <Text className="text-sm text-muted">{entry.translation}</Text>
-              </View>
-            ))}
-            <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.lifeMission}</Text>
-            <Text className="text-base leading-7 text-ink">{note.mission_prompt}</Text>
-            <Pressable accessibilityRole="button" onPress={() => void check()} disabled={pending} className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5">
-              <Text className="text-base font-semibold text-ink">{recording ? copy.dictoglossPlaying : copy.lifeCheck}</Text>
-            </Pressable>
-            {note.mission_done ? <Text className="text-base text-ember">{copy.lifeHeld}</Text> : null}
+      </TactilePanel>
+      {note ? (
+        <TactilePanel tone="accent" testID="life-note">
+          <Text className="text-lg leading-8" style={{ color: tactile.ink }}>
+            {note.calibrated}
+          </Text>
+          {note.through_note ? (
+            <Text className="mt-2 text-base leading-7" style={{ color: tactile.body }}>
+              {note.through_note}
+            </Text>
+          ) : null}
+          {note.vocabulary?.map((entry) => (
+            <View key={entry.word} className="mt-3">
+              <Text className="text-base font-bold" style={{ color: tactile.ink }}>
+                {entry.word}
+              </Text>
+              <Text className="text-sm" style={{ color: tactile.muted }}>
+                {entry.translation}
+              </Text>
+            </View>
+          ))}
+          <Text className="mt-5 text-xs font-extrabold uppercase tracking-wider" style={{ color: tactile.primaryInk }}>
+            {copy.lifeMission}
+          </Text>
+          <Text className="mt-1 text-base leading-7" style={{ color: tactile.ink }}>
+            {note.mission_prompt}
+          </Text>
+          <View className="mt-3 self-start">
+            <TactileButton
+              testID="life-check"
+              label={recording ? copy.dictoglossPlaying : copy.lifeCheck}
+              variant={recording ? "crimson" : "secondary"}
+              onPress={() => void check()}
+              disabled={pending}
+            />
           </View>
-        ) : null}
-        {status ? <Text className="text-base text-ember">{status}</Text> : null}
-      </View>
-    </AppFrame>
+          {note.mission_done ? (
+            <Text className="mt-3 text-base font-bold" style={{ color: tactile.success }}>
+              {copy.lifeHeld}
+            </Text>
+          ) : null}
+        </TactilePanel>
+      ) : null}
+      {status ? (
+        <Text accessibilityRole="alert" className="text-base font-semibold" style={{ color: tactile.primaryInk }}>
+          {status}
+        </Text>
+      ) : null}
+    </View>
   );
 }

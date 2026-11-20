@@ -1,5 +1,5 @@
-import PracticeScreen from "./practice";
+import { WorkshopScreen } from "@/features/practice/screens/workshop-screen";
 
 export default function SyntaxWorkshopRoute() {
-  return <PracticeScreen />;
+  return <WorkshopScreen />;
 }

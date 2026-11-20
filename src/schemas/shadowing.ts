@@ -19,6 +19,12 @@ export const shadowingResultSchema = z.object({
   accuracy_score: z.number().int().min(0).max(100),
   mispronounced_words: z.array(z.string()),
   sounds: z.array(soundNoteSchema).max(4),
+  /**
+   * Ritmo medido de verdade? false quando o provedor não mede ritmo (fallback de transcrição)
+   * e sempre em /analyze-shadowing, que não avalia ritmo: aí as notas de ritmo são 0 e o app
+   * mostra "ritmo não medido" sem XP de ritmo.
+   */
+  rhythm_measured: z.boolean(),
 });
 
 export type ShadowingResult = z.infer<typeof shadowingResultSchema>;

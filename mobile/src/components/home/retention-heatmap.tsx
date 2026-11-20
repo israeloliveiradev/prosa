@@ -1,35 +1,33 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import { fill } from "@/components/persona/talk-logic";
 import { SrsStage } from "@/components/session/srs-stage";
-import { ChunkButton } from "@/components/shell/chunk-button";
+import { TactileButton } from "@/components/tactile/tactile-button";
+import { TactilePanel } from "@/components/tactile/tactile-panel";
+import { tactile } from "@/components/tactile/tokens";
 import { recordRetention } from "@/lib/api";
+import { useAreaCopy } from "@/lib/copy/area";
+import { MEMORY } from "@/lib/copy/memory";
 import { tap } from "@/lib/haptics";
 import { enqueueReview, persistDeck } from "@/lib/progress";
-import { retentionSnapshot, type RetentionBand } from "@/lib/retention";
+import { retentionInput, retentionSnapshot, type RetentionBand } from "@/lib/retention";
 import { useSession } from "@/lib/session";
 import type { SessionCard } from "@/lib/types";
-import { lightPalette } from "@/design/tokens";
-import { useTheme } from "@/theme/ThemeContext";
 
-const BAND_LABEL: Record<RetentionBand, string> = {
-  critical: "Em risco",
-  decaying: "Esquecendo",
-  settling: "Firmando",
-  fixed: "Na memória longa",
+const FILL: Record<RetentionBand, { bg: string; ink: string }> = {
+  critical: { bg: tactile.danger, ink: "#FFFFFF" },
+  decaying: { bg: "#F59E0B", ink: tactile.ink },
+  settling: { bg: "#99D5CD", ink: tactile.ink },
+  fixed: { bg: tactile.primary, ink: "#FFFFFF" },
 };
 
+/** Mapa de retenção (FSRS real) e a revisão relâmpago das palavras em risco. */
 export function RetentionHeatmap({ cards }: { cards: SessionCard[] }) {
   const session = useSession();
-  const { palette } = useTheme();
+  const t = useAreaCopy(MEMORY);
   const [queue, setQueue] = useState<SessionCard[] | null>(null);
   const [picked, setPicked] = useState<string[] | null>(null);
-  const snapshot = retentionSnapshot(
-    cards.map((card) => ({
-      phrase: card.front_phrase,
-      intervalDays: card.interval_days,
-      status: card.status,
-    })),
-  );
+  const snapshot = retentionSnapshot(cards.map((card) => retentionInput(card)));
   const signature = `${cards.length}:${snapshot.score}:${snapshot.critical}:${snapshot.decaying}:${snapshot.mastered}`;
 
   useEffect(() => {
@@ -40,36 +38,19 @@ export function RetentionHeatmap({ cards }: { cards: SessionCard[] }) {
     const handle = setTimeout(() => {
       void recordRetention(
         token,
-        cards.map((card) => ({
-          phrase: card.front_phrase,
-          interval_days: card.interval_days,
-          status: card.status,
-        })),
+        cards.map((card) => ({ phrase: card.front_phrase, interval_days: card.interval_days, status: card.status })),
       ).catch(() => undefined);
     }, 400);
     return () => clearTimeout(handle);
   }, [session?.token, signature, cards]);
 
-  const fill: Record<RetentionBand, string> = {
-    critical: palette.error,
-    decaying: palette.tertiary,
-    settling: palette.secondaryContainer,
-    fixed: palette.secondary,
-  };
-  const ink: Record<RetentionBand, string> = {
-    critical: palette.surface,
-    decaying: lightPalette.onSurface,
-    settling: palette.onSecondaryContainer,
-    fixed: palette.onSecondary,
-  };
-
   if (queue) {
     return (
-      <View accessibilityRole="summary" accessibilityLabel="Revisão relâmpago das palavras em risco">
+      <View testID="retention-risk-round" accessibilityRole="summary" accessibilityLabel={t.riskA11y}>
         <SrsStage
           cards={queue}
-          heading="Revisão relâmpago"
-          doneTitle="As palavras em risco passaram."
+          heading={t.riskHeading}
+          doneTitle={t.riskDone}
           onChange={(next, graded, quality) => {
             setQueue(next);
             persistDeck(next);
@@ -77,67 +58,90 @@ export function RetentionHeatmap({ cards }: { cards: SessionCard[] }) {
           }}
         />
         <View className="mt-4 self-start">
-          <ChunkButton label="Voltar ao mapa" onPress={() => setQueue(null)} tone="ghost" />
+          <TactileButton testID="retention-risk-back" label={t.riskBack} onPress={() => setQueue(null)} variant="ghost" />
         </View>
       </View>
     );
   }
 
   const criticalCards = cards.filter((card) => snapshot.cells.some((cell) => cell.band === "critical" && cell.phrases.includes(card.front_phrase)));
+  const bandLabel: Record<RetentionBand, string> = {
+    critical: t.bandCritical,
+    decaying: t.bandDecaying,
+    settling: t.bandSettling,
+    fixed: t.bandFixed,
+  };
+  const counts: Record<RetentionBand, number> = {
+    critical: snapshot.critical,
+    decaying: snapshot.decaying,
+    settling: snapshot.settling,
+    fixed: snapshot.mastered,
+  };
 
   return (
-    <View accessibilityRole="summary" accessibilityLabel={`Mapa de retenção. ${snapshot.critical} em risco, ${snapshot.decaying} esquecendo, ${snapshot.settling} firmando, ${snapshot.mastered} na memória longa.`}>
-      <Text className="font-label text-sm text-muted">Memória · em risco primeiro</Text>
-      <Text className="mt-2 font-display text-2xl text-ink">
-        {cards.length === 0 ? "O mapa abre com a primeira palavra." : `${snapshot.score}% já passou de 21 dias.`}
-      </Text>
-      <View className="mt-5 flex-row flex-wrap gap-2">
-        {snapshot.cells.map((cell, index) => {
-          const label = `${BAND_LABEL[cell.band]}, ${cell.phrases.length} ${cell.phrases.length === 1 ? "palavra" : "palavras"}: ${cell.phrases.join(", ")}`;
-          return (
-            <Pressable
-              key={`${cell.band}-${index}`}
-              accessibilityRole="button"
-              accessibilityLabel={label}
-              accessibilityHint={cell.band === "critical" ? "Abre a revisão só das palavras em risco." : "Mostra as palavras desta célula."}
-              onPress={() => {
-                void tap(cell.band === "critical" ? "medium" : "light");
-                if (cell.band === "critical") {
-                  setPicked(null);
-                  setQueue(criticalCards);
-                  return;
-                }
-                setPicked(cell.phrases);
-              }}
-              className="h-11 w-11 cursor-pointer items-center justify-center rounded-2xl"
-              style={{ backgroundColor: fill[cell.band] }}
-            >
-              <Text className="text-sm font-semibold" style={{ color: ink[cell.band] }}>
-                {cell.phrases.length}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <View className="mt-4 gap-1">
-        {(["critical", "decaying", "settling", "fixed"] as const).map((band) => (
-          <Text key={band} className="text-base text-muted">
-            {BAND_LABEL[band]} · {band === "critical" ? snapshot.critical : band === "decaying" ? snapshot.decaying : band === "settling" ? snapshot.settling : snapshot.mastered}
-          </Text>
-        ))}
-      </View>
-      {picked ? (
-        <View className="mt-4 rounded-3xl border border-line bg-card px-4 py-3">
-          {picked.map((phrase) => (
-            <Text key={phrase} className="min-h-8 py-1 text-base text-ink">
-              {phrase}
+    <TactilePanel testID="retention-heatmap">
+      <View
+        accessibilityRole="summary"
+        accessibilityLabel={fill(t.mapA11y, { critical: snapshot.critical, decaying: snapshot.decaying, settling: snapshot.settling, fixed: snapshot.mastered })}
+      >
+        <Text className="text-xs font-extrabold uppercase tracking-wider" style={{ color: tactile.primaryInk }}>
+          {t.mapKicker}
+        </Text>
+        <Text className="mt-2 font-display text-2xl font-extrabold" style={{ color: tactile.ink }}>
+          {cards.length === 0 ? t.mapEmpty : fill(t.mapScore, { score: snapshot.score })}
+        </Text>
+        <View className="mt-5 flex-row flex-wrap gap-2">
+          {snapshot.cells.map((cell, index) => {
+            const n = cell.phrases.length;
+            const label = `${bandLabel[cell.band]}, ${fill(n === 1 ? t.cellOne : t.cellMany, { n })}: ${cell.phrases.join(", ")}`;
+            return (
+              <Pressable
+                key={`${cell.band}-${index}`}
+                testID={`retention-cell-${cell.band}-${index}`}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                accessibilityHint={cell.band === "critical" ? t.cellHintRisk : t.cellHintOther}
+                onPress={() => {
+                  void tap(cell.band === "critical" ? "medium" : "light");
+                  if (cell.band === "critical") {
+                    setPicked(null);
+                    setQueue(criticalCards);
+                    return;
+                  }
+                  setPicked(cell.phrases);
+                }}
+                className="h-11 w-11 cursor-pointer items-center justify-center rounded-2xl"
+                style={{ backgroundColor: FILL[cell.band].bg }}
+              >
+                <Text className="text-sm font-semibold" style={{ color: FILL[cell.band].ink }}>
+                  {n}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View className="mt-4 gap-1">
+          {(["critical", "decaying", "settling", "fixed"] as const).map((band) => (
+            <Text key={band} className="text-base" style={{ color: tactile.muted }}>
+              {`${bandLabel[band]} · ${counts[band]}`}
             </Text>
           ))}
         </View>
-      ) : null}
-      {snapshot.critical > 0 ? (
-        <Text className="mt-4 text-base leading-6 text-muted">Toque numa célula em risco para revisar só essas palavras.</Text>
-      ) : null}
-    </View>
+        {picked ? (
+          <View className="mt-4 rounded-2xl border px-4 py-3" style={{ borderColor: tactile.border, backgroundColor: tactile.raised }}>
+            {picked.map((phrase) => (
+              <Text key={phrase} className="min-h-8 py-1 text-base" style={{ color: tactile.ink }}>
+                {phrase}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+        {snapshot.critical > 0 ? (
+          <Text className="mt-4 text-base leading-6" style={{ color: tactile.muted }}>
+            {t.mapHintRisk}
+          </Text>
+        ) : null}
+      </View>
+    </TactilePanel>
   );
 }

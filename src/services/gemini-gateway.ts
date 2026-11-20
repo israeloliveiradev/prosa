@@ -11,7 +11,7 @@ import { lessonPayloadSchema, type LessonPayload, type LessonProfile } from "../
 import { topicMatrixSchema } from "../schemas/onboarding.js";
 import { grammarModelSchema, grammarVaryModelSchema, type GrammarBlock } from "../schemas/grammar.js";
 import { reconstructionReportSchema, type ReconstructionBody, type ReconstructionReport } from "../schemas/reconstruction.js";
-import { personaReplySchema } from "../schemas/persona.js";
+import { generatedScenesSchema, personaReplySchema, type Scene } from "../schemas/persona.js";
 import { proseReplySchema } from "../schemas/prose.js";
 import { mnemonicResponseSchema } from "../schemas/srs.js";
 import { frequentVerbs, type CognateAnchor } from "./cognates.js";
@@ -563,7 +563,13 @@ export class GeminiGateway {
     mimeType: string;
     referenceText: string;
     language?: string;
-  }): Promise<{ transcription: string; rhythmScore: number; words: Array<{ text: string; durationMs: number }> }> {
+  }): Promise<{
+    transcription: string;
+    rhythmScore: number;
+    /** false quando quem transcreveu (fallback Groq/Whisper) não mede ritmo: rhythmScore é 0. */
+    rhythmMeasured: boolean;
+    words: Array<{ text: string; durationMs: number }>;
+  }> {
     const mimeType = geminiAudioMime(input.mimeType, input.filename);
     const languageLine = input.language ? `Language hint: ${input.language}.` : "Detect the spoken language.";
     try {
@@ -602,6 +608,7 @@ export class GeminiGateway {
       return {
         transcription: parsed.data.transcription.trim(),
         rhythmScore: Math.round(parsed.data.rhythm_score),
+        rhythmMeasured: true,
         words: (parsed.data.words ?? []).map((word) => ({ text: word.text, durationMs: word.duration_ms })),
       };
     } catch (error) {
@@ -616,7 +623,8 @@ export class GeminiGateway {
         language: input.language,
       });
       this.onFallback?.("groq");
-      return { transcription, rhythmScore: transcription ? 70 : 0, words: [] };
+      // O Whisper só transcreve: ritmo não medido é 0 e marcado, nunca uma nota inventada.
+      return { transcription, rhythmScore: 0, rhythmMeasured: false, words: [] };
     }
   }
 
@@ -626,7 +634,18 @@ export class GeminiGateway {
     level: string;
     interests: string[];
     focus: string[];
+    /** Rodada-chefe de uma unidade da trilha: lemas-núcleo e gramática que os drills cobram. */
+    unit?: { topic: string; grammar: string | null; words: string[] };
   }): Promise<{ drills: Array<{ prompt: string; options: string[]; answer: number }> }> {
+    const unitLines = input.unit
+      ? [
+          `Unit topic: ${input.unit.topic}`,
+          input.unit.grammar ? `Unit grammar point, practise it in at least half of the drills: ${input.unit.grammar}` : "",
+          input.unit.words.length > 0
+            ? `Unit core words. At least half of the drills must use one of them as the correct answer or in the sentence: ${input.unit.words.join(", ")}`
+            : "",
+        ].filter(Boolean)
+      : [];
     const completion = await this.generateStructured({
       systemInstruction: DUEL_INSTRUCTIONS,
       contents: [
@@ -634,8 +653,9 @@ export class GeminiGateway {
         `Through language: ${namedLang(input.throughLang)}`,
         `CEFR level: ${input.level}`,
         `Interests: ${input.interests.length > 0 ? input.interests.join(", ") : "everyday conversation"}`,
+        ...unitLines,
         input.focus.length > 0
-          ? `Weak categories to hit in most drills: ${input.focus.join(", ")}.`
+          ? `Weak categories to hit in ${input.unit ? "the other" : "most"} drills: ${input.focus.join(", ")}.`
           : "No weak category yet. Stay with everyday connectors.",
       ].join("\n"),
       schema: DUEL_RESPONSE_SCHEMA,
@@ -957,23 +977,42 @@ export class GeminiGateway {
     title: string;
     summary: string;
     published?: string;
+    /** Texto dos parágrafos da matéria (fonte completa). Sem ele, só manchete + resumo. */
+    body?: string;
+    /** Segunda tentativa depois de a saída sair no idioma errado. */
+    strictLanguage?: boolean;
   }): Promise<LessonPayload> {
+    const target = namedLang(input.targetLang);
+    const body = input.body?.trim() ?? "";
+    const source = body
+      ? [
+          "story_text is 90 to 140 words in the target language, at the requested CEFR level.",
+          "Use only facts present in the source: the headline, the summary and the article text.",
+          "Do not add names, numbers, dates, places, quotes or causes that the source does not state.",
+        ]
+      : [
+          "Only the headline and a short summary are available, not the full article.",
+          "story_text is 40 to 80 words in the target language, at the requested CEFR level: keep it short.",
+          "Use only facts present in the headline and the summary. Add no facts, names, numbers, causes, background or quotes.",
+        ];
     const instruction = [
       "Turn one current news item into a language lesson.",
-      "story_text is 90 to 140 words in the target language, at the requested CEFR level.",
-      "Write it as today's briefing. Use only the headline, the summary and the publication date.",
-      "Do not invent older events, and do not turn the story into a timeless textbook example.",
+      ...source,
+      "Write it as today's briefing. Do not invent older events, and do not turn the story into a timeless textbook example.",
+      `title and story_text are written in ${target}, even when the source is in another language.`,
+      ...(input.strictLanguage ? [`A previous answer was not in ${target}. Every sentence of title and story_text must be in ${target}.`] : []),
       "translation is the complete story in the native language, the language the learner studies through.",
       "vocabulary contains 4 to 6 items that appear in the story.",
       "journal_prompt asks the learner to react in the target language in two sentences.",
     ].join(" ");
     const contents = [
-      `Target language: ${namedLang(input.targetLang)}`,
+      `Target language: ${target}`,
       `Native language, the language of every gloss and of translation: ${namedLang(input.nativeLang)}`,
       `CEFR level: ${input.level}`,
       `Published: ${input.published ?? "today"}`,
       `Headline: ${input.title}`,
       `Summary: ${input.summary || input.title}`,
+      ...(body ? [`Article text (the only source of facts):\n${body.slice(0, 4_200)}`] : []),
     ].join("\n");
     const completion = await this.generateStructured({
       systemInstruction: instruction,
@@ -1028,6 +1067,137 @@ export class GeminiGateway {
         ...input.history.map((turn) => `${turn.role}: ${turn.text}`),
         `learner: ${input.userLine}`,
       ].join("\n"),
+      schema: {
+        type: "object",
+        properties: {
+          reply: { type: "string" },
+          tone: { type: "string", enum: ["adequate", "direct", "informal", "inadequate"] },
+          cultural_note: { type: "string" },
+        },
+        required: ["reply", "tone", "cultural_note"],
+      },
+      maxOutputTokens: 500,
+      temperature: 0.4,
+      task: "topics",
+      lane: "cheap",
+    });
+    const parsed = personaReplySchema.safeParse(completion);
+    if (!parsed.success) {
+      throw new AppError(502, "Persona response failed validation");
+    }
+    return parsed.data;
+  }
+
+  /** As 3 cenas do dia (M3): uma do objetivo, uma da unidade da trilha, uma dos temas. */
+  async conversationScenes(input: {
+    targetLang: string;
+    interfaceLang: string;
+    level: string;
+    goal: string | null;
+    goalNote: string | null;
+    unit: { title: string; topic: string; canDo: string[]; grammar: string | null };
+    interests: string[];
+  }): Promise<z.infer<typeof generatedScenesSchema>> {
+    const ui = namedLang(input.interfaceLang);
+    const completion = await this.generateStructured({
+      systemInstruction: [
+        "Design three short role-play scenes for a language learner.",
+        "Scene kind goal comes from the learner goal, kind unit practises the trail unit, kind interest comes from one of the learner interests.",
+        "Each scene is a concrete, realistic situation at the learner CEFR level, with one person the learner talks to.",
+        `title, setting, learner_role, partner_role, objective and twist are written in ${ui}, the learner interface language.`,
+        "title has 2 to 6 words. setting is one sentence: where and when. learner_role and partner_role are short noun phrases.",
+        "objective is one sentence saying what the learner must achieve in the conversation.",
+        "twist is one sentence with a small, realistic complication the partner will hold, or an empty string when the scene works without one.",
+        "Do not invent facts about the learner beyond the goal, the note and the interests given.",
+      ].join(" "),
+      contents: [
+        `Target language the partner speaks: ${namedLang(input.targetLang)}`,
+        `Interface language for every scene field: ${ui}`,
+        `CEFR level: ${input.level}`,
+        `Learner goal: ${input.goal ?? "not set, use everyday travel"}`,
+        input.goalNote ? `Learner note about the goal: ${input.goalNote}` : "",
+        `Trail unit: ${input.unit.title} (${input.unit.topic})`,
+        input.unit.canDo.length > 0 ? `Unit can-do goals: ${input.unit.canDo.join(" ")}` : "",
+        input.unit.grammar ? `Unit grammar: ${input.unit.grammar}` : "",
+        `Learner interests: ${input.interests.length > 0 ? input.interests.slice(0, 4).join(", ") : "everyday life"}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      schema: {
+        type: "object",
+        properties: {
+          scenes: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                kind: { type: "string", enum: ["goal", "unit", "interest"] },
+                title: { type: "string" },
+                setting: { type: "string" },
+                learner_role: { type: "string" },
+                partner_role: { type: "string" },
+                objective: { type: "string" },
+                twist: { type: "string" },
+              },
+              required: ["kind", "title", "setting", "learner_role", "partner_role", "objective"],
+            },
+          },
+        },
+        required: ["scenes"],
+      },
+      maxOutputTokens: 1_200,
+      temperature: 0.6,
+      task: "topics",
+      lane: "cheap",
+    });
+    const parsed = generatedScenesSchema.safeParse(completion);
+    if (!parsed.success) {
+      throw new AppError(502, "Scene response failed validation");
+    }
+    return parsed.data;
+  }
+
+  /** Turno numa cena do M3: o parceiro faz partner_role no cenário, rumo ao objetivo. */
+  async sceneReply(input: {
+    targetLang: string;
+    throughLang: string;
+    level: string;
+    scene: Scene;
+    history: Array<{ role: "persona" | "learner"; text: string }>;
+    userLine: string;
+  }): Promise<{ reply: string; tone: "adequate" | "direct" | "informal" | "inadequate"; cultural_note: string }> {
+    const through = throughLabel(input.throughLang);
+    const target = namedLang(input.targetLang);
+    const completion = await this.generateStructured({
+      systemInstruction: [
+        `You are one person in a real situation, speaking only ${target}.`,
+        "The scene description is written in the learner interface language. Never answer in that language: reply only in the target language.",
+        "Play partner_role in the setting. The learner plays learner_role and is trying to reach the objective.",
+        "Use the register that fits the setting and the two roles.",
+        input.scene.twist
+          ? "Hold the twist: do not give the learner what they first asked for. Make them negotiate: another option, another time, or a clear next step. Do not resolve it on the first learner turn."
+          : "There is no twist: react naturally and let the learner work toward the objective.",
+        "Do not invent a second complication.",
+        "reply is one to three sentences at the learner CEFR level. Do not translate it. Do not add a teaching note inside the reply.",
+        "Judge only the learner's latest line for politeness and cultural fit in this scene.",
+        "tone is adequate when the politeness fits, direct when the line is too blunt, informal when it is too casual for this scene, inadequate when a custom of the place is missed.",
+        `cultural_note is one or two sentences in ${through}, naming what fit or what to change. It is never empty.`,
+      ].join(" "),
+      contents: [
+        `Target language: ${target}`,
+        `Through language: ${namedLang(input.throughLang)}`,
+        `CEFR level: ${input.level}`,
+        `Scene: ${input.scene.title}`,
+        `Setting: ${input.scene.setting}`,
+        `partner_role (you): ${input.scene.partner_role}`,
+        `learner_role: ${input.scene.learner_role}`,
+        `Objective of the learner: ${input.scene.objective}`,
+        input.scene.twist ? `Twist you must hold: ${input.scene.twist}` : "",
+        ...input.history.map((turn) => `${turn.role}: ${turn.text}`),
+        `learner: ${input.userLine}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
       schema: {
         type: "object",
         properties: {

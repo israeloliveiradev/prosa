@@ -9,7 +9,7 @@ import { SoundNotes } from "@/components/session/sound-notes";
 import { Kicker, Notice, StageCard } from "@/components/session/stage-kit";
 import { VoicePicker } from "@/components/session/voice-picker";
 import { TactileButton } from "@/components/tactile/tactile-button";
-import { analyzeShadowing, speakStory } from "@/lib/api";
+import { analyzeShadowing, speakStory, type MeasuredShadowing } from "@/lib/api";
 import { areaCopy, useAreaCopy } from "@/lib/copy/area";
 import { SESSION_COPY, type SessionCopy } from "@/lib/copy/session";
 import { tap } from "@/lib/haptics";
@@ -41,7 +41,7 @@ export function ShadowStage({
   const [sentenceIndex, setSentenceIndex] = useState(0);
   const [recording, setRecording] = useState(false);
   const [scoring, setScoring] = useState(false);
-  const [result, setResult] = useState<ShadowingResult | null>(null);
+  const [result, setResult] = useState<MeasuredShadowing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const playbackRef = useRef<PlaybackHandle | null>(null);
   const clipRef = useRef<string | null>(null);
@@ -240,10 +240,16 @@ export function ShadowStage({
             {result.accuracy_score}
           </Text>
           {result.sounds && result.sounds.length > 0 ? <SoundNotes notes={result.sounds} /> : null}
-          <Text className="mt-2 font-sans text-base text-muted">
-            {ui.cadence} {result.cadence_match ?? result.pitch_rhythm_match ?? 0}
-          </Text>
-          {result.bars && result.bars.length > 0 ? <CadenceRadar bars={result.bars} /> : null}
+          {result.rhythm_measured === false ? (
+            <Text testID="shadow-rhythm-not-measured" className="mt-2 font-sans text-base text-muted">
+              {local.rhythmNotMeasured}
+            </Text>
+          ) : (
+            <Text className="mt-2 font-sans text-base text-muted">
+              {ui.cadence} {result.cadence_match ?? result.pitch_rhythm_match ?? 0}
+            </Text>
+          )}
+          {result.rhythm_measured !== false && result.bars && result.bars.length > 0 ? <CadenceRadar bars={result.bars} /> : null}
           <Text className="mt-3 font-sans text-base leading-6 text-ink">{result.transcription || ui.noSpeech}</Text>
           {result.mispronounced_words.length > 0 ? (
             <Text className="mt-3 font-sans text-base leading-6 text-muted">

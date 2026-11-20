@@ -6,8 +6,15 @@ import { storedNewsSchema, type StoredNews } from "../schemas/news.js";
 import type { GeminiGateway } from "./gemini-gateway.js";
 import type { LessonService } from "./lesson-service.js";
 import type { NeuralVoice } from "./neural-voice.js";
-import { fetchHeadlines, headlineFitsInterest } from "./news-feed.js";
+import { fetchArticleBody, publisherOf, type ArticleBody } from "./news-article.js";
+import { fetchHeadlines, headlineFitsInterest, type NewsHeadline } from "./news-feed.js";
+import { isInLanguage } from "./news-language.js";
 import type { OpsService } from "./ops.js";
+
+/** A notícia adaptada está no idioma-alvo? (título + texto; a tradução fica de fora.) */
+export function newsInLanguage(news: { title: string; story_text: string }, targetLang: string): boolean {
+  return isInLanguage(`${news.title}\n${news.story_text}`, targetLang);
+}
 
 export class PersonalizationService {
   constructor(
@@ -16,6 +23,7 @@ export class PersonalizationService {
     private readonly lessons: LessonService,
     private readonly neural: NeuralVoice,
     private readonly ops?: OpsService,
+    private readonly readArticle: (url: string) => Promise<ArticleBody | null> = (url) => fetchArticleBody(url),
   ) {}
 
   async saveQuiz(user: AuthUser, body: OnboardingQuizBody): Promise<{
@@ -239,41 +247,75 @@ export class PersonalizationService {
       );
     }
 
+    const { news, cached } = await this.adaptedNews({
+      targetLang: user.target_lang,
+      nativeLang: user.native_lang,
+      level: levelUsed,
+      headline,
+    });
+    return this.speakStored(user, news, voice, cached);
+  }
+
+  /**
+   * Notícia adaptada de uma manchete, do cache (36 h) ou gerada agora. Usada pela rota e pela
+   * pré-carga diária. Gera a partir do corpo da matéria quando dá para ler (editor da lista,
+   * `source_depth: "full"`), senão só da manchete + resumo (`"summary"`). A saída precisa estar
+   * no idioma-alvo: uma segunda tentativa, e depois 502 "News adaptation failed" sem cache.
+   */
+  async adaptedNews(input: {
+    targetLang: string;
+    nativeLang: string;
+    level: AuthUser["level"];
+    headline: NewsHeadline;
+  }): Promise<{ news: StoredNews; cached: boolean }> {
+    const { targetLang, nativeLang, level, headline } = input;
     const existing = await this.pool.query<{ simplified_text_json: unknown }>(
       `SELECT simplified_text_json
        FROM news_feed_cache
        WHERE target_lang = $1 AND native_lang = $2 AND level = $3 AND original_url = $4
          AND created_at > now() - interval '36 hours'`,
-      [user.target_lang, user.native_lang, levelUsed, headline.url],
+      [targetLang, nativeLang, level, headline.url],
     );
     const cachedPayload = storedNewsSchema.safeParse(existing.rows[0]?.simplified_text_json);
-    let news = cachedPayload.success ? cachedPayload.data : null;
-    const cached = news !== null;
-    if (!news) {
-      const adapted = await this.gemini.adaptNews({
-        targetLang: user.target_lang,
-        nativeLang: user.native_lang,
-        level: levelUsed,
-        title: headline.title,
-        summary: headline.summary,
-        ...(headline.published ? { published: headline.published } : {}),
-      });
-      news = storedNewsSchema.parse({
-        ...adapted,
-        source_url: headline.url,
-        source_title: headline.title.slice(0, 300),
-        ...(headline.published ? { published: headline.published } : {}),
-      });
-      await this.pool.query(
-        `INSERT INTO news_feed_cache (target_lang, native_lang, level, original_url, simplified_text_json)
-         VALUES ($1, $2, $3, $4, $5::jsonb)
-         ON CONFLICT (target_lang, native_lang, level, original_url) DO UPDATE
-         SET simplified_text_json = EXCLUDED.simplified_text_json, created_at = now()`,
-        [user.target_lang, user.native_lang, levelUsed, headline.url, JSON.stringify(news)],
-      );
+    // Entrada antiga no idioma errado (ex.: manchete em espanhol no cache de en) é refeita.
+    if (cachedPayload.success && newsInLanguage(cachedPayload.data, targetLang)) {
+      return { news: cachedPayload.data, cached: true };
     }
 
-    return this.speakStored(user, news, voice, cached);
+    const article = await this.readArticle(headline.url).catch(() => null);
+    const request = {
+      targetLang,
+      nativeLang,
+      level,
+      title: headline.title,
+      summary: headline.summary,
+      ...(headline.published ? { published: headline.published } : {}),
+      ...(article ? { body: article.text } : {}),
+    };
+    let adapted = await this.gemini.adaptNews(request);
+    if (!newsInLanguage(adapted, targetLang)) {
+      adapted = await this.gemini.adaptNews({ ...request, strictLanguage: true });
+      if (!newsInLanguage(adapted, targetLang)) {
+        await this.ops?.record("news", "error", "News adaptation failed", `wrong output language for ${targetLang}`);
+        throw new AppError(502, "News adaptation failed");
+      }
+    }
+    const news = storedNewsSchema.parse({
+      ...adapted,
+      source_url: article?.url ?? headline.url,
+      source_title: headline.title.slice(0, 300),
+      source_depth: article ? "full" : "summary",
+      source_name: headline.source?.trim() || publisherOf(article?.url ?? headline.url) || null,
+      ...(headline.published ? { published: headline.published } : {}),
+    });
+    await this.pool.query(
+      `INSERT INTO news_feed_cache (target_lang, native_lang, level, original_url, simplified_text_json)
+       VALUES ($1, $2, $3, $4, $5::jsonb)
+       ON CONFLICT (target_lang, native_lang, level, original_url) DO UPDATE
+       SET simplified_text_json = EXCLUDED.simplified_text_json, created_at = now()`,
+      [targetLang, nativeLang, level, headline.url, JSON.stringify(news)],
+    );
+    return { news, cached: false };
   }
 
   private async requireRecentNews(
@@ -298,6 +340,9 @@ export class PersonalizationService {
         continue;
       }
       const news = parsed.data.published ? parsed.data : { ...parsed.data, published: row.created_at.toISOString() };
+      if (!newsInLanguage(news, targetLang)) {
+        continue;
+      }
       if (
         headlineFitsInterest(
           { title: news.title, url: news.source_url, summary: news.story_text, published: news.published },

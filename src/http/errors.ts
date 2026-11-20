@@ -15,6 +15,8 @@ const PUBLIC_5XX = new Set([
   "Lesson generation is unavailable",
   "Unit test questions are not ready yet",
   "Checkpoint questions are not ready yet",
+  "News adaptation failed",
+  "Payments are not configured",
 ]);
 
 export function publicErrorMessage(error: Error, statusCode: number): string {

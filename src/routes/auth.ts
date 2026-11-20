@@ -22,6 +22,7 @@ import type { Mailer } from "../services/mailer.js";
 import { hashPassword, verifyPassword } from "../services/passwords.js";
 import type { PasswordReset } from "../services/password-reset.js";
 import type { SecondFactor } from "../services/second-factor.js";
+import { readStreak, type StreakView } from "../services/streak.js";
 
 let fillerHash: Promise<string> | null = null;
 
@@ -30,11 +31,19 @@ const SESSION_USER_COLUMNS = "id, email, native_lang, target_lang, level, plan, 
 
 type SessionUserRow = AuthUser & { display_locale: DisplayLocale };
 
-/** O usuário devolvido com o token: AuthUser + display_locale, para o cliente adotar o idioma da conta. */
-async function sessionUser(pool: Pool, row: SessionUserRow, emails: ReadonlySet<string>): Promise<SessionUserRow> {
+/**
+ * O usuário devolvido com o token: AuthUser + display_locale, para o cliente adotar o idioma
+ * da conta, e a ofensiva calculada na leitura (session_completions, M3).
+ */
+async function sessionUser(
+  pool: Pool,
+  row: SessionUserRow,
+  emails: ReadonlySet<string>,
+): Promise<SessionUserRow & StreakView> {
   const { display_locale, ...base } = row;
   const user = await promoteAdmin(pool, base, emails);
-  return { ...user, display_locale };
+  const streak = await readStreak(pool, user.id);
+  return { ...user, display_locale, ...streak };
 }
 
 function filler(): Promise<string> {
@@ -350,7 +359,6 @@ export function registerAuthRoutes(
     const user = await promoteAdmin(pool, await requireUser(pool, request), emails);
     const found = await pool.query<{
       interests: string[] | null;
-      streak_count: number;
       streak_freeze_count: number;
       last_lesson_at: Date | null;
       display_name: string | null;
@@ -365,7 +373,7 @@ export function registerAuthRoutes(
       goal_note: string | null;
       daily_minutes: DailyMinutes;
     }>(
-      `SELECT interests, streak_count, streak_freeze_count, last_lesson_at,
+      `SELECT interests, streak_freeze_count, last_lesson_at,
               display_name, display_locale, reminder_enabled, reminder_hour,
               mind_reading, mind_memory, mind_speech, mind_journal,
               goal, goal_note, daily_minutes
@@ -374,11 +382,14 @@ export function registerAuthRoutes(
       [user.id],
     );
     const extra = found.rows[0];
+    // A ofensiva vem de session_completions na hora da leitura, não da coluna guardada.
+    const streak = await readStreak(pool, user.id);
     return {
       user: {
         ...user,
         interests: extra?.interests ?? [],
-        streak_count: extra?.streak_count ?? 0,
+        streak_count: streak.streak_count,
+        last_session_date: streak.last_session_date,
         streak_freeze_count: extra?.streak_freeze_count ?? 0,
         last_lesson_at: extra?.last_lesson_at?.toISOString() ?? null,
         display_name: extra?.display_name ?? null,
