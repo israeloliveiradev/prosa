@@ -95,7 +95,7 @@ export function MemoryScreen() {
   }
 
   return (
-    <PracticePage testID="memory-screen" kicker={t.kicker} title={t.title} dek={t.dek} back="←">
+    <PracticePage testID="memory-screen" kicker={t.kicker} title={t.title} dek={t.dek} back>
       <RetentionHeatmap cards={cards} />
       <View accessibilityRole="tablist" accessibilityLabel={t.filterA11y} className="flex-row flex-wrap gap-2">
         {FILTERS.map((item) => {

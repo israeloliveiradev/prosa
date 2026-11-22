@@ -40,7 +40,7 @@ export function WorkshopScreen() {
   const clean = cleanTypedSentence(typed);
 
   return (
-    <PracticePage testID="workshop-screen" kicker={t.kicker} title={t.title} dek={t.dek} back="←">
+    <PracticePage testID="workshop-screen" kicker={t.kicker} title={t.title} dek={t.dek} back>
       <TactilePanel>
         <Text className="text-xs font-extrabold uppercase tracking-wider" style={{ color: tactile.primaryInk }}>
           {t.recentTitle}

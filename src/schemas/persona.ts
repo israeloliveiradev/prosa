@@ -24,6 +24,8 @@ export const sceneSchema = z.object({
   partner_role: sceneLine(100),
   objective: sceneLine(220),
   twist: sceneLine(220).nullable(),
+  /** Primeira fala do parceiro, no idioma-alvo (só nas cenas da IA). Sem ela, o aluno abre. */
+  opener: sceneLine(300).nullable().optional(),
   unit_id: z
     .string()
     .regex(/^(a1|a2|b1|b2|c1)-[0-9]{2}$/)
@@ -54,6 +56,14 @@ export const generatedScenesSchema = z.object({
           .transform((value) => {
             const line = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim() ?? "";
             return line.length > 0 ? line.slice(0, 220) : null;
+          }),
+        opener: z
+          .string()
+          .nullable()
+          .optional()
+          .transform((value) => {
+            const line = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim() ?? "";
+            return line.length > 0 ? line.slice(0, 300) : null;
           }),
       }),
     )

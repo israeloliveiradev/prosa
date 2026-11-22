@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Redirect } from "expo-router";
 import { ScrollView, View, StyleSheet } from "react-native";
 import {
   Text,
@@ -40,7 +41,15 @@ import {
 } from "@/ui";
 import { useThemeTokens, useTheme } from "@/theme/ThemeContext";
 
-export default function DevUiGallery() {
+/** Galeria só de desenvolvimento: em produção volta para o início. */
+export default function DevUiRoute() {
+  if (!__DEV__) {
+    return <Redirect href="/" />;
+  }
+  return <DevUiGallery />;
+}
+
+function DevUiGallery() {
   const { colors, spacing } = useThemeTokens();
   const { preference, setPreference } = useTheme();
 

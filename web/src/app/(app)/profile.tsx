@@ -304,6 +304,7 @@ export default function ProfileScreen() {
     { id: "pairs", href: "/pairs", title: t.linkPairs, detail: t.linkPairsDetail },
     { id: "life", href: "/life", title: t.linkLife, detail: t.linkLifeDetail },
     { id: "guide", href: "/guide", title: t.linkGuide, detail: t.linkGuideDetail },
+    { id: "org", href: "/org" as Href, title: t.linkOrg, detail: t.linkOrgDetail },
     { id: "settings", href: "/settings", title: t.linkSettings, detail: t.linkSettingsDetail },
   ];
 

@@ -4,6 +4,7 @@ import { useProgressReady } from "@/lib/query";
 import { useSession } from "@/lib/session";
 import { journeyFinished } from "@/lib/journey";
 import { resolveRoute } from "@/navigation/resolve-route";
+import { tactile } from "@/components/tactile/tokens";
 
 export default function FocusLayout() {
   const ready = useProgressReady();
@@ -28,6 +29,7 @@ export default function FocusLayout() {
         headerShown: false,
         animation: "fade",
         presentation: Platform.OS === "web" ? "card" : "fullScreenModal",
+        contentStyle: { backgroundColor: tactile.bg },
       }}
     >
       <Stack.Screen name="daily" />

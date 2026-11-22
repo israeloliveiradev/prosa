@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { GlassSheet } from "@/components/session/glass-sheet";
-import { ChoiceTile, Kicker, Notice } from "@/components/session/stage-kit";
 import { TactileButton } from "@/components/tactile/tactile-button";
+import { tactile } from "@/components/tactile/tokens";
 import { deconstructGrammar, speakStory, varyGrammar, type GrammarBlock } from "@/lib/api";
 import { chunksInSentence, type ChunkEntry } from "@/lib/chunks";
 import { tap } from "@/lib/haptics";
@@ -13,7 +13,6 @@ import { narratorVoice } from "@/lib/narrator";
 import { useSession } from "@/lib/session";
 import { narrationToken, startNeuralPlayback } from "@/lib/voice";
 import { AudioService } from "@/services/audio/AudioService";
-import { useTheme } from "@/theme/ThemeContext";
 
 const ROLES: Array<{ role: GrammarBlock["role"]; label: keyof SessionCopy; tint: "accent" | "warning" | "positive" | "neutral" }> = [
   { role: "subject", label: "roleSubject", tint: "accent" },
@@ -40,12 +39,11 @@ export function GrammarSheet({
   const copy = useCopy();
   const local = useAreaCopy(SESSION_COPY);
   const session = useSession();
-  const { palette } = useTheme();
   const tints = {
-    accent: { bg: palette.accentSoft, edge: palette.accent },
-    warning: { bg: palette.pillWarningBg, edge: palette.warning },
-    positive: { bg: palette.pillPositiveBg, edge: palette.positive },
-    neutral: { bg: palette.card, edge: palette.control },
+    accent: { bg: tactile.primarySoft, edge: tactile.primary },
+    warning: { bg: tactile.amberSoft, edge: tactile.amber },
+    positive: { bg: tactile.successSoft, edge: tactile.success },
+    neutral: { bg: tactile.surface, edge: tactile.borderStrong },
   } as const;
   const [blocks, setBlocks] = useState<GrammarBlock[] | null>(null);
   const [line, setLine] = useState<string | null>(null);
@@ -142,8 +140,8 @@ export function GrammarSheet({
 
   return (
     <GlassSheet visible={sentence !== null} onClose={close} label={local.grammarTitle}>
-      <Text className="mt-3 font-serif text-lg leading-8 text-ink">{line}</Text>
-      {pending ? <ActivityIndicator color={palette.primary} style={{ marginTop: 12 }} /> : null}
+      <Text style={{ marginTop: 12, fontFamily: tactile.serif, fontSize: 22, lineHeight: 32, color: tactile.ink }}>{line}</Text>
+      {pending ? <ActivityIndicator color={tactile.primary} style={{ marginTop: 12 }} /> : null}
       {blocks ? (
         <View className="mt-4 gap-3">
           {ROLES.map((role) => {
@@ -164,16 +162,17 @@ export function GrammarSheet({
                   className="min-h-12 cursor-pointer justify-center rounded-2xl px-4 py-2"
                   style={{ backgroundColor: tint.bg, borderWidth: 2, borderColor: tint.edge, borderBottomWidth: 4 }}
                 >
-                  <Text className="font-sans text-xs font-extrabold uppercase tracking-wider text-muted">{label}</Text>
-                  <Text className="font-sans text-base font-semibold text-ink">{block.text}</Text>
+                  <Text style={{ fontFamily: tactile.font, fontSize: 11, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase", color: tactile.muted }}>{label}</Text>
+                  <Text style={{ fontFamily: tactile.font, fontSize: 16, fontWeight: "700", color: tactile.ink }}>{block.text}</Text>
                 </Pressable>
                 {opened ? (
                   <View className="mt-2 flex-row flex-wrap gap-2">
                     {block.options.map((option) => (
-                      <ChoiceTile
+                      <TactileButton
                         key={option}
                         label={option}
-                        state={option === block.text ? "selected" : "idle"}
+                        size="sm"
+                        variant={option === block.text ? "primary" : "secondary"}
                         onPress={() => void choose(role.role, option)}
                       />
                     ))}
@@ -186,14 +185,14 @@ export function GrammarSheet({
       ) : null}
       {onSaveChunk ? (
         <View className="mt-5">
-          <Kicker tone="muted">{copy.chunkInSentence}</Kicker>
-          {expressions.length === 0 ? <Text className="mt-2 font-sans text-base leading-6 text-muted">{copy.noChunkHere}</Text> : null}
+          <Text style={{ fontFamily: tactile.font, fontSize: 11, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase", color: tactile.primaryInk }}>{copy.chunkInSentence}</Text>
+          {expressions.length === 0 ? <Text style={{ marginTop: 8, fontFamily: tactile.font, fontSize: 16, lineHeight: 24, color: tactile.muted }}>{copy.noChunkHere}</Text> : null}
           {expressions.map((entry) => {
             const saved = isSaved?.(entry.word) === true;
             return (
-              <View key={entry.word} className="mt-3">
-                <Text className="font-sans text-base font-semibold text-ink">{entry.word}</Text>
-                <Text className="mt-1 font-sans text-sm leading-5 text-muted">{entry.translation}</Text>
+              <View key={entry.word} style={{ marginTop: 12, backgroundColor: tactile.surface, borderWidth: 1, borderColor: tactile.border, borderRadius: 14, padding: 12 }}>
+                <Text style={{ fontFamily: tactile.font, fontSize: 16, fontWeight: "700", color: tactile.ink }}>{entry.word}</Text>
+                <Text style={{ marginTop: 4, fontFamily: tactile.font, fontSize: 14, lineHeight: 20, color: tactile.muted }}>{entry.translation}</Text>
                 <View className="mt-2 flex-row">
                   <TactileButton
                     variant={saved ? "secondary" : "primary"}
@@ -211,7 +210,11 @@ export function GrammarSheet({
           })}
         </View>
       ) : null}
-      {error ? <Notice>{error}</Notice> : null}
+      {error ? (
+        <View accessibilityRole="alert" style={{ marginTop: 12, backgroundColor: tactile.dangerSoft, borderRadius: 14, padding: 12 }}>
+          <Text style={{ fontFamily: tactile.font, fontSize: 15, lineHeight: 22, color: tactile.danger }}>{error}</Text>
+        </View>
+      ) : null}
     </GlassSheet>
   );
 }

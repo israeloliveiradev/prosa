@@ -75,7 +75,7 @@ export function PronunciationScreen() {
   }
 
   return (
-    <PracticePage testID="pronunciation-screen" kicker={t.kicker} title={t.title} dek={t.dek} back="←">
+    <PracticePage testID="pronunciation-screen" kicker={t.kicker} title={t.title} dek={t.dek} back>
       {body}
     </PracticePage>
   );

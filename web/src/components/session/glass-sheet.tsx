@@ -13,7 +13,7 @@ export function GlassSheet({
   children: ReactNode;
 }) {
   return (
-    <Sheet visible={visible} onClose={onClose} title={label} testID="session-glass-sheet">
+    <Sheet visible={visible} onClose={onClose} title={label} testID="session-glass-sheet" surface="tactile">
       {children}
     </Sheet>
   );

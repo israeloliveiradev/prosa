@@ -21,6 +21,17 @@ import type { CostLane, UsageNote } from "./session-cost.js";
 import { lessonVoicePrompt, DEFAULT_CAST } from "./minds.js";
 import { modelBusy } from "./ops.js";
 
+/** Registro com que a interface trata o aluno em cada idioma (o mesmo das tabelas de cópia do app). */
+const INTERFACE_REGISTER: Record<string, string> = {
+  pt: "Brazilian Portuguese with você",
+  en: "a friendly, direct you",
+  de: "informal du (never Sie)",
+  es: "informal tú (never usted)",
+  it: "informal tu (never Lei)",
+  fr: "vous",
+  ja: "polite desu/masu",
+};
+
 const LESSON_INSTRUCTIONS = [
   "Write one daily language lesson.",
   "story_text is 130 to 170 words in the target language, at the requested CEFR level, about the topic.",
@@ -797,6 +808,46 @@ export class GeminiGateway {
     return parsed.data.items;
   }
 
+  /**
+   * Glosas da unidade no idioma de apoio do aluno (M4). Entra a glosa do currículo (em inglês)
+   * e sai a tradução do SENTIDO do lema, curta, na mesma ordem. Quem valida é o GlossTranslator.
+   */
+  async translateGlosses(input: {
+    targetLang: string;
+    supportLang: string;
+    entries: Array<{ lemma: string; gloss: string }>;
+  }): Promise<string[]> {
+    const completion = await this.generateStructured({
+      systemInstruction: [
+        "Translate dictionary glosses for a language learner.",
+        "Each entry is a word in the target language followed by an English gloss of its meaning.",
+        "Return the meaning of the target-language word in the support language, in 1 to 5 words, like a bilingual dictionary.",
+        "Translate the meaning of the target-language word; never define or explain the English gloss.",
+        "Never include the target-language word itself in the output.",
+        "Return exactly one item per entry, in the same order.",
+      ].join(" "),
+      contents: [
+        `Target language: ${namedLang(input.targetLang)}`,
+        `Support language: ${namedLang(input.supportLang)}`,
+        ...input.entries.map((entry, index) => `${index + 1}. ${entry.lemma} = ${entry.gloss}`),
+      ].join("\n"),
+      schema: {
+        type: "object",
+        properties: { glosses: { type: "array", items: { type: "string" } } },
+        required: ["glosses"],
+      },
+      maxOutputTokens: 900,
+      temperature: 0.2,
+      task: "glosses",
+      lane: "cheap",
+    });
+    const parsed = z.object({ glosses: z.array(z.string()) }).safeParse(completion);
+    if (!parsed.success) {
+      throw new AppError(502, "Gloss response failed validation");
+    }
+    return parsed.data.glosses;
+  }
+
   async suggestTopics(input: {
     interests: string[];
     goal?: string;
@@ -1105,9 +1156,12 @@ export class GeminiGateway {
         "Scene kind goal comes from the learner goal, kind unit practises the trail unit, kind interest comes from one of the learner interests.",
         "Each scene is a concrete, realistic situation at the learner CEFR level, with one person the learner talks to.",
         `title, setting, learner_role, partner_role, objective and twist are written in ${ui}, the learner interface language.`,
+        // Mesmo registro da interface (du/tú/tu informais; vous; です/ます), senão a cena destoa do app.
+        `When these fields address the learner, use the app register: ${INTERFACE_REGISTER[input.interfaceLang] ?? "a friendly, direct second person"}.`,
         "title has 2 to 6 words. setting is one sentence: where and when. learner_role and partner_role are short noun phrases.",
         "objective is one sentence saying what the learner must achieve in the conversation.",
         "twist is one sentence with a small, realistic complication the partner will hold, or an empty string when the scene works without one.",
+        `opener is the partner's first line, the only field written in ${namedLang(input.targetLang)}: one or two short sentences at the learner CEFR level that open the situation in character and invite the learner to answer. It does not reveal the twist.`,
         "Do not invent facts about the learner beyond the goal, the note and the interests given.",
       ].join(" "),
       contents: [
@@ -1138,8 +1192,9 @@ export class GeminiGateway {
                 partner_role: { type: "string" },
                 objective: { type: "string" },
                 twist: { type: "string" },
+                opener: { type: "string" },
               },
-              required: ["kind", "title", "setting", "learner_role", "partner_role", "objective"],
+              required: ["kind", "title", "setting", "learner_role", "partner_role", "objective", "opener"],
             },
           },
         },

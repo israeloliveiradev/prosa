@@ -1,7 +1,7 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import type { PropsWithChildren } from "react";
 
-const DESCRIPTION = "Ritual diário de idiomas de 20 minutos com mentores históricos.";
+const DESCRIPTION = "Prosa: a 20-minute daily language ritual with historical mentors.";
 
 const ANTI_FLASH_SCRIPT = `
   try {
@@ -14,7 +14,8 @@ export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="pt-BR">
       <head>
-        <title>Prosa — Maestria Polímata em 20 Minutos</title>
+        {/* i18n-ignore: HTML estático, sem idioma; o título é a marca */}
+        <title>Prosa</title>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta

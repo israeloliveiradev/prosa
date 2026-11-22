@@ -1,4 +1,6 @@
 import { useState, useId, forwardRef } from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import {
   View,
   TextInput,
@@ -49,6 +51,7 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
   },
   ref
 ) {
+  const ui = useAreaCopy(UI);
   const { palette } = useTheme();
   const pointer = usePointer();
   const generatedId = useId();
@@ -159,7 +162,7 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
         {isPassword && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={showPassword ? "Ocultar senha" : "Ver senha"}
+            accessibilityLabel={showPassword ? ui.hidePassword : ui.showPassword}
             onPress={() => setShowPassword((prev) => !prev)}
             hitSlop={8}
             className="ml-2 cursor-pointer p-1"

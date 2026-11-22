@@ -1,4 +1,6 @@
 import React, { useEffect } from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import {
   Modal,
   View,
@@ -46,6 +48,7 @@ export function Dialog({
   testID = "ui-dialog",
   style,
 }: DialogProps) {
+  const ui = useAreaCopy(UI);
   const { colors, spacing, radius } = useThemeTokens();
 
   useEffect(() => {
@@ -83,7 +86,7 @@ export function Dialog({
           <Pressable
             testID={`${testID}-backdrop`}
             accessibilityRole="button"
-            accessibilityLabel="Fechar diálogo"
+            accessibilityLabel={ui.closeDialog}
             style={StyleSheet.absoluteFill}
             onPress={onClose}
           />

@@ -3,9 +3,12 @@ import { useRouter } from "expo-router";
 import { useTheme } from "@/theme/ThemeContext";
 import { Text } from "@/ui/text";
 import { Button } from "@/ui/button";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import { Icon } from "@/ui/icon";
 
 export default function NotFoundScreen() {
+  const ui = useAreaCopy(UI);
   const router = useRouter();
   const { palette } = useTheme();
 
@@ -54,11 +57,11 @@ export default function NotFoundScreen() {
         </View>
 
         <Text variant="title" weight="semibold" tone="ink" align="center">
-          Página não encontrada
+          {ui.notFoundTitle}
         </Text>
 
         <Text variant="body" tone="muted" align="center">
-          O caminho que você tentou acessar não existe, foi movido ou você precisa entrar na sua conta.
+          {ui.notFoundBody}
         </Text>
 
         <Button
@@ -68,7 +71,7 @@ export default function NotFoundScreen() {
           testID="not-found-back-home"
           className="mt-2"
         >
-          Voltar ao início
+          {ui.backHome}
         </Button>
       </View>
     </View>

@@ -20,12 +20,13 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "@/global.css";
 import { ProsaQueryProvider, useProgressReady } from "@/lib/query";
-import { ProsaProvider } from "@/context/prosa-context";
-import { useSession } from "@/lib/session";
+import { useAreaCopy } from "@/lib/copy/area";
+import { BOOT } from "@/lib/copy/boot";
 import { peekSurfaceColor, ThemeProvider, useTheme } from "@/theme/ThemeContext";
 import { Toaster } from "@/ui";
 
 export default function RootLayout() {
+  const boot = useAreaCopy(BOOT);
   const [loaded, error] = useFonts({
     "IBM Plex Sans": IBMPlexSans_400Regular,
     "IBM Plex Sans Medium": IBMPlexSans_500Medium,
@@ -43,14 +44,14 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS === "web" && typeof document !== "undefined") {
-      document.title = "Prosa — Maestria Polímata em 20 Minutos";
+      document.title = "Prosa";
     }
   }, []);
 
   return (
     <>
       <Head>
-        <title>Prosa — Maestria Polímata em 20 Minutos</title>
+        <title>Prosa</title>
         <meta name="description" content="Uma lição de vinte minutos por dia com mentores polímatas." />
         <meta name="theme-color" content="#FDFBF7" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -60,15 +61,13 @@ export default function RootLayout() {
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </Head>
       {!loaded && !error ? (
-        <View style={{ flex: 1, backgroundColor: peekSurfaceColor() }} accessibilityRole="progressbar" accessibilityLabel="Carregando Prosa" />
+        <View style={{ flex: 1, backgroundColor: peekSurfaceColor() }} accessibilityRole="progressbar" accessibilityLabel={boot.loading} />
       ) : (
         <GestureHandlerRootView style={{ flex: 1 }}>
           <SafeAreaProvider>
             <ThemeProvider>
               <ProsaQueryProvider>
-                <ProsaProvider>
-                  <ThemedStack />
-                </ProsaProvider>
+                <ThemedStack />
               </ProsaQueryProvider>
             </ThemeProvider>
           </SafeAreaProvider>
@@ -79,13 +78,12 @@ export default function RootLayout() {
 }
 
 function ThemedStack() {
+  const boot = useAreaCopy(BOOT);
   const { scheme, palette } = useTheme();
   const ready = useProgressReady();
-  const session = useSession();
-  const open = Boolean(session);
 
   if (!ready) {
-    return <View style={{ flex: 1, backgroundColor: palette.surface }} accessibilityRole="progressbar" accessibilityLabel="Carregando Prosa" />;
+    return <View style={{ flex: 1, backgroundColor: palette.surface }} accessibilityRole="progressbar" accessibilityLabel={boot.loading} />;
   }
 
   return (
@@ -94,7 +92,7 @@ function ThemedStack() {
       <Stack
         screenOptions={{
           headerShown: false,
-          title: "Prosa — Maestria Polímata em 20 Minutos",
+          title: "Prosa",
           animation: "fade",
           contentStyle: { backgroundColor: palette.surface },
         }}

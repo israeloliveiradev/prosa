@@ -1,6 +1,8 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "expo-router";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 
 export interface ProsaLogoProps {
   variant?: "full" | "compact" | "icon";
@@ -73,6 +75,7 @@ export function ProsaLogo({
   showDot = true,
 }: ProsaLogoProps) {
   const router = useRouter();
+  const ui = useAreaCopy(UI);
 
   const iconSizes = {
     sm: 32,
@@ -116,6 +119,7 @@ export function ProsaLogo({
             <span
               className={`font-black font-sans tracking-tight text-stone-900 ${titleSizes[size]}`}
             >
+              {/* i18n-ignore marca */}
               PROSA
             </span>
             {showDot && (
@@ -126,7 +130,7 @@ export function ProsaLogo({
             <span
               className={`font-bold uppercase text-[#0D9488] mt-0.5 leading-none font-sans ${subtitleSizes[size]}`}
             >
-              Ritual Diário
+              {ui.tagline}
             </span>
           )}
         </div>

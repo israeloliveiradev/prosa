@@ -167,7 +167,7 @@ export function ProseScreen() {
         if (result.memory) {
           setMemory(result.memory);
         }
-        void tap("light");
+        // Sem vibração aqui: a abertura chega sem toque do aluno e o navegador bloqueia (e acusa) a vibração.
       })
       .catch((caught: unknown) => {
         if (active) {

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import {
   Pressable,
   View,
@@ -40,6 +42,7 @@ export function Select<T extends string = string>({
   style,
   className,
 }: SelectProps<T>) {
+  const ui = useAreaCopy(UI);
   const { palette } = useTheme();
   const pointer = usePointer();
   const { trigger } = useHaptics();
@@ -88,7 +91,7 @@ export function Select<T extends string = string>({
         }}
       >
         <Text variant="body" tone={selectedOption ? "ink" : "faint"}>
-          {selectedOption ? selectedOption.label : "Selecione..."}
+          {selectedOption ? selectedOption.label : ui.select}
         </Text>
         <Icon name="caret" size={16} tone="muted" />
       </Pressable>

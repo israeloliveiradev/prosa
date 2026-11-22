@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import {
   Pressable,
   ActivityIndicator,
@@ -56,6 +58,7 @@ export function Button({
   style,
   className,
 }: ButtonProps) {
+  const ui = useAreaCopy(UI);
   const variant = tone === "negative" ? "danger" : variantProp;
   const { palette } = useTheme();
   const { trigger } = useHaptics();
@@ -166,8 +169,8 @@ export function Button({
       {loading ? (
         <ActivityIndicator
           size="small"
-          accessibilityLabel="Carregando..."
-          aria-label="Carregando..."
+          accessibilityLabel={ui.loading}
+          aria-label={ui.loading}
           color={textColor === "onPrimary" ? palette.onPrimary : palette.ink}
         />
       ) : (

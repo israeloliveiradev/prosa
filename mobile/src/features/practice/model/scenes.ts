@@ -15,6 +15,8 @@ export interface PersonaScene {
   objective: string;
   twist: string | null;
   unit_id: string | null;
+  /** Primeira fala da personagem, quando o servidor a manda (a cena começa com ela). */
+  opener?: string | null;
 }
 
 export interface ScenesResponse {
@@ -51,6 +53,7 @@ export function parseScene(raw: unknown): PersonaScene | null {
     objective,
     twist: text(item.twist) || null,
     unit_id: text(item.unit_id) || null,
+    opener: text(item.opener) || null,
   };
 }
 

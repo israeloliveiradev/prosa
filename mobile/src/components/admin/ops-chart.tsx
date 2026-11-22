@@ -1,8 +1,15 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
+import { tactile } from "@/components/tactile/tokens";
+import { fill } from "@/components/persona/talk-logic";
 import type { AdminDay } from "@/lib/api";
+import { useAreaCopy } from "@/lib/copy/area";
+import { ADMIN } from "@/lib/copy/admin";
+
+const COLORS = { users: tactile.primary, lessons: tactile.amber, duels: tactile.faint } as const;
 
 export function OpsChart({ series }: { series: AdminDay[] }) {
+  const t = useAreaCopy(ADMIN);
   const peak = useMemo(() => Math.max(1, ...series.flatMap((day) => [day.users, day.lessons, day.duels])), [series]);
   const totals = useMemo(
     () =>
@@ -16,41 +23,50 @@ export function OpsChart({ series }: { series: AdminDay[] }) {
       ),
     [series],
   );
+  const legend = [
+    { key: "users", label: t.legendUsers },
+    { key: "lessons", label: t.legendLessons },
+    { key: "duels", label: t.legendDuels },
+  ] as const;
 
   return (
-    <View className="mt-10">
-      <Text className="font-displayItalic text-headline text-ink">14 dias</Text>
-      <Text className="mt-2 text-base leading-6 text-muted">
-        {totals.users} contas novas · {totals.lessons} lições · {totals.duels} duelos. A altura é quantidade, não cor.
+    <View style={{ gap: 8 }}>
+      <Text className="font-display font-extrabold" style={{ fontSize: 22, color: tactile.ink }}>
+        {t.chartTitle}
       </Text>
-      <View className="mt-6 flex-row items-end gap-1">
+      <Text style={{ fontSize: 15, lineHeight: 22, color: tactile.muted }}>{fill(t.chartSummary, totals)}</Text>
+      <View style={{ marginTop: 12, flexDirection: "row", alignItems: "flex-end", gap: 4 }}>
         {series.map((day) => (
-          <View key={day.date} className="min-w-0 flex-1 items-center">
-            <View className="h-36 w-full flex-row items-end justify-center gap-0.5">
-              <View
-                accessibilityLabel={`${day.date}, ${day.users} contas`}
-                className="w-1.5 rounded-t bg-ember"
-                style={{ height: `${Math.max(6, (day.users / peak) * 100)}%` }}
-              />
-              <View
-                accessibilityLabel={`${day.date}, ${day.lessons} lições`}
-                className="w-1.5 rounded-t bg-moss"
-                style={{ height: `${Math.max(6, (day.lessons / peak) * 100)}%` }}
-              />
-              <View
-                accessibilityLabel={`${day.date}, ${day.duels} duelos`}
-                className="w-1.5 rounded-t bg-sandInk"
-                style={{ height: `${Math.max(6, (day.duels / peak) * 100)}%` }}
-              />
+          <View key={day.date} style={{ minWidth: 0, flex: 1, alignItems: "center" }}>
+            <View style={{ height: 144, width: "100%", flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 2 }}>
+              {(["users", "lessons", "duels"] as const).map((key) => (
+                <View
+                  key={key}
+                  accessibilityLabel={fill(key === "users" ? t.dayUsers : key === "lessons" ? t.dayLessons : t.dayDuels, {
+                    date: day.date,
+                    n: day[key],
+                  })}
+                  style={{
+                    width: 6,
+                    borderTopLeftRadius: 3,
+                    borderTopRightRadius: 3,
+                    backgroundColor: COLORS[key],
+                    height: `${Math.max(6, (day[key] / peak) * 100)}%`,
+                  }}
+                />
+              ))}
             </View>
-            <Text className="mt-2 text-[10px] text-muted">{day.date.slice(8)}</Text>
+            <Text style={{ marginTop: 6, fontSize: 10, color: tactile.muted }}>{day.date.slice(8)}</Text>
           </View>
         ))}
       </View>
-      <View className="mt-4 gap-1">
-        <Text className="text-base text-muted">Bordô · contas novas</Text>
-        <Text className="text-base text-muted">Verde · lições</Text>
-        <Text className="text-base text-muted">Areia · duelos</Text>
+      <View style={{ marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
+        {legend.map((item) => (
+          <View key={item.key} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: COLORS[item.key] }} />
+            <Text style={{ fontSize: 13, color: tactile.muted }}>{item.label}</Text>
+          </View>
+        ))}
       </View>
     </View>
   );

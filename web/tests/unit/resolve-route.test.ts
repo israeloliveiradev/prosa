@@ -199,4 +199,15 @@ test.describe("Route Guard Resolution (Unit - Table 9.2)", () => {
       })
     ).toBeNull();
   });
+
+  test("a página pública /dossier/<token> abre com e sem sessão (como /cert)", () => {
+    for (const path of ["/dossier/abc123", "/cert/abc123"]) {
+      for (const signedIn of [false, true]) {
+        expect(
+          resolveRoute({ ready: true, signedIn, journeyDone: signedIn, group: "public", pathname: path }),
+          path + " signedIn=" + signedIn,
+        ).toBeNull();
+      }
+    }
+  });
 });

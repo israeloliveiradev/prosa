@@ -4,6 +4,7 @@ import { useSession } from "@/lib/session";
 import { journeyFinished } from "@/lib/journey";
 import { resolveRoute } from "@/navigation/resolve-route";
 import { AppShell } from "@/components/layout/app-shell";
+import { tactile } from "@/components/tactile/tokens";
 
 export default function AppLayout() {
   const ready = useProgressReady();
@@ -24,7 +25,8 @@ export default function AppLayout() {
 
   return (
     <AppShell>
-      <Stack screenOptions={{ headerShown: false, animation: "none" }}>
+      {/* Sem contentStyle, o Stack pinta o fundo padrão do React Navigation (#f2f2f2) atrás de cada tela. */}
+      <Stack screenOptions={{ headerShown: false, animation: "none", contentStyle: { backgroundColor: tactile.bg } }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="path" />
         <Stack.Screen name="news" />
@@ -40,7 +42,6 @@ export default function AppLayout() {
         <Stack.Screen name="paywall" options={{ animation: "default" }} />
         <Stack.Screen name="admin" options={{ animation: "default" }} />
         <Stack.Screen name="duel" options={{ animation: "default" }} />
-        <Stack.Screen name="commute" options={{ animation: "default" }} />
         <Stack.Screen name="exam" options={{ animation: "default" }} />
         <Stack.Screen name="life" options={{ animation: "default" }} />
         <Stack.Screen name="org" options={{ animation: "default" }} />

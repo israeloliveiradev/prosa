@@ -1,4 +1,6 @@
 import React from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import { View, Image, StyleSheet, type ViewProps } from "react-native";
 import { Text } from "./text";
 import { useThemeTokens } from "../theme/ThemeContext";
@@ -22,6 +24,7 @@ export function Avatar({
   style,
   ...props
 }: AvatarProps) {
+  const ui = useAreaCopy(UI);
   const { scheme, colors, radius } = useThemeTokens();
   const isDark = scheme === "dark";
 
@@ -54,7 +57,7 @@ export function Avatar({
     <View
       testID={testID}
       accessibilityRole="image"
-      accessibilityLabel={name ? `Avatar de ${name}` : "Avatar"}
+      accessibilityLabel={name ? ui.avatarOf.replace("{name}", name) : ui.avatar}
       style={[
         styles.container,
         {

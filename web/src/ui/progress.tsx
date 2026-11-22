@@ -1,4 +1,6 @@
 import React from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import { View, StyleSheet, type ViewProps } from "react-native";
 import { Text } from "./text";
 import { useThemeTokens } from "../theme/ThemeContext";
@@ -20,6 +22,7 @@ export function Progress({
   style,
   ...props
 }: ProgressProps) {
+  const ui = useAreaCopy(UI);
   const { colors } = useThemeTokens();
   const clampedValue = Math.min(100, Math.max(0, value));
 
@@ -30,8 +33,8 @@ export function Progress({
     <View
       testID={testID}
       accessibilityRole="progressbar"
-      accessibilityLabel={labelStart || "Progresso"}
-      aria-label={labelStart || "Progresso"}
+      accessibilityLabel={labelStart || ui.progress}
+      aria-label={labelStart || ui.progress}
       accessibilityValue={{ min: 0, max: 100, now: clampedValue }}
       style={[styles.container, style]}
       {...props}

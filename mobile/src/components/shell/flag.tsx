@@ -1,6 +1,8 @@
 import { useId, type ReactNode } from "react";
 import { View } from "react-native";
 import Svg, { Circle, ClipPath, Defs, G, Path, Polygon, Rect } from "react-native-svg";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import { languageName } from "@/lib/languages";
 
 function Frame({
@@ -170,6 +172,7 @@ function UnitedStates({ clipId }: { clipId: string }) {
 }
 
 export function Flag({ code, size = 28 }: { code: string; size?: number }) {
+  const ui = useAreaCopy(UI);
   const clipId = useId().replace(/:/g, "");
   const normalized = (code || "en").toLowerCase();
   const label = languageName(normalized);
@@ -197,7 +200,7 @@ export function Flag({ code, size = 28 }: { code: string; size?: number }) {
   }
   if (normalized === "at") {
     return (
-      <Frame size={size} label="Áustria">
+      <Frame size={size} label={ui.flagAustria}>
         <Austria />
       </Frame>
     );
@@ -232,7 +235,7 @@ export function Flag({ code, size = 28 }: { code: string; size?: number }) {
   }
   if (normalized === "us") {
     return (
-      <Frame size={size} label="United States">
+      <Frame size={size} label={ui.flagUnitedStates}>
         <UnitedStates clipId={`us${clipId}`} />
       </Frame>
     );

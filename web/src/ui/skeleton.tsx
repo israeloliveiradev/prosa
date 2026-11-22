@@ -1,4 +1,6 @@
 import React from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import { View, StyleSheet, type DimensionValue, type ViewProps } from "react-native";
 import { useThemeTokens } from "../theme/ThemeContext";
 
@@ -17,6 +19,7 @@ export function Skeleton({
   style,
   ...props
 }: SkeletonProps) {
+  const ui = useAreaCopy(UI);
   const { colors, radius: radiusTokens } = useThemeTokens();
 
   const borderRadius =
@@ -30,7 +33,7 @@ export function Skeleton({
     <View
       testID={testID}
       role="status"
-      accessibilityLabel="Carregando..."
+      accessibilityLabel={ui.loading}
       aria-busy={true}
       style={[
         styles.skeleton,

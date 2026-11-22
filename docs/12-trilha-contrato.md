@@ -145,3 +145,7 @@ A chave de cache inclui `unit_id`.
   - `path_unit_tests` (tentativas e gabarito);
   - `session_completions (user_id, target_lang, date, unit_id, elapsed_seconds, UNIQUE (user_id, target_lang, date))`.
 - **`migrations/032_account_prefs.sql`:** `users.goal`, `users.goal_note`, `users.daily_minutes` (10/20/30) e `display_locale` com os 7 idiomas.
+
+## Glosas no idioma de apoio
+
+As glosas do currículo (`src/curriculum/<lang>.ts`) estão em inglês. O aluno só as vê no teste de unidade (itens de significado do teste determinístico); a rodada-chefe e as lições só enviam lemas, em idioma-alvo, à IA. Regra: glosa visível ao aluno é no idioma de apoio (`users.native_lang`). `src/services/gloss-translation.ts` devolve as glosas da unidade: inglês como está; outro idioma por uma chamada de IA em lote (validada: mesma contagem, sem vazio, sem o próprio lema), em cache no Redis por `gloss:v1:<alvo>:<unidade>:<apoio>` por 90 dias, com chamadas simultâneas deduplicadas. Sem tradução, o teste usa só lacunas e nunca glosa em inglês (se faltar item, o início responde 503 "não pronto").

@@ -153,7 +153,8 @@ export function PersonaScreen() {
     AudioService.stopAndUnload();
     setSpeakingIndex(null);
     setScene(next);
-    setTurns([]);
+    // A personagem fala primeiro quando a cena traz a abertura; não vira turno do aluno.
+    setTurns(next.opener ? [{ role: "persona", text: next.opener }] : []);
     setDraft("");
     setFailure(null);
     setVoiceFailed(false);

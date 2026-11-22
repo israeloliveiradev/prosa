@@ -1,13 +1,15 @@
 import { Redirect } from "expo-router";
-import { useEffect, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { OpsChart } from "@/components/admin/ops-chart";
-import { AdminSegment } from "@/components/admin/segment";
+import { AdminChip, AdminSegment } from "@/components/admin/segment";
 import { Stat } from "@/components/admin/stat";
-import { AppFrame } from "@/components/shell/app-frame";
-import { PageMasthead } from "@/components/shell/page-masthead";
-import { ChunkButton } from "@/components/shell/chunk-button";
+import { fill } from "@/components/persona/talk-logic";
+import { TactileButton } from "@/components/tactile/tactile-button";
+import { TactileCard } from "@/components/tactile/tactile-card";
+import { tactile } from "@/components/tactile/tokens";
 import {
+  ADMIN_DENIED,
   fetchAdminDashboard,
   fetchAdminEvents,
   fetchAdminUser,
@@ -20,31 +22,34 @@ import {
   type AdminEvent,
   type AdminUserDetail,
 } from "@/lib/api";
+import { ADMIN } from "@/lib/copy/admin";
+import { useAreaCopy } from "@/lib/copy/area";
 import { tap } from "@/lib/haptics";
+import { useLocale, type DisplayLocale } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
-import { useTheme } from "@/theme/ThemeContext";
 
 type Segment = "hoje" | "contas";
 type PlanFilter = "all" | "free" | "pro";
 type RoleFilter = "all" | "learner" | "admin";
 type EventKind = "all" | AdminEvent["kind"];
 
-const EVENT_KIND: Record<AdminEvent["kind"], string> = {
-  gemini: "Gemini",
-  lesson: "Lição",
-  audio: "Áudio",
-  news: "Notícia",
-  billing: "Plano",
+const DATE_TAG: Record<DisplayLocale, string> = {
+  pt: "pt-BR",
+  en: "en",
+  de: "de",
+  fr: "fr",
+  es: "es",
+  it: "it",
+  ja: "ja",
 };
 
-const EVENT_STATUS: Record<AdminEvent["status"], string> = {
-  ok: "ok",
-  error: "falhou",
-  paused: "pausada",
-};
+const KICKER = { fontSize: 11, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase", color: tactile.primary } as const;
+const SECTION = { fontSize: 13, fontWeight: "800", letterSpacing: 0.6, textTransform: "uppercase", color: tactile.muted } as const;
+const BODY = { fontSize: 15, lineHeight: 22, color: tactile.muted } as const;
 
 export default function AdminScreen() {
-  const { palette } = useTheme();
+  const t = useAreaCopy(ADMIN);
+  const locale = useLocale();
   const session = useSession();
   const [segment, setSegment] = useState<Segment>("hoje");
   const [board, setBoard] = useState<AdminDashboard | null>(null);
@@ -66,6 +71,21 @@ export default function AdminScreen() {
   const [detailPending, setDetailPending] = useState(false);
   const [confirmPlan, setConfirmPlan] = useState<{ id: string; next: "free" | "pro" } | null>(null);
 
+  const tag = DATE_TAG[locale];
+  const eventKindLabel: Record<AdminEvent["kind"], string> = {
+    gemini: t.kindGemini,
+    lesson: t.kindLesson,
+    audio: t.kindAudio,
+    news: t.kindNews,
+    billing: t.kindBilling,
+  };
+  const eventStatusLabel: Record<AdminEvent["status"], string> = { ok: t.statusOk, error: t.statusError, paused: t.statusPaused };
+
+  /** Texto do erro: o 403 estável vira a mensagem de acesso negado, o resto usa o texto da ação. */
+  function failure(caught: unknown, fallback: string): string {
+    return caught instanceof Error && caught.message === ADMIN_DENIED ? t.errDenied : fallback;
+  }
+
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(query), 350);
     return () => clearTimeout(timer);
@@ -86,7 +106,7 @@ export default function AdminScreen() {
       })
       .catch((caught: unknown) => {
         if (active) {
-          setError(caught instanceof Error ? caught.message : "A visão de administração não abriu.");
+          setError(failure(caught, t.errBoard));
         }
       })
       .finally(() => {
@@ -97,7 +117,8 @@ export default function AdminScreen() {
     return () => {
       active = false;
     };
-  }, [session]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, t.errBoard]);
 
   useEffect(() => {
     if (!session || session.user.role !== "admin" || segment !== "hoje") {
@@ -116,7 +137,7 @@ export default function AdminScreen() {
       })
       .catch((caught: unknown) => {
         if (active) {
-          setError(caught instanceof Error ? caught.message : "Os eventos não abriram.");
+          setError(failure(caught, t.errEvents));
         }
       })
       .finally(() => {
@@ -127,7 +148,8 @@ export default function AdminScreen() {
     return () => {
       active = false;
     };
-  }, [session, segment, eventKind]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, segment, eventKind, t.errEvents]);
 
   useEffect(() => {
     if (!session || session.user.role !== "admin" || segment !== "contas") {
@@ -146,7 +168,7 @@ export default function AdminScreen() {
       })
       .catch((caught: unknown) => {
         if (active) {
-          setError(caught instanceof Error ? caught.message : "As contas não abriram.");
+          setError(failure(caught, t.errUsers));
         }
       })
       .finally(() => {
@@ -157,7 +179,8 @@ export default function AdminScreen() {
     return () => {
       active = false;
     };
-  }, [session, segment, debounced, planFilter, roleFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, segment, debounced, planFilter, roleFilter, t.errUsers]);
 
   useEffect(() => {
     if (!session || !openId) {
@@ -177,7 +200,7 @@ export default function AdminScreen() {
       .catch((caught: unknown) => {
         if (active) {
           setDetail(null);
-          setDetailError(caught instanceof Error ? caught.message : "O detalhe desta conta não abriu.");
+          setDetailError(failure(caught, t.errDetail));
         }
       })
       .finally(() => {
@@ -188,7 +211,8 @@ export default function AdminScreen() {
     return () => {
       active = false;
     };
-  }, [openId, session]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, session, t.errDetail]);
 
   if (!session || session.user.role !== "admin") {
     return <Redirect href="/account" />;
@@ -208,7 +232,7 @@ export default function AdminScreen() {
       }
       setConfirmPlan(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "O plano não mudou.");
+      setError(failure(caught, t.errPlan));
     } finally {
       setBusy(false);
     }
@@ -225,7 +249,7 @@ export default function AdminScreen() {
         setDetail({ ...detail, user: { ...detail.user, ...updated } });
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "O dia de folga não mudou.");
+      setError(failure(caught, t.errFreeze));
     } finally {
       setBusy(false);
     }
@@ -242,292 +266,326 @@ export default function AdminScreen() {
       const paused = await setGenerationPaused(token, !board.generation_paused);
       setBoard({ ...board, generation_paused: paused });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "O interruptor não mudou.");
+      setError(failure(caught, t.errSwitch));
     } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <AppFrame>
-      <PageMasthead
-        kicker="Administração"
-        title="Operação do dia."
-        dek="Hoje é a máquina. Contas é quem estuda. A senha não aparece aqui."
-      />
-      <AdminSegment
-        value={segment}
-        options={[
-          { id: "hoje", label: "Hoje" },
-          { id: "contas", label: "Contas" },
-        ]}
-        onChange={setSegment}
-      />
-      {error ? (
-        <Text accessibilityRole="alert" className="mt-6 text-base text-roseInk">
-          {error}
-        </Text>
-      ) : null}
+  const money = (micros: number) => `$${(micros / 1_000_000).toFixed(3)}`;
+  const keyState = (on: boolean, yes: string, no: string) => (on ? yes : no);
 
-      {segment === "hoje" ? (
-        boardPending && !board ? (
-          <View className="mt-8 gap-4" accessibilityLabel="Carregando a operação de hoje">
-            <View className="h-16 rounded-[28px] bg-line" />
-            <View className="h-16 rounded-[28px] bg-line" />
-            <View className="h-40 rounded-[28px] bg-line" />
-          </View>
-        ) : board ? (
-          <>
-            <View className="mt-8">
-              <Text className="font-label text-sm text-muted">Contas</Text>
-              <View className="mt-3 flex-row flex-wrap gap-3">
-                <Stat label="Total" value={board.users} />
-                <Stat label="Pro" value={board.pro} />
-                <Stat label="Grátis" value={board.free} />
-              </View>
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 24, paddingBottom: 64 }} keyboardShouldPersistTaps="handled">
+      <View style={{ width: "100%", maxWidth: 992, alignSelf: "center", paddingHorizontal: 16, gap: 24 }}>
+        <View style={{ gap: 6 }}>
+          <Text style={KICKER}>{t.kicker}</Text>
+          <Text accessibilityRole="header" className="font-display text-3xl font-extrabold" style={{ color: tactile.ink }}>
+            {t.title}
+          </Text>
+          <Text style={{ fontSize: 16, lineHeight: 24, color: tactile.body, maxWidth: 640 }}>{t.dek}</Text>
+        </View>
+
+        <AdminSegment
+          value={segment}
+          options={[
+            { id: "hoje", label: t.tabToday },
+            { id: "contas", label: t.tabAccounts },
+          ]}
+          onChange={setSegment}
+        />
+        {error ? (
+          <Text accessibilityRole="alert" style={{ fontSize: 15, color: tactile.danger }}>
+            {error}
+          </Text>
+        ) : null}
+
+        {segment === "hoje" ? (
+          boardPending && !board ? (
+            <View style={{ gap: 16 }} accessibilityLabel={t.loadingBoard}>
+              {[64, 64, 160].map((height, index) => (
+                <View key={index} style={{ height, borderRadius: 16, backgroundColor: tactile.raised }} />
+              ))}
             </View>
-            <View className="mt-8">
-              <Text className="font-label text-sm text-muted">Uso de hoje</Text>
-              <View className="mt-3 flex-row flex-wrap gap-3">
-                <Stat label="Lições" value={board.lessons_today} />
-                <Stat label="Duelos" value={board.duels_today} />
-                <Stat label="Áudios" value={board.audio_today} />
-              </View>
-            </View>
-            {board.cost.calls > 0 ? (
-              <View className="mt-8">
-                <Text className="font-label text-sm text-muted">Custo de hoje</Text>
-                <View className="mt-3 flex-row flex-wrap gap-3">
-                  <Stat label="Gasto" value={`$${(board.cost.cost_micros / 1_000_000).toFixed(3)}`} />
-                  <Stat
-                    label="Por sessão"
-                    value={
-                      board.cost.per_session_micros == null
-                        ? "—"
-                        : `$${(board.cost.per_session_micros / 1_000_000).toFixed(3)}`
-                    }
-                  />
-                  <Stat label="Cache" value={`${board.cost.cache_hits}/${board.cost.calls}`} />
+          ) : board ? (
+            <>
+              <View style={{ gap: 10 }}>
+                <Text style={SECTION}>{t.accountsH}</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <Stat label={t.total} value={board.users} />
+                  <Stat label={t.pro} value={board.pro} />
+                  <Stat label={t.free} value={board.free} />
                 </View>
               </View>
-            ) : null}
-            <View className="mt-8">
-              <Text className="font-label text-sm text-muted">Saúde</Text>
-              <View className="mt-3 flex-row flex-wrap gap-3">
-                <Stat label="Modelo falhou" value={board.gemini_errors_today} />
-                <Stat label="Geração" value={board.generation_paused ? "Pausada" : "Ligada"} />
+              <View style={{ gap: 10 }}>
+                <Text style={SECTION}>{t.usageH}</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <Stat label={t.lessons} value={board.lessons_today} />
+                  <Stat label={t.duels} value={board.duels_today} />
+                  <Stat label={t.audios} value={board.audio_today} />
+                </View>
               </View>
-            </View>
-
-            <View className="mt-8 rounded-[28px] border border-line bg-card px-5 py-5">
-              <Text className="font-label text-sm text-muted">Máquina</Text>
-              <Text className="mt-2 font-display text-2xl text-ink">{board.generation_paused ? "Geração pausada" : "Geração ligada"}</Text>
-              <Text className="mt-2 text-base leading-6 text-muted">
-                {board.generation_paused
-                  ? "Nenhuma lição nova sai do modelo. O cache e a última notícia continuam."
-                  : "Lacuna, mnemônica e tema curto vão no Groq. Prosa, diário e prova ficam no Gemini. Se o Gemini falhar, Groq e OpenRouter entram."}
-              </Text>
-              <Text className="mt-4 text-base leading-7 text-ink">
-                Stripe {board.stripe_configured ? "ligada" : "desligada"} · Gemini {board.gemini_configured ? "com chave" : "sem chave"}
-                {" · "}
-                Groq {board.groq_configured ? "com chave" : "sem chave"}
-                {" · "}
-                OpenRouter {board.openrouter_configured ? "com chave" : "sem chave"}
-              </Text>
-              <Text className="mt-2 text-base leading-6 text-muted">
-                Sem Stripe o checkout avisa o aluno. Sem nenhum modelo a geração devolve 503.
-              </Text>
-              <View className="mt-4 self-start">
-                <ChunkButton
-                  label={board.generation_paused ? "Ligar a geração" : "Pausar a geração"}
-                  onPress={() => void toggleGeneration()}
-                  tone={board.generation_paused ? "moss" : "ink"}
-                  disabled={busy}
-                />
-              </View>
-            </View>
-
-            <OpsChart series={board.series} />
-
-            <View className="mt-10">
-              <Text className="font-displayItalic text-headline text-ink">Eventos</Text>
-              <Text className="mt-2 text-base leading-6 text-muted">Falhas do modelo, pausa, áudio e plano.</Text>
-              <View accessibilityRole="radiogroup" className="mt-4 flex-row flex-wrap gap-2">
-                {(["all", "gemini", "lesson", "audio", "news", "billing"] as const).map((item) => {
-                  const selected = item === eventKind;
-                  const label = item === "all" ? "Todos" : EVENT_KIND[item];
-                  return (
-                    <Pressable
-                      key={item}
-                      accessibilityRole="radio"
-                      accessibilityLabel={label}
-                      accessibilityState={{ selected, checked: selected }}
-                      onPress={() => setEventKind(item)}
-                      className={`min-h-12 cursor-pointer items-center justify-center rounded-full px-4 ${selected ? "bg-ember" : "border border-line bg-card"}`}
-                    >
-                      <Text className={`font-label text-sm ${selected ? "text-onEmber" : "text-ink"}`}>{label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <View className="mt-4 gap-3">
-                {eventsPending ? <Text className="text-base text-muted">Carregando os eventos.</Text> : null}
-                {!eventsPending && events.length === 0 ? <Text className="text-base text-muted">Nenhum evento ainda.</Text> : null}
-                {events.map((event) => (
-                  <View key={event.id} className="rounded-[24px] border border-line bg-card px-4 py-4">
-                    <Text className="font-label text-sm text-ember">
-                      {EVENT_KIND[event.kind]} · {EVENT_STATUS[event.status]}
-                    </Text>
-                    <Text className="mt-1 text-base text-ink">{event.message}</Text>
-                    {event.detail ? <Text className="mt-1 text-sm leading-6 text-muted">{event.detail}</Text> : null}
-                    <Text className="mt-1 text-sm text-muted">{new Date(event.created_at).toLocaleString("pt-BR")}</Text>
+              {board.cost.calls > 0 ? (
+                <View style={{ gap: 10 }}>
+                  <Text style={SECTION}>{t.costH}</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                    <Stat label={t.spent} value={money(board.cost.cost_micros)} />
+                    <Stat
+                      label={t.perSession}
+                      value={board.cost.per_session_micros == null ? "—" : money(board.cost.per_session_micros)}
+                    />
+                    <Stat label={t.cache} value={`${board.cost.cache_hits}/${board.cost.calls}`} />
                   </View>
+                </View>
+              ) : null}
+              <View style={{ gap: 10 }}>
+                <Text style={SECTION}>{t.healthH}</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <Stat label={t.modelFailed} value={board.gemini_errors_today} />
+                  <Stat label={t.generation} value={board.generation_paused ? t.paused : t.on} />
+                </View>
+              </View>
+
+              <TactileCard className="p-6" animateEntry={false}>
+                <View style={{ gap: 8 }}>
+                  <Text style={SECTION}>{t.machineH}</Text>
+                  <Text className="font-display font-extrabold" style={{ fontSize: 22, color: tactile.ink }}>
+                    {board.generation_paused ? t.genPaused : t.genOn}
+                  </Text>
+                  <Text style={BODY}>{board.generation_paused ? t.genPausedNote : t.genOnNote}</Text>
+                  <Text style={{ fontSize: 15, lineHeight: 24, color: tactile.ink, marginTop: 8 }}>
+                    {[
+                      keyState(board.stripe_configured, t.stripeOn, t.stripeOff),
+                      keyState(board.gemini_configured, t.geminiOn, t.geminiOff),
+                      keyState(board.groq_configured, t.groqOn, t.groqOff),
+                      keyState(board.openrouter_configured, t.openrouterOn, t.openrouterOff),
+                    ].join(" · ")}
+                  </Text>
+                  <Text style={BODY}>{t.stripeNote}</Text>
+                  <View style={{ marginTop: 8, alignSelf: "flex-start" }}>
+                    <TactileButton
+                      label={board.generation_paused ? t.resumeBtn : t.pauseBtn}
+                      variant={board.generation_paused ? "primary" : "secondary"}
+                      onPress={() => void toggleGeneration()}
+                      disabled={busy}
+                    />
+                  </View>
+                </View>
+              </TactileCard>
+
+              <OpsChart series={board.series} />
+
+              <View style={{ gap: 8 }}>
+                <Text className="font-display font-extrabold" style={{ fontSize: 22, color: tactile.ink }}>
+                  {t.eventsH}
+                </Text>
+                <Text style={BODY}>{t.eventsDek}</Text>
+                <View accessibilityRole="radiogroup" style={{ marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {(["all", "gemini", "lesson", "audio", "news", "billing"] as const).map((item) => (
+                    <AdminChip
+                      key={item}
+                      label={item === "all" ? t.kindAll : eventKindLabel[item]}
+                      selected={item === eventKind}
+                      onPress={() => setEventKind(item)}
+                    />
+                  ))}
+                </View>
+                <View style={{ marginTop: 8, gap: 10 }}>
+                  {eventsPending ? <Text style={BODY}>{t.loadingEvents}</Text> : null}
+                  {!eventsPending && events.length === 0 ? <Text style={BODY}>{t.noEvents}</Text> : null}
+                  {events.map((event) => (
+                    <TactileCard key={event.id} className="p-4" animateEntry={false}>
+                      <View style={{ gap: 4 }}>
+                        <Text style={{ fontSize: 13, fontWeight: "800", color: tactile.primary }}>
+                          {eventKindLabel[event.kind]} · {eventStatusLabel[event.status]}
+                        </Text>
+                        <Text style={{ fontSize: 15, color: tactile.ink }}>{event.message}</Text>
+                        {event.detail ? <Text style={{ fontSize: 14, lineHeight: 21, color: tactile.muted }}>{event.detail}</Text> : null}
+                        <Text style={{ fontSize: 13, color: tactile.muted }}>{new Date(event.created_at).toLocaleString(tag)}</Text>
+                      </View>
+                    </TactileCard>
+                  ))}
+                </View>
+              </View>
+            </>
+          ) : null
+        ) : (
+          <>
+            <View style={{ maxWidth: 420, gap: 6 }}>
+              <Text style={SECTION}>{t.filterEmail}</Text>
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                accessibilityLabel={t.filterEmail}
+                autoCapitalize="none"
+                autoComplete="off"
+                placeholder={t.emailPlaceholder}
+                placeholderTextColor={tactile.faint}
+                style={{
+                  minHeight: 52,
+                  borderRadius: 14,
+                  borderWidth: 2,
+                  borderColor: tactile.border,
+                  backgroundColor: tactile.surface,
+                  paddingHorizontal: 16,
+                  fontSize: 16,
+                  color: tactile.ink,
+                }}
+              />
+            </View>
+            <View style={{ gap: 10 }}>
+              <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {(["all", "free", "pro"] as const).map((item) => (
+                  <AdminChip
+                    key={item}
+                    label={item === "all" ? t.allPlans : item === "pro" ? t.pro : t.free}
+                    selected={item === planFilter}
+                    onPress={() => setPlanFilter(item)}
+                  />
+                ))}
+              </View>
+              <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {(["all", "learner", "admin"] as const).map((item) => (
+                  <AdminChip
+                    key={item}
+                    label={item === "all" ? t.allRoles : item === "admin" ? t.roleAdmin : t.roleLearner}
+                    selected={item === roleFilter}
+                    onPress={() => setRoleFilter(item)}
+                  />
                 ))}
               </View>
             </View>
-          </>
-        ) : null
-      ) : (
-        <>
-          <View className="mt-8 max-w-md">
-            <Text className="mb-2 font-label text-sm text-muted">Filtrar por e-mail</Text>
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              accessibilityLabel="Filtrar por e-mail"
-              autoCapitalize="none"
-              autoComplete="off"
-              placeholder="parte do e-mail"
-              placeholderTextColor={palette.onSurfaceVariant}
-              className="min-h-14 rounded-full bg-card px-5 text-base text-ink"
-            />
-          </View>
-          <View accessibilityRole="radiogroup" className="mt-4 flex-row flex-wrap gap-2">
-            {(["all", "free", "pro"] as const).map((item) => {
-              const selected = item === planFilter;
-              const label = item === "all" ? "Todos os planos" : item === "pro" ? "Pro" : "Grátis";
-              return (
-                <Pressable
-                  key={item}
-                  accessibilityRole="radio"
-                  accessibilityLabel={label}
-                  accessibilityState={{ selected, checked: selected }}
-                  onPress={() => setPlanFilter(item)}
-                  className={`min-h-12 cursor-pointer items-center justify-center rounded-full px-4 ${selected ? "bg-ember" : "border border-line bg-card"}`}
-                >
-                  <Text className={`font-label text-sm ${selected ? "text-onEmber" : "text-ink"}`}>
-                    {item === "all" ? "Todos" : item === "pro" ? "Pro" : "Grátis"}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <View accessibilityRole="radiogroup" className="mt-3 flex-row flex-wrap gap-2">
-            {(["all", "learner", "admin"] as const).map((item) => {
-              const selected = item === roleFilter;
-              const label = item === "all" ? "Todos os papéis" : item === "admin" ? "Admin" : "Aluno";
-              return (
-                <Pressable
-                  key={item}
-                  accessibilityRole="radio"
-                  accessibilityLabel={label}
-                  accessibilityState={{ selected, checked: selected }}
-                  onPress={() => setRoleFilter(item)}
-                  className={`min-h-12 cursor-pointer items-center justify-center rounded-full px-4 ${selected ? "bg-ember" : "border border-line bg-card"}`}
-                >
-                  <Text className={`font-label text-sm ${selected ? "text-onEmber" : "text-ink"}`}>{label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text className="mt-4 text-base leading-6 text-muted">Até 80 contas nesta lista.</Text>
-          {usersPending ? <Text className="mt-6 text-base text-muted">Carregando as contas.</Text> : null}
-          <View className="mt-6 gap-4">
-            {users.map((user) => {
-              const open = openId === user.id;
-              const pendingPlan = confirmPlan?.id === user.id ? confirmPlan.next : null;
-              return (
-                <View key={user.id} className="rounded-[28px] border border-line bg-card px-5 py-5">
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: open }}
-                    accessibilityLabel={`Detalhe de ${user.email}`}
-                    onPress={() => {
-                      setConfirmPlan(null);
-                      setOpenId(open ? null : user.id);
-                    }}
-                  >
-                    <Text className="font-label text-base text-ink">{user.email}</Text>
-                    <Text className="mt-2 text-sm leading-6 text-muted">
-                      {user.target_lang.toUpperCase()} por {user.native_lang.toUpperCase()} · {user.plan === "pro" ? "Pro" : "grátis"} · sequência {user.streak_count}
-                    </Text>
-                  </Pressable>
-                  {open ? (
-                    <View className="mt-5 border-t border-line pt-4">
-                      <Text className="text-base leading-6 text-muted">
-                        {user.level} · {user.role === "admin" ? "admin" : "aluno"} · {user.lesson_count} lições · {user.streak_freeze_count}{" "}
-                        {user.streak_freeze_count === 1 ? "dia de folga" : "dias de folga"}
-                      </Text>
-                      <Text className="mt-2 text-base leading-6 text-muted">
-                        Criada em {new Date(user.created_at).toLocaleDateString("pt-BR")}
-                        {user.last_lesson_at ? ` · última lição ${new Date(user.last_lesson_at).toLocaleDateString("pt-BR")}` : ""}
-                      </Text>
-                      {detailPending ? <Text className="mt-3 text-base text-muted">Abrindo o histórico.</Text> : null}
-                      {detailError ? (
-                        <Text accessibilityRole="alert" className="mt-3 text-base text-roseInk">
-                          {detailError}
-                        </Text>
-                      ) : null}
-                      {detail?.user.id === user.id ? (
-                        <>
-                          <Text className="mt-2 text-base leading-6 text-muted">
-                            Duelos {detail.duels.total} · melhor {detail.duels.best}
+            <Text style={BODY}>{t.limit}</Text>
+            {usersPending ? <Text style={BODY}>{t.loadingAccounts}</Text> : null}
+            <View style={{ gap: 14 }}>
+              {users.map((user) => {
+                const open = openId === user.id;
+                const pendingPlan = confirmPlan?.id === user.id ? confirmPlan.next : null;
+                const planLabel = user.plan === "pro" ? t.pro : t.free;
+                return (
+                  <TactileCard key={user.id} className="p-5" animateEntry={false}>
+                    <View>
+                      <AccountHeader
+                        label={fill(t.detailOf, { email: user.email })}
+                        email={user.email}
+                        line={fill(t.accountLine, {
+                          target: user.target_lang.toUpperCase(),
+                          native: user.native_lang.toUpperCase(),
+                          plan: planLabel,
+                          streak: user.streak_count,
+                        })}
+                        open={open}
+                        onPress={() => {
+                          setConfirmPlan(null);
+                          setOpenId(open ? null : user.id);
+                        }}
+                      />
+                      {open ? (
+                        <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: tactile.border, paddingTop: 14, gap: 8 }}>
+                          <Text style={BODY}>
+                            {fill(t.detailLine, {
+                              level: user.level,
+                              role: user.role === "admin" ? t.roleAdmin : t.roleLearner,
+                              lessons: user.lesson_count,
+                              freezes: fill(user.streak_freeze_count === 1 ? t.freezeOne : t.freezeMany, { n: user.streak_freeze_count }),
+                            })}
                           </Text>
-                          {detail.lessons.length === 0 ? (
-                            <Text className="mt-3 text-base text-muted">Nenhuma lição gravada.</Text>
-                          ) : (
-                            detail.lessons.map((lesson) => (
-                              <Text key={`${lesson.lesson_date}-${lesson.title}`} className="mt-2 text-base leading-6 text-ink">
-                                {lesson.lesson_date} · {lesson.title} · {lesson.target_lang.toUpperCase()}
-                              </Text>
-                            ))
-                          )}
-                        </>
-                      ) : null}
-                      <View className="mt-5 flex-row flex-wrap gap-2">
-                        {pendingPlan ? (
-                          <>
-                            <ChunkButton
-                              label={pendingPlan === "pro" ? "Confirmar, passar para Pro" : "Confirmar, passar para grátis"}
-                              onPress={() => void togglePlan(user, pendingPlan)}
-                              disabled={busy}
+                          <Text style={BODY}>
+                            {fill(t.createdOn, { date: new Date(user.created_at).toLocaleDateString(tag) })}
+                            {user.last_lesson_at
+                              ? ` · ${fill(t.lastLesson, { date: new Date(user.last_lesson_at).toLocaleDateString(tag) })}`
+                              : ""}
+                          </Text>
+                          {detailPending ? <Text style={BODY}>{t.openingHistory}</Text> : null}
+                          {detailError ? (
+                            <Text accessibilityRole="alert" style={{ fontSize: 15, color: tactile.danger }}>
+                              {detailError}
+                            </Text>
+                          ) : null}
+                          {detail?.user.id === user.id ? (
+                            <>
+                              <Text style={BODY}>{fill(t.duelsLine, { total: detail.duels.total, best: detail.duels.best })}</Text>
+                              {detail.lessons.length === 0 ? (
+                                <Text style={BODY}>{t.noLessons}</Text>
+                              ) : (
+                                detail.lessons.map((lesson) => (
+                                  <Text key={`${lesson.lesson_date}-${lesson.title}`} style={{ fontSize: 15, lineHeight: 22, color: tactile.ink }}>
+                                    {lesson.lesson_date} · {lesson.title} · {lesson.target_lang.toUpperCase()}
+                                  </Text>
+                                ))
+                              )}
+                            </>
+                          ) : null}
+                          <View style={{ marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                            {pendingPlan ? (
+                              <>
+                                <TactileButton
+                                  size="sm"
+                                  label={pendingPlan === "pro" ? t.confirmPro : t.confirmFree}
+                                  onPress={() => void togglePlan(user, pendingPlan)}
+                                  disabled={busy}
+                                />
+                                <TactileButton size="sm" variant="ghost" label={t.cancel} onPress={() => setConfirmPlan(null)} disabled={busy} />
+                              </>
+                            ) : (
+                              <TactileButton
+                                size="sm"
+                                variant="secondary"
+                                label={user.plan === "pro" ? t.toFree : t.toPro}
+                                onPress={() => setConfirmPlan({ id: user.id, next: user.plan === "pro" ? "free" : "pro" })}
+                                disabled={busy}
+                              />
+                            )}
+                            <TactileButton size="sm" label={t.giveFreeze} onPress={() => void changeFreeze(user, 1)} disabled={busy} />
+                            <TactileButton
+                              size="sm"
+                              variant="ghost"
+                              label={t.takeFreeze}
+                              onPress={() => void changeFreeze(user, -1)}
+                              disabled={busy || user.streak_freeze_count <= 0}
                             />
-                            <ChunkButton label="Cancelar" onPress={() => setConfirmPlan(null)} tone="ghost" disabled={busy} />
-                          </>
-                        ) : (
-                          <ChunkButton
-                            label={user.plan === "pro" ? "Passar para grátis" : "Passar para Pro"}
-                            onPress={() => setConfirmPlan({ id: user.id, next: user.plan === "pro" ? "free" : "pro" })}
-                            disabled={busy}
-                          />
-                        )}
-                        <ChunkButton label="Dar dia de folga" onPress={() => void changeFreeze(user, 1)} tone="moss" disabled={busy} />
-                        <ChunkButton
-                          label="Tirar dia de folga"
-                          onPress={() => void changeFreeze(user, -1)}
-                          tone="ghost"
-                          disabled={busy || user.streak_freeze_count <= 0}
-                        />
-                      </View>
+                          </View>
+                        </View>
+                      ) : null}
                     </View>
-                  ) : null}
-                </View>
-              );
-            })}
-            {!usersPending && users.length === 0 ? <Text className="text-base leading-7 text-muted">Nenhuma conta com este filtro. Tente outro e-mail ou limpe o plano.</Text> : null}
-          </View>
-        </>
-      )}
-    </AppFrame>
+                  </TactileCard>
+                );
+              })}
+              {!usersPending && users.length === 0 ? <Text style={BODY}>{t.noAccounts}</Text> : null}
+            </View>
+          </>
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
+/** Cabeçalho clicável de uma conta (e-mail e resumo). */
+function AccountHeader({
+  label,
+  email,
+  line,
+  open,
+  onPress,
+}: {
+  label: string;
+  email: string;
+  line: string;
+  open: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <AdminRow label={label} open={open} onPress={onPress}>
+      <Text style={{ fontSize: 16, fontWeight: "700", color: tactile.ink }}>{email}</Text>
+      <Text style={{ marginTop: 4, fontSize: 14, lineHeight: 21, color: tactile.muted }}>{line}</Text>
+    </AdminRow>
+  );
+}
+
+function AdminRow({ label, open, onPress, children }: { label: string; open: boolean; onPress: () => void; children: ReactNode }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={label} onPress={onPress}>
+      {children}
+    </Pressable>
   );
 }

@@ -78,6 +78,7 @@
     "build:web:smoke": "node scripts/with-env.mjs EXPO_PUBLIC_API_URL=http://127.0.0.1:3000 npx expo export --platform web --output-dir dist-smoke",
     "build:web:inspect": "node scripts/with-env.mjs EXPO_PUBLIC_API_URL=http://127.0.0.1:4174 EXPO_PUBLIC_DEV_UI=1 npx expo export --platform web --output-dir dist-inspect",
     "serve:inspect": "node e2e/helpers/serve.mjs --dist dist-inspect --port 4174 --api mock --seed learner",
+    "check:strings": "node scripts/check-hardcoded-strings.mjs --strict",
     "test:unit": "node scripts/with-env.mjs PW_NO_SERVER=1 playwright test --project=unit",
     "e2e": "playwright test --project=mobile --project=desktop",
     "e2e:ui": "playwright test --ui",

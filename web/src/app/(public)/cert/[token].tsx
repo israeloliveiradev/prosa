@@ -1,15 +1,17 @@
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
-import { AppFrame } from "@/components/shell/app-frame";
-import { PageMasthead } from "@/components/shell/page-masthead";
+import { ScrollView, Text, View } from "react-native";
 import { ProsaLogo } from "@/components/ProsaLogo";
+import { TactileCard } from "@/components/tactile/tactile-card";
+import { tactile } from "@/components/tactile/tokens";
 import { fetchScoreCertificate, type ScoreCertificate } from "@/lib/api";
-import { useCopy } from "@/lib/i18n";
+import { useAreaCopy } from "@/lib/copy/area";
+import { CERT } from "@/lib/copy/cert";
 import { languageName } from "@/lib/languages";
 
+/** Certificado público do Prosa Score: cartão centrado com a marca, sem o shell do app. */
 export default function ScoreCertificatePage() {
-  const copy = useCopy();
+  const t = useAreaCopy(CERT);
   const params = useLocalSearchParams<{ token?: string }>();
   const token = typeof params.token === "string" ? params.token : "";
   const [cert, setCert] = useState<ScoreCertificate | null>(null);
@@ -17,7 +19,7 @@ export default function ScoreCertificatePage() {
 
   useEffect(() => {
     if (!token) {
-      setError(copy.scoreCertMissing);
+      setError(t.missing);
       return;
     }
     let active = true;
@@ -29,37 +31,59 @@ export default function ScoreCertificatePage() {
       })
       .catch(() => {
         if (active) {
-          setError(copy.scoreCertMissing);
+          setError(t.missing);
         }
       });
     return () => {
       active = false;
     };
-  }, [token, copy.scoreCertMissing]);
+  }, [token, t.missing]);
+
+  const sections = cert
+    ? [
+        [t.reading, cert.sections.reading],
+        [t.listening, cert.sections.listening],
+        [t.writing, cert.sections.writing],
+        [t.speaking, cert.sections.speaking],
+      ]
+    : [];
 
   return (
-    <AppFrame>
-      <View className="gap-6">
-        <View className="mb-2">
+    <ScrollView style={{ flex: 1, backgroundColor: tactile.bg }} contentContainerStyle={{ flexGrow: 1, paddingVertical: 32, paddingBottom: 64 }}>
+      <View style={{ width: "100%", maxWidth: 560, alignSelf: "center", paddingHorizontal: 16, gap: 24 }}>
+        <View style={{ alignItems: "center" }}>
           <ProsaLogo variant="full" href="/" />
         </View>
-        <PageMasthead kicker={copy.scoreKicker} title={copy.scoreCertTitle} dek={copy.scoreCertDek} />
-        {error ? <Text className="text-base leading-7 text-ember">{error}</Text> : null}
+        <View style={{ gap: 6, alignItems: "center" }}>
+          <Text style={{ fontSize: 11, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase", color: tactile.primary }}>{t.kicker}</Text>
+          <Text accessibilityRole="header" className="font-display text-3xl font-extrabold" style={{ color: tactile.ink }}>
+            {t.title}
+          </Text>
+          <Text style={{ fontSize: 15, lineHeight: 22, color: tactile.body, textAlign: "center" }}>{t.dek}</Text>
+        </View>
+        {error ? (
+          <Text accessibilityRole="alert" style={{ fontSize: 16, lineHeight: 24, color: tactile.danger, textAlign: "center" }}>
+            {error}
+          </Text>
+        ) : null}
         {cert ? (
-          <View className="rounded-3xl border border-line bg-card px-6 py-6">
-            <Text className="font-displayItalic text-display text-ink">{cert.score}</Text>
-            <Text className="mt-2 text-lg text-ink">{cert.band}</Text>
-            <Text className="mt-2 text-base text-muted">{languageName(cert.target_lang)}</Text>
-            <Text className="mt-1 text-sm text-muted">{cert.finished_at.slice(0, 10)}</Text>
-            <View className="mt-6 gap-2">
-              <Text className="text-base text-muted">{`${copy.placeReading} ${cert.sections.reading}`}</Text>
-              <Text className="text-base text-muted">{`${copy.placeListening} ${cert.sections.listening}`}</Text>
-              <Text className="text-base text-muted">{`${copy.journal} ${cert.sections.writing}`}</Text>
-              <Text className="text-base text-muted">{`${copy.speech} ${cert.sections.speaking}`}</Text>
+          <TactileCard className="p-6" animateEntry={false}>
+            <View style={{ gap: 6 }}>
+              <Text className="font-display font-extrabold" style={{ fontSize: 56, lineHeight: 60, color: tactile.primary }}>
+                {cert.score}
+              </Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: tactile.ink }}>{cert.band}</Text>
+              <Text style={{ fontSize: 15, color: tactile.muted }}>{languageName(cert.target_lang)}</Text>
+              <Text style={{ fontSize: 14, color: tactile.muted }}>{cert.finished_at.slice(0, 10)}</Text>
+              <View style={{ marginTop: 16, gap: 6 }}>
+                {sections.map(([label, value]) => (
+                  <Text key={label} style={{ fontSize: 15, color: tactile.body }}>{`${label} ${value}`}</Text>
+                ))}
+              </View>
             </View>
-          </View>
+          </TactileCard>
         ) : null}
       </View>
-    </AppFrame>
+    </ScrollView>
   );
 }

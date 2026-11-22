@@ -9,6 +9,7 @@
  *   node scripts/check-hardcoded-strings.mjs --json     # saída em JSON
  *   node scripts/check-hardcoded-strings.mjs --all      # todo .tsx de src/, não só os vivos
  *   node scripts/check-hardcoded-strings.mjs --live     # lista os .tsx vivos e sai
+ *   node scripts/check-hardcoded-strings.mjs --dead     # lista os arquivos de src/ que ninguém importa e sai
  *
  * "Vivo" = alcançável por imports a partir de src/app/** (as rotas do Expo Router).
  * O script usa o compilador TypeScript de mobile/node_modules (só parse, sem typecheck) e acusa:
@@ -38,6 +39,7 @@ const JSON_OUT = args.has("--json");
 const SCAN_ALL = args.has("--all");
 const SUMMARY = args.has("--summary");
 const LIST_LIVE = args.has("--live");
+const LIST_DEAD = args.has("--dead");
 
 const CODE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
 const PLATFORM_SUFFIXES = ["", ".web", ".native", ".ios", ".android"];
@@ -159,13 +161,10 @@ function importsOf(source) {
   const specifiers = [];
   const visit = (node) => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-      if (!node.importClause?.isTypeOnly) {
-        specifiers.push(node.moduleSpecifier.text);
-      }
+      // Import só de tipo também conta: o arquivo continua sendo necessário para o typecheck.
+      specifiers.push(node.moduleSpecifier.text);
     } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      if (!node.isTypeOnly) {
-        specifiers.push(node.moduleSpecifier.text);
-      }
+      specifiers.push(node.moduleSpecifier.text);
     } else if (ts.isCallExpression(node) && node.arguments.length > 0 && ts.isStringLiteralLike(node.arguments[0])) {
       const callee = node.expression;
       if (callee.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(callee) && callee.text === "require")) {
@@ -178,9 +177,9 @@ function importsOf(source) {
   return specifiers;
 }
 
-/** Arquivos alcançáveis a partir das rotas em src/app. */
-function liveFiles() {
-  const queue = walk(APP);
+/** Arquivos alcançáveis a partir das rotas em src/app (e de `extraRoots`). */
+function liveFiles(extraRoots = []) {
+  const queue = [...walk(APP), ...extraRoots];
   const seen = new Set(queue);
   while (queue.length > 0) {
     const file = queue.shift();
@@ -279,8 +278,37 @@ function findingsIn(file) {
 
 const relative = (file) => path.relative(ROOT, file).split(path.sep).join("/");
 
+/** Arquivos de src/ que nem as rotas, nem os testes, nem o e2e, nem os scripts, nem os testes do backend importam. */
+function deadFiles() {
+  const extra = [];
+  for (const dir of ["tests", "e2e", "scripts"]) {
+    const full = path.join(ROOT, dir);
+    if (fs.existsSync(full)) {
+      extra.push(...walk(full), ...fs.readdirSync(full, { recursive: true }).filter((f) => String(f).endsWith(".mjs")).map((f) => path.join(full, String(f))));
+    }
+  }
+  const backend = path.resolve(ROOT, "..", "test");
+  if (fs.existsSync(backend)) {
+    extra.push(...walk(backend));
+  }
+  const reached = new Set(liveFiles(extra));
+  return walk(SRC).filter((file) => !reached.has(file)).sort();
+}
+
+if (LIST_DEAD) {
+  const dead = deadFiles();
+  for (const file of dead) {
+    console.log(relative(file));
+  }
+  console.log(`
+${dead.length} arquivo(s) sem nenhum import.`);
+  process.exit(0);
+}
+
 const live = SCAN_ALL ? walk(SRC) : liveFiles();
-const targets = live.filter((file) => file.endsWith(".tsx")).sort();
+// A galeria de componentes (src/app/(public)/dev) é só de desenvolvimento, não é interface entregue.
+const DEV_DIR = path.join(APP, "(public)", "dev") + path.sep;
+const targets = live.filter((file) => file.endsWith(".tsx") && !file.startsWith(DEV_DIR)).sort();
 
 if (LIST_LIVE) {
   for (const file of targets) {

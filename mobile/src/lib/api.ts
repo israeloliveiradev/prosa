@@ -1,5 +1,3 @@
-const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
-const Platform = { OS: isWeb ? ("web" as const) : ("ios" as const) };
 import { getCast } from "@/lib/cast";
 import { copy } from "@/lib/i18n";
 import { clipReferenceBytes, speechService, type SpeechClip } from "@/services/speechService";
@@ -10,6 +8,9 @@ import { getSession } from "@/lib/session";
 import type { CognateAnchor, CourseProfile, JournalEvaluation, LessonPayload, LessonRequest, ReconstructionReport, RepairCard, SessionCard, ShadowingResult, SoundNote, VocabularyEntry } from "@/lib/types";
 import type { AccountUser, AccountSettings, LoginChallenge, VerifyChallenge } from "@/api/schemas/auth";
 import type { PlacementHistoryEntry, PlacementStatus } from "@/api/schemas/placement";
+
+const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
+const Platform = { OS: isWeb ? ("web" as const) : ("ios" as const) };
 
 function apiUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
@@ -1356,9 +1357,12 @@ export interface AdminUserDetail {
   duels: { total: number; best: number };
 }
 
+/** Erro estável de um 403 nas rotas de admin; a tela o traduz em texto. */
+export const ADMIN_DENIED = "admin_denied";
+
 function adminDenied(status: number): void {
   if (status === 403) {
-    throw new Error("Esta conta não administra o Prosa.");
+    throw new Error(ADMIN_DENIED);
   }
 }
 

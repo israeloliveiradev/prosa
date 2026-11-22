@@ -4,6 +4,7 @@ import { useSession } from "@/lib/session";
 import { journeyFinished } from "@/lib/journey";
 import { resolveRoute } from "@/navigation/resolve-route";
 import { useEntryHold } from "@/features/auth/model/entry-hold";
+import { tactile } from "@/components/tactile/tokens";
 
 export default function PublicLayout() {
   const ready = useProgressReady();
@@ -27,11 +28,12 @@ export default function PublicLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
+    <Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: { backgroundColor: tactile.bg } }}>
       <Stack.Screen name="account" />
       <Stack.Screen name="reset" />
       <Stack.Screen name="dev/ui" />
       <Stack.Screen name="cert/[token]" />
+      <Stack.Screen name="dossier/[token]" />
     </Stack>
   );
 }

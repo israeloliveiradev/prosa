@@ -3,6 +3,7 @@ import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyError } from "fastify";
 import { ZodError } from "zod";
+import { GlossTranslator, redisGlossStore } from "./services/gloss-translation.js";
 import { parseAdminEmails, type Env } from "./config.js";
 import { createPool } from "./db/postgres.js";
 import { createRedis } from "./db/redis.js";
@@ -169,7 +170,12 @@ export async function buildApp(env: Env) {
   const journal = new JournalService(pool, gemini);
   const personalization = new PersonalizationService(pool, gemini, lessons, neural, ops);
   const placement = new PlacementService(pool, gemini);
-  const learningPath = new PathService(pool, gemini, placement);
+  const learningPath = new PathService(
+    pool,
+    gemini,
+    placement,
+    new GlossTranslator(gemini, redisGlossStore(redis)),
+  );
   const mnemonics = new MnemonicService(pool, gemini);
   const grammar = new GrammarService(gemini, neural);
   const duel = new DuelService(pool, gemini);

@@ -1,11 +1,23 @@
 import { Text, View } from "react-native";
-import { keepWords } from "@/lib/text";
+import { tactile } from "@/components/tactile/tokens";
 
 export function Stat({ label, value }: { label: string; value: number | string }) {
   return (
-    <View className="min-w-28 border-l border-ink py-1 pl-4">
-      <Text className="font-label text-[11px] uppercase tracking-[0.22em] text-muted">{keepWords(label)}</Text>
-      <Text className="font-display mt-1 text-3xl text-ink">{value}</Text>
+    <View
+      style={{
+        minWidth: 120,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 14,
+        borderWidth: 2,
+        borderColor: tactile.border,
+        backgroundColor: tactile.surface,
+      }}
+    >
+      <Text style={{ fontSize: 11, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase", color: tactile.muted }}>{label}</Text>
+      <Text className="font-display font-extrabold" style={{ marginTop: 2, fontSize: 28, color: tactile.ink }}>
+        {value}
+      </Text>
     </View>
   );
 }

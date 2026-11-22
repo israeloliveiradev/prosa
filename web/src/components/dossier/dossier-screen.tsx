@@ -1,11 +1,11 @@
 import { Redirect, router } from "expo-router";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Platform, Text, TextInput, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiUrl } from "@/api/config";
 import { TactileButton } from "@/components/tactile/tactile-button";
-import { PanelKicker, TactilePanel } from "@/components/tactile/tactile-panel";
+import { TactilePanel } from "@/components/tactile/tactile-panel";
 import { tactile } from "@/components/tactile/tokens";
+import { Card, DossierCore, fill } from "@/components/dossier/dossier-parts";
 import { BodyText, TactilePage } from "@/features/shell/tactile-page";
 import {
   addDossierCheckpoint,
@@ -18,49 +18,12 @@ import { writeClipboard } from "@/lib/clipboard";
 import { useAreaCopy } from "@/lib/copy/area";
 import { DOSSIER } from "@/lib/copy/dossier";
 import { tap } from "@/lib/haptics";
-import { LOCALE_BCP47, useLocale } from "@/lib/i18n";
-import { languageName } from "@/lib/languages";
 import { useSession } from "@/lib/session";
 
-function fill(template: string, values: Record<string, string | number>): string {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? ""));
-}
-
+/** Link público: a página /dossier/<token> do próprio app, não o JSON da API. */
 function shareUrl(token: string): string {
-  return `${apiUrl()}/api/v1/dossier/view/${encodeURIComponent(token)}`;
-}
-
-function Stat({ label, value, testID }: { label: string; value: string; testID: string }) {
-  return (
-    <View testID={testID} style={{ flexGrow: 1, flexBasis: 140, gap: 2 }}>
-      <Text style={{ fontFamily: tactile.font, fontSize: 12, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1, color: tactile.muted }}>{label}</Text>
-      <Text style={{ fontFamily: tactile.font, fontSize: 24, fontWeight: "800", color: tactile.ink, fontVariant: ["tabular-nums"] }}>{value}</Text>
-    </View>
-  );
-}
-
-function Chips({ items, empty }: { items: string[]; empty: string }) {
-  if (items.length === 0) {
-    return <BodyText tone="muted">{empty}</BodyText>;
-  }
-  return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-      {items.map((item) => (
-        <View key={item} style={{ backgroundColor: tactile.raised, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 }}>
-          <Text style={{ fontFamily: tactile.font, fontSize: 14, fontWeight: "700", color: tactile.ink }}>{item}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function Card({ title, icon, testID, children }: { title: string; icon: "book" | "target" | "route" | "mic" | "check" | "globe" | "pen"; testID: string; children: ReactNode }) {
-  return (
-    <TactilePanel testID={testID}>
-      <PanelKicker icon={icon}>{title}</PanelKicker>
-      {children}
-    </TactilePanel>
-  );
+  const origin = typeof window !== "undefined" && window.location?.origin ? window.location.origin : "";
+  return `${origin}/dossier/${encodeURIComponent(token)}`;
 }
 
 const inputStyle = {
@@ -78,7 +41,6 @@ const inputStyle = {
 /** Dossiê: o nível documentado a partir de /api/v1/dossier, com metas de acompanhamento e link de leitura. */
 export function DossierScreen() {
   const t = useAreaCopy(DOSSIER);
-  const locale = useLocale();
   const session = useSession();
   const queryClient = useQueryClient();
   const token = session?.token;
@@ -124,15 +86,6 @@ export function DossierScreen() {
     setDue("");
   }
 
-  const measure = (value: number) => (value > 0 ? String(Math.round(value)) : t.noData);
-  const date = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleDateString(LOCALE_BCP47[locale]);
-    } catch {
-      return iso;
-    }
-  };
-
   return (
     <TactilePage testID="dossier-screen" kicker={t.kicker} title={t.title} dek={t.dek}>
       {query.isLoading ? <BodyText tone="muted" testID="dossier-loading">{t.loading}</BodyText> : null}
@@ -148,31 +101,7 @@ export function DossierScreen() {
 
       {data ? (
         <>
-          <Card title={t.summaryTitle} icon="globe" testID="dossier-summary">
-            <BodyText tone="ink">{fill(t.level, { level: data.level, lang: languageName(data.target_lang) })}</BodyText>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
-              <Stat testID="dossier-lexicon" label={t.lexicon} value={measure(data.lexicon)} />
-              <Stat testID="dossier-fluency" label={t.fluency} value={measure(data.fluency_wpm)} />
-              <Stat testID="dossier-listening" label={t.listening} value={measure(data.listening)} />
-              <Stat testID="dossier-reading" label={t.reading} value={measure(data.reading)} />
-            </View>
-            <BodyText tone="muted">
-              {data.last_placement ? fill(t.placement, { level: data.last_placement.level, date: date(data.last_placement.finished_at) }) : t.placementNone}
-            </BodyText>
-            <BodyText tone="muted">{data.prosa_score ? fill(t.score, { score: data.prosa_score.score, band: data.prosa_score.band }) : t.scoreNone}</BodyText>
-          </Card>
-
-          <Card title={t.practiceTitle} icon="target" testID="dossier-practice">
-            <BodyText tone={data.practice ? "ink" : "muted"}>{data.practice || t.practiceNone}</BodyText>
-          </Card>
-
-          <Card title={t.errorsTitle} icon="pen" testID="dossier-errors">
-            <Chips items={data.errors} empty={t.listNone} />
-          </Card>
-
-          <Card title={t.soundsTitle} icon="mic" testID="dossier-sounds">
-            <Chips items={data.sounds} empty={t.listNone} />
-          </Card>
+          <DossierCore data={data} />
 
           <Card title={t.checkpointsTitle} icon="check" testID="dossier-checkpoints">
             {data.checkpoints.length === 0 ? <BodyText tone="muted">{t.checkpointsNone}</BodyText> : null}

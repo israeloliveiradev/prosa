@@ -1,4 +1,6 @@
 import React, { useEffect } from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import {
   Modal,
   View,
@@ -26,6 +28,7 @@ export function Popover({
   style,
   ...props
 }: PopoverProps) {
+  const ui = useAreaCopy(UI);
   const { colors, spacing, radius } = useThemeTokens();
 
   useEffect(() => {
@@ -59,7 +62,7 @@ export function Popover({
         <Pressable
           testID={`${testID}-backdrop`}
           accessibilityRole="button"
-          accessibilityLabel="Fechar popover"
+          accessibilityLabel={ui.closePopover}
           style={StyleSheet.absoluteFill}
           onPress={onClose}
         />

@@ -228,5 +228,6 @@ export function assembleScenes(generated: readonly GeneratedScene[], unitId: str
 
 /** Chave do cache: por aluno, idioma-alvo, idioma de interface e dia UTC. */
 export function sceneCacheKey(userId: string, targetLang: string, locale: string, date: string): string {
-  return `prosa:scenes:v1:${userId}:${targetLang}:${locale}:${date}`;
+  // v2: as cenas da IA ganharam a fala de abertura (opener).
+  return `prosa:scenes:v2:${userId}:${targetLang}:${locale}:${date}`;
 }

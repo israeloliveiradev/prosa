@@ -60,7 +60,7 @@ const ROLES: Record<DisplayLocale, Record<CastSlot, string>> = {
 };
 
 /** Texto da tabela no idioma pedido; sem tradução, cai no inglês (e depois no português). */
-function localized(table: Partial<Record<DisplayLocale, string>> & { pt: string; en: string }, locale: DisplayLocale): string {
+function localized(table: Record<DisplayLocale, string>, locale: DisplayLocale): string {
   return table[locale] ?? table.en ?? table.pt;
 }
 

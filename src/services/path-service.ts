@@ -41,6 +41,7 @@ import { storedPlacementItemSchema, type StoredPlacementItem } from "../schemas/
 import { CEFR_LEVELS, type CefrLevel } from "../types/database.js";
 import type { GeminiGateway } from "./gemini-gateway.js";
 import type { PlacementService } from "./placement-service.js";
+import type { GlossTranslator } from "./gloss-translation.js";
 
 export const LESSONS_REQUIRED = 3;
 export const LEMMA_RATIO = 0.8;
@@ -459,6 +460,7 @@ function optionsWith(
   pool: readonly CoreLemma[],
   random: () => number,
   avoidGloss?: string,
+  glossPool: readonly CoreLemma[] = pool,
 ): { options: string[]; answer: number } | null {
   const answerKey = normalizePhrase(answer);
   const seen = new Set<string>([answerKey]);
@@ -468,7 +470,8 @@ function optionsWith(
     if (seen.has(key)) {
       continue;
     }
-    if (avoidGloss && normalizePhrase(item.gloss) === normalizePhrase(avoidGloss)) {
+    const glossed = glossPool.find((entry) => entry.lemma === item.lemma)?.gloss ?? item.gloss;
+    if (avoidGloss && normalizePhrase(glossed) === normalizePhrase(avoidGloss)) {
       continue;
     }
     seen.add(key);
@@ -493,7 +496,17 @@ export function fallbackTestItems(
   lang: string,
   count = TEST_ITEMS,
   random: () => number = Math.random,
+  glosses?: ReadonlyMap<string, string> | null,
 ): StoredUnitTestItem[] {
+  // `glosses` = glosas no idioma de apoio. Omitido: as do currículo (inglês, só para apoio em inglês).
+  // null/vazio: sem glosa disponível, então sem itens de significado (nunca inglês para quem não lê inglês).
+  const meaningPool: CoreLemma[] =
+    glosses === undefined
+      ? unit.lemmas.slice()
+      : unit.lemmas.flatMap((item) => {
+          const gloss = glosses?.get(item.lemma);
+          return gloss ? [{ ...item, gloss }] : [];
+        });
   const items: StoredUnitTestItem[] = [];
   const usedLemmas = new Set<string>();
   for (const example of unit.grammar.examples) {
@@ -520,7 +533,7 @@ export function fallbackTestItems(
       source: "fallback",
     });
   }
-  for (const lemma of shuffled(unit.lemmas, random)) {
+  for (const lemma of shuffled(meaningPool, random)) {
     if (items.length >= count) {
       break;
     }
@@ -528,7 +541,7 @@ export function fallbackTestItems(
     if (usedLemmas.has(lemma.lemma) || cardMatchesLemma(lemma.gloss, lemma.lemma, lang)) {
       continue;
     }
-    const built = optionsWith(lemma.lemma, unit.lemmas, random, lemma.gloss);
+    const built = optionsWith(lemma.lemma, unit.lemmas, random, lemma.gloss, meaningPool);
     if (!built) {
       continue;
     }
@@ -868,6 +881,7 @@ export class PathService {
     private readonly pool: Pool,
     private readonly gemini: GeminiGateway,
     private readonly placement: PlacementService,
+    private readonly glosses: GlossTranslator | null = null,
   ) {}
 
   async view(user: AuthUser, options: { locale?: string; targetLang?: string } = {}): Promise<PathView> {
@@ -1228,7 +1242,18 @@ export class PathService {
       // A IA ocupada não derruba o teste: os itens determinísticos cobrem o que faltar.
       aiItems = [];
     }
-    return composeUnitTest(aiItems, fallbackTestItems(language, course.targetLang));
+    // Glosas no idioma de apoio; sem tradução, o teste fica só com lacunas (nunca glosa em inglês).
+    const glossMap = this.glosses
+      ? await this.glosses.forUnit({
+          targetLang: course.targetLang,
+          unitId: unit.id,
+          supportLang: course.throughLang,
+          lemmas: language.lemmas,
+        })
+      : course.throughLang.trim().toLowerCase().startsWith("en")
+        ? undefined
+        : null;
+    return composeUnitTest(aiItems, fallbackTestItems(language, course.targetLang, TEST_ITEMS, Math.random, glossMap));
   }
 
   private async build(course: Course, locale: UiLocale): Promise<PathView> {

@@ -112,7 +112,7 @@ export function TactileButton({
         whileHover={disabled ? undefined : { y: -1 }}
         whileTap={disabled ? undefined : { y: 3, boxShadow: v.activeShadow }}
         transition={{ duration: 0.08, ease: "easeInOut" }}
-        className={`box-border flex items-center justify-center font-bold tracking-tight select-none cursor-pointer ${
+        className={`box-border flex items-center justify-center font-bold select-none cursor-pointer ${
           disabled ? "opacity-50 cursor-not-allowed" : ""
         } ${fullWidth ? "w-full" : ""} ${className}`}
         style={{
@@ -128,6 +128,8 @@ export function TactileButton({
           color: v.text,
           fontSize: s.fontSize,
           fontFamily: "'Plus Jakarta Sans', sans-serif",
+          // O espaço da Plus Jakarta Sans é estreito; sem folga, "Satz analysieren" lia como uma palavra só.
+          wordSpacing: "0.08em",
           display: "inline-flex",
           flexDirection: "row",
           alignItems: "center",

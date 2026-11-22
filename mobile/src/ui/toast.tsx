@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import { View, StyleSheet, Pressable } from "react-native";
 import { Text } from "./text";
 import { Icon } from "./icon";
@@ -73,6 +75,7 @@ class ToastManager {
 export const toast = new ToastManager();
 
 export function Toaster({ testID = "ui-toaster" }: { testID?: string }) {
+  const ui = useAreaCopy(UI);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const { colors, spacing, radius } = useThemeTokens();
 
@@ -153,7 +156,7 @@ export function Toaster({ testID = "ui-toaster" }: { testID?: string }) {
             )}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Fechar notificação"
+              accessibilityLabel={ui.closeToast}
               onPress={() => handleDismiss(item.id)}
               style={{ marginLeft: spacing.sm, padding: 4 }}
             >

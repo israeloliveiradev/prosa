@@ -1,4 +1,6 @@
 import React, { useEffect } from "react";
+import { useAreaCopy } from "@/lib/copy/area";
+import { UI } from "@/lib/copy/ui";
 import {
   Modal,
   View,
@@ -9,6 +11,7 @@ import {
 } from "react-native";
 import { Text } from "./text";
 import { IconButton } from "./icon-button";
+import { tactile } from "@/components/tactile/tokens";
 import { useThemeTokens } from "../theme/ThemeContext";
 import { useBreakpoint } from "./hooks/use-breakpoint";
 
@@ -19,6 +22,8 @@ export interface SheetProps extends ViewProps {
   description?: string;
   children: React.ReactNode;
   testID?: string;
+  /** "tactile": papel creme e borda quente, como as telas do app. */
+  surface?: "default" | "tactile";
 }
 
 export function Sheet({
@@ -28,8 +33,10 @@ export function Sheet({
   description,
   children,
   testID = "ui-sheet",
+  surface = "default",
   style,
 }: SheetProps) {
+  const ui = useAreaCopy(UI);
   const { colors, spacing, radius } = useThemeTokens();
   const { isDesktopOrLaptop } = useBreakpoint();
 
@@ -68,7 +75,7 @@ export function Sheet({
         <Pressable
           testID={`${testID}-backdrop`}
           accessibilityRole="button"
-          accessibilityLabel="Fechar painel"
+          accessibilityLabel={ui.closePanel}
           style={StyleSheet.absoluteFill}
           onPress={onClose}
         />
@@ -83,8 +90,8 @@ export function Sheet({
             styles.sheetBase,
             isDesktopOrLaptop ? styles.sidePanel : styles.bottomSheet,
             {
-              backgroundColor: colors.surface.page,
-              borderColor: colors.border.subtle,
+              backgroundColor: surface === "tactile" ? tactile.bg : colors.surface.page,
+              borderColor: surface === "tactile" ? tactile.border : colors.border.subtle,
             },
             !isDesktopOrLaptop && {
               borderTopLeftRadius: radius.lg,
@@ -141,7 +148,7 @@ export function Sheet({
                 icon="x"
                 variant="ghost"
                 size="md"
-                accessibilityLabel="Fechar"
+                accessibilityLabel={ui.close}
                 onPress={onClose}
                 testID={`${testID}-close`}
               />

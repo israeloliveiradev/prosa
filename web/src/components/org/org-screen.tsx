@@ -1,22 +1,42 @@
 import { Redirect } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
-import { AppFrame } from "@/components/shell/app-frame";
-import { PageMasthead } from "@/components/shell/page-masthead";
+import { ScrollView, Text, TextInput, View } from "react-native";
+import { TactileButton } from "@/components/tactile/tactile-button";
+import { TactileCard } from "@/components/tactile/tactile-card";
+import { tactile } from "@/components/tactile/tokens";
 import { addOrgTerm, createOrg, fetchOrg, joinOrg, leaveOrg, type OrgPack } from "@/lib/api";
 import { writeClipboard } from "@/lib/clipboard";
+import { useAreaCopy } from "@/lib/copy/area";
+import { ORG } from "@/lib/copy/org";
 import { tap } from "@/lib/haptics";
-import { useCopy } from "@/lib/i18n";
 import { languageName } from "@/lib/languages";
 import { useSession } from "@/lib/session";
-import { useTheme } from "@/theme/ThemeContext";
 
 const SECTORS = ["technology", "health", "sales"] as const;
 
+const INPUT_STYLE = {
+  minHeight: 52,
+  borderRadius: 14,
+  borderWidth: 2,
+  borderColor: tactile.border,
+  backgroundColor: tactile.surface,
+  paddingHorizontal: 16,
+  fontSize: 16,
+  color: tactile.ink,
+} as const;
+
+const KICKER_STYLE = {
+  fontSize: 11,
+  fontWeight: "800",
+  letterSpacing: 1,
+  textTransform: "uppercase",
+  color: tactile.primary,
+} as const;
+
+/** Equipe: cria ou entra numa organização, guarda palavras do setor e mostra o progresso verificado. */
 export function OrgScreen() {
   const session = useSession();
-  const copy = useCopy();
-  const { palette } = useTheme();
+  const t = useAreaCopy(ORG);
   const token = session?.token;
   const targetLang = session?.user?.target_lang ?? "en";
   const [pack, setPack] = useState<OrgPack | null>(null);
@@ -39,15 +59,15 @@ export function OrgScreen() {
           setPack(next);
         }
       })
-      .catch((caught: unknown) => {
+      .catch(() => {
         if (active) {
-          setStatus(caught instanceof Error ? caught.message : copy.orgEmpty);
+          setStatus(t.empty);
         }
       });
     return () => {
       active = false;
     };
-  }, [token, copy.orgEmpty]);
+  }, [token, t.empty]);
 
   if (!session || !token) {
     return <Redirect href="/account" />;
@@ -58,212 +78,207 @@ export function OrgScreen() {
 
   function sectorLabel(value: (typeof SECTORS)[number]): string {
     if (value === "health") {
-      return copy.orgHealth;
+      return t.health;
     }
     if (value === "sales") {
-      return copy.orgSales;
+      return t.sales;
     }
-    return copy.orgTech;
+    return t.tech;
   }
 
-  async function create() {
-    if (name.trim().length < 2) {
-      return;
-    }
+  /** Roda uma chamada de rede com o estado de espera e a mensagem de erro padrão. */
+  async function run(action: () => Promise<void>) {
     setPending(true);
     setStatus(null);
     try {
-      setPack(await createOrg(auth, name.trim(), sector));
-      setName("");
+      await action();
       void tap("success");
-    } catch (caught) {
-      setStatus(caught instanceof Error ? caught.message : copy.orgEmpty);
+    } catch {
+      setStatus(t.empty);
     } finally {
       setPending(false);
     }
   }
 
-  async function join() {
-    if (code.trim().length < 6) {
-      return;
-    }
-    setPending(true);
-    setStatus(null);
-    try {
-      setPack(await joinOrg(auth, code.trim()));
-      setCode("");
-      void tap("success");
-    } catch (caught) {
-      setStatus(caught instanceof Error ? caught.message : copy.orgEmpty);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function addWord() {
-    if (phrase.trim().length < 2) {
-      return;
-    }
-    setPending(true);
-    setStatus(null);
-    try {
-      setPack(await addOrgTerm(auth, { target_lang: targetLang, phrase: phrase.trim(), gloss: gloss.trim() }));
-      setPhrase("");
-      setGloss("");
-      void tap("success");
-    } catch (caught) {
-      setStatus(caught instanceof Error ? caught.message : copy.orgEmpty);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function leave() {
-    setPending(true);
-    setStatus(null);
-    try {
-      setPack(await leaveOrg(auth));
-      void tap("success");
-    } catch (caught) {
-      setStatus(caught instanceof Error ? caught.message : copy.orgEmpty);
-    } finally {
-      setPending(false);
-    }
-  }
+  const create = () =>
+    name.trim().length < 2
+      ? undefined
+      : run(async () => {
+          setPack(await createOrg(auth, name.trim(), sector));
+          setName("");
+        });
+  const join = () =>
+    code.trim().length < 6
+      ? undefined
+      : run(async () => {
+          setPack(await joinOrg(auth, code.trim()));
+          setCode("");
+        });
+  const addWord = () =>
+    phrase.trim().length < 2
+      ? undefined
+      : run(async () => {
+          setPack(await addOrgTerm(auth, { target_lang: targetLang, phrase: phrase.trim(), gloss: gloss.trim() }));
+          setPhrase("");
+          setGloss("");
+        });
+  const leave = () => run(async () => setPack(await leaveOrg(auth)));
 
   return (
-    <AppFrame>
-      <View className="gap-8">
-        <PageMasthead kicker={copy.orgKicker} title={copy.orgTitle} dek={copy.orgDek} />
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 24, paddingBottom: 64 }} keyboardShouldPersistTaps="handled">
+      <View style={{ width: "100%", maxWidth: 992, alignSelf: "center", paddingHorizontal: 16, gap: 24 }}>
+        <View style={{ gap: 6 }}>
+          <Text style={KICKER_STYLE}>{t.kicker}</Text>
+          <Text accessibilityRole="header" className="font-display text-3xl font-extrabold" style={{ color: tactile.ink }}>
+            {t.title}
+          </Text>
+          <Text style={{ fontSize: 16, lineHeight: 24, color: tactile.body, maxWidth: 640 }}>{t.dek}</Text>
+        </View>
+
         {pack?.org ? (
-          <View className="gap-3 rounded-3xl border border-line bg-card px-6 py-6">
-            <Text className="font-displayItalic text-display text-ink">{pack.org.name}</Text>
-            <Text className="text-base text-muted">{sectorLabel(pack.org.sector)}</Text>
-            {pack.org.invite_code ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  void writeClipboard(pack.org?.invite_code ?? "").then((ok) => {
-                    setStatus(ok ? copy.orgCopied : pack.org?.invite_code ?? "");
-                  });
-                }}
-                className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-              >
-                <Text className="text-base font-semibold text-ink">{copy.orgCopy}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : (
-          <View className="gap-3">
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              accessibilityLabel={copy.orgName}
-              placeholder={copy.orgName}
-              placeholderTextColor={palette.onSurfaceVariant}
-              className="rounded-[28px] bg-card px-5 py-4 text-lg text-ink"
-            />
-            <View className="flex-row flex-wrap gap-2">
-              {SECTORS.map((item) => (
-                <Pressable
-                  key={item}
-                  accessibilityRole="button"
-                  onPress={() => setSector(item)}
-                  className={`min-h-12 items-center justify-center rounded-full px-5 ${sector === item ? "bg-ember" : "border border-line"}`}
-                >
-                  <Text className={`text-base font-semibold ${sector === item ? "text-paper" : "text-ink"}`}>{sectorLabel(item)}</Text>
-                </Pressable>
-              ))}
+          <TactileCard className="p-6" animateEntry={false}>
+            <View style={{ gap: 8 }}>
+              <Text className="font-display text-2xl font-extrabold" style={{ color: tactile.ink }}>
+                {pack.org.name}
+              </Text>
+              <Text style={{ fontSize: 15, color: tactile.muted }}>{sectorLabel(pack.org.sector)}</Text>
+              {pack.org.invite_code ? (
+                <View style={{ alignSelf: "flex-start", marginTop: 4 }}>
+                  <TactileButton
+                    variant="secondary"
+                    size="md"
+                    label={t.copy}
+                    onPress={() => {
+                      void writeClipboard(pack.org?.invite_code ?? "").then((ok) => {
+                        setStatus(ok ? t.copied : (pack.org?.invite_code ?? ""));
+                      });
+                    }}
+                  />
+                </View>
+              ) : null}
             </View>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void create()}
-              disabled={pending || name.trim().length < 2}
-              className="min-h-12 items-center justify-center self-start rounded-full bg-ember px-6"
-            >
-              <Text className="text-base font-semibold text-paper">{copy.orgCreate}</Text>
-            </Pressable>
-            <TextInput
-              value={code}
-              onChangeText={setCode}
-              accessibilityLabel={copy.orgCode}
-              placeholder={copy.orgCode}
-              placeholderTextColor={palette.onSurfaceVariant}
-              className="rounded-[28px] bg-card px-5 py-4 text-lg text-ink"
-            />
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void join()}
-              disabled={pending || code.trim().length < 6}
-              className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-            >
-              <Text className="text-base font-semibold text-ink">{copy.orgJoin}</Text>
-            </Pressable>
-          </View>
+          </TactileCard>
+        ) : (
+          <TactileCard className="p-6" animateEntry={false}>
+            <View style={{ gap: 12 }}>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                accessibilityLabel={t.name}
+                placeholder={t.name}
+                placeholderTextColor={tactile.faint}
+                style={INPUT_STYLE}
+              />
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {SECTORS.map((item) => (
+                  <TactileButton
+                    key={item}
+                    variant={sector === item ? "primary" : "secondary"}
+                    size="sm"
+                    label={sectorLabel(item)}
+                    onPress={() => setSector(item)}
+                  />
+                ))}
+              </View>
+              <View style={{ alignSelf: "flex-start" }}>
+                <TactileButton label={t.create} onPress={() => void create()} disabled={pending || name.trim().length < 2} />
+              </View>
+              <View style={{ height: 1, backgroundColor: tactile.border, marginVertical: 8 }} />
+              <TextInput
+                value={code}
+                onChangeText={setCode}
+                accessibilityLabel={t.code}
+                placeholder={t.code}
+                placeholderTextColor={tactile.faint}
+                autoCapitalize="characters"
+                style={INPUT_STYLE}
+              />
+              <View style={{ alignSelf: "flex-start" }}>
+                <TactileButton
+                  variant="secondary"
+                  label={t.join}
+                  onPress={() => void join()}
+                  disabled={pending || code.trim().length < 6}
+                />
+              </View>
+            </View>
+          </TactileCard>
         )}
+
         {pack?.terms.length ? (
-          <View className="gap-3">
-            <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.orgTerms}</Text>
+          <View style={{ gap: 10 }}>
+            <Text style={KICKER_STYLE}>{t.terms}</Text>
             {pack.terms.map((item) => (
               <View key={`${item.source}-${item.phrase}`}>
-                <Text className="text-lg text-ink">{item.phrase}</Text>
-                {item.gloss ? <Text className="text-sm text-muted">{item.gloss}</Text> : null}
+                <Text style={{ fontSize: 17, color: tactile.ink }}>{item.phrase}</Text>
+                {item.gloss ? <Text style={{ fontSize: 14, color: tactile.muted }}>{item.gloss}</Text> : null}
               </View>
             ))}
           </View>
         ) : null}
+
         {staff ? (
-          <View className="gap-3">
-            <TextInput
-              value={phrase}
-              onChangeText={setPhrase}
-              accessibilityLabel={copy.orgPhrase}
-              placeholder={copy.orgPhrase}
-              placeholderTextColor={palette.onSurfaceVariant}
-              className="rounded-[28px] bg-card px-5 py-4 text-lg text-ink"
-            />
-            <TextInput
-              value={gloss}
-              onChangeText={setGloss}
-              accessibilityLabel={copy.orgGloss}
-              placeholder={copy.orgGloss}
-              placeholderTextColor={palette.onSurfaceVariant}
-              className="rounded-[28px] bg-card px-5 py-4 text-lg text-ink"
-            />
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void addWord()}
-              disabled={pending || phrase.trim().length < 2}
-              className="min-h-12 items-center justify-center self-start rounded-full border border-line px-5"
-            >
-              <Text className="text-base font-semibold text-ink">{copy.orgAdd}</Text>
-            </Pressable>
-          </View>
-        ) : null}
-        {staff && pack ? (
-          <View className="gap-3">
-            <Text className="font-label text-xs uppercase tracking-widest text-ember">{copy.orgRoster}</Text>
-            {pack.roster.map((row, index) => (
-              <View key={`${row.name ?? "conta"}-${row.target_lang}-${index}`} className="gap-1 rounded-3xl border border-line bg-card px-5 py-4">
-                {row.name ? <Text className="text-lg text-ink">{row.name}</Text> : null}
-                <Text className="text-base text-muted">{`${languageName(row.target_lang)} · ${row.level}`}</Text>
-                {row.prosa_score ? (
-                  <Text className="text-base text-ink">{`${copy.dossierScore} ${row.prosa_score.score} · ${row.prosa_score.band}`}</Text>
-                ) : (
-                  <Text className="text-base text-muted">{copy.orgQuiet}</Text>
-                )}
-                {row.lexicon ? <Text className="text-sm text-muted">{`${copy.measureLexicon} ${row.lexicon}`}</Text> : null}
+          <TactileCard className="p-6" animateEntry={false}>
+            <View style={{ gap: 12 }}>
+              <TextInput
+                value={phrase}
+                onChangeText={setPhrase}
+                accessibilityLabel={t.phrase}
+                placeholder={t.phrase}
+                placeholderTextColor={tactile.faint}
+                style={INPUT_STYLE}
+              />
+              <TextInput
+                value={gloss}
+                onChangeText={setGloss}
+                accessibilityLabel={t.gloss}
+                placeholder={t.gloss}
+                placeholderTextColor={tactile.faint}
+                style={INPUT_STYLE}
+              />
+              <View style={{ alignSelf: "flex-start" }}>
+                <TactileButton
+                  variant="secondary"
+                  label={t.add}
+                  onPress={() => void addWord()}
+                  disabled={pending || phrase.trim().length < 2}
+                />
               </View>
+            </View>
+          </TactileCard>
+        ) : null}
+
+        {staff && pack ? (
+          <View style={{ gap: 10 }}>
+            <Text style={KICKER_STYLE}>{t.roster}</Text>
+            {pack.roster.map((row, index) => (
+              <TactileCard key={`${row.name ?? "conta"}-${row.target_lang}-${index}`} className="p-4" animateEntry={false}>
+                <View style={{ gap: 4 }}>
+                  {row.name ? <Text style={{ fontSize: 17, fontWeight: "700", color: tactile.ink }}>{row.name}</Text> : null}
+                  <Text style={{ fontSize: 15, color: tactile.muted }}>{`${languageName(row.target_lang)} · ${row.level}`}</Text>
+                  {row.prosa_score ? (
+                    <Text style={{ fontSize: 15, color: tactile.ink }}>{`${t.score} ${row.prosa_score.score} · ${row.prosa_score.band}`}</Text>
+                  ) : (
+                    <Text style={{ fontSize: 15, color: tactile.muted }}>{t.quiet}</Text>
+                  )}
+                  {row.lexicon ? <Text style={{ fontSize: 14, color: tactile.muted }}>{`${t.lexicon} ${row.lexicon}`}</Text> : null}
+                </View>
+              </TactileCard>
             ))}
           </View>
         ) : null}
+
         {pack?.org ? (
-          <Pressable accessibilityRole="button" onPress={() => void leave()} disabled={pending}>
-            <Text className="text-base font-semibold text-ember">{copy.orgLeave}</Text>
-          </Pressable>
+          <View style={{ alignSelf: "flex-start" }}>
+            <TactileButton variant="ghost" label={t.leave} onPress={() => void leave()} disabled={pending} />
+          </View>
         ) : null}
-        {status ? <Text className="text-base text-ember">{status}</Text> : null}
+        {status ? (
+          <Text accessibilityRole="alert" style={{ fontSize: 15, color: tactile.danger }}>
+            {status}
+          </Text>
+        ) : null}
       </View>
-    </AppFrame>
+    </ScrollView>
   );
 }

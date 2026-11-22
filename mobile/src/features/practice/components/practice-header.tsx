@@ -2,6 +2,8 @@ import { router } from "expo-router";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 import { TactileButton } from "@/components/tactile/tactile-button";
+import { useAreaCopy } from "@/lib/copy/area";
+import { PRACTICE_NAV } from "@/lib/copy/practice-nav";
 import { tactile } from "@/components/tactile/tokens";
 
 /** Página das práticas: coluna central, cabeçalho tátil e (opcional) botão de voltar ao hub. */
@@ -17,18 +19,19 @@ export function PracticePage({
   kicker: string;
   title: string;
   dek?: string;
-  /** Rótulo do botão que volta para /practice; sem ele, não há botão. */
-  back?: string;
+  /** Mostra o botão que volta para /practice (o rótulo vem da cópia; "←" antigo vira o rótulo). */
+  back?: boolean | string;
   children: ReactNode;
   testID?: string;
   maxWidth?: number;
 }) {
+  const nav = useAreaCopy(PRACTICE_NAV);
   return (
     <View testID={testID} className="w-full gap-6 pb-16" style={{ maxWidth, alignSelf: "center", paddingHorizontal: 16 }}>
       <View className="gap-2">
         {back ? (
           <View className="self-start">
-            <TactileButton testID="practice-back" label={back} variant="ghost" size="sm" onPress={() => router.push("/practice")} />
+            <TactileButton testID="practice-back" label={`← ${nav.back}`} accessibilityLabel={nav.backA11y} variant="ghost" size="sm" onPress={() => router.push("/practice")} />
           </View>
         ) : null}
         <Text style={{ color: tactile.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" }}>{kicker}</Text>
