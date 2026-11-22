@@ -7,48 +7,35 @@ test.describe("AppShell Structure & Navigation (E2E)", () => {
     test.skip(isMobile, "Teste exclusivo para desktop (>= 1024px)");
 
     await page.goto("/");
-    const shell = page.getByTestId("app-shell");
-    await expect(shell).toBeVisible();
+    await expect(page.getByTestId("app-shell")).toBeVisible();
+    await expect(page.getByTestId("sidebar-open-daily")).toBeVisible();
 
-    // Botão de ação em destaque
-    const dailyBtn = page.getByTestId("sidebar-open-daily");
-    await expect(dailyBtn).toBeVisible();
+    // Cinco destinos primários na sidebar
+    for (const id of ["today", "path", "reading", "talk", "you"]) {
+      await expect(page.getByTestId(`nav-item-${id}`)).toBeVisible();
+    }
 
-    // Destinos primários na sidebar
-    const practiceNav = page.getByTestId("nav-item-practice");
-    await expect(practiceNav).toBeVisible();
-    await practiceNav.click();
-    await expect(page).toHaveURL(/.*\/practice/);
+    await page.getByTestId("nav-item-path").click();
+    await expect(page).toHaveURL(/.*\/path/);
 
-    const memoryNav = page.getByTestId("nav-item-memory");
-    await expect(memoryNav).toBeVisible();
-    await memoryNav.click();
-    await expect(page).toHaveURL(/.*\/memory/);
+    await page.getByTestId("nav-item-reading").click();
+    await expect(page).toHaveURL(/.*\/news/);
   });
 
   test("renderiza a barra de abas no celular (< 1024px) e navega", async ({ page, isMobile }) => {
     test.skip(!isMobile, "Teste exclusivo para celular (< 1024px)");
 
     await page.goto("/");
-    const shell = page.getByTestId("app-shell");
-    await expect(shell).toBeVisible();
+    await expect(page.getByTestId("app-shell")).toBeVisible();
 
-    // Abas inferiores
-    const tabPractice = page.getByTestId("tab-practice");
-    const tabMemory = page.getByTestId("tab-memory");
-    const tabNews = page.getByTestId("tab-news");
-    const tabProfile = page.getByTestId("tab-profile");
+    for (const id of ["today", "path", "reading", "talk", "you"]) {
+      await expect(page.getByTestId(`tab-${id}`)).toBeVisible();
+    }
 
-    await expect(tabPractice).toBeVisible();
-    await expect(tabMemory).toBeVisible();
-    await expect(tabNews).toBeVisible();
-    await expect(tabProfile).toBeVisible();
+    await page.getByTestId("tab-path").click();
+    await expect(page).toHaveURL(/.*\/path/);
 
-    // Navegação via aba
-    await tabPractice.click();
-    await expect(page).toHaveURL(/.*\/practice/);
-
-    await tabMemory.click();
-    await expect(page).toHaveURL(/.*\/memory/);
+    await page.getByTestId("tab-talk").click();
+    await expect(page).toHaveURL(/.*\/talk/);
   });
 });

@@ -1,59 +1,46 @@
 import { test, expect } from "../../fixtures";
 
 test.describe("Autenticação - Recuperação e Redefinição de Senha", () => {
-  test("solicitar recuperação na tela de login navega para /reset com e-mail preenchido", async ({ page }) => {
+  test("esqueci a senha envia o código e abre o passo de nova senha", async ({ page, mockApi }) => {
     await page.goto("/account");
+    await page.getByTestId("account-forgot").click();
 
-    const forgotBtn = page.getByTestId("account-forgot");
-    await expect(forgotBtn).toBeVisible();
-    await forgotBtn.click();
+    await page.getByTestId("account-email").fill("recuperar@prosa.test");
+    await page.getByTestId("account-submit").click();
 
-    // Modo forgot
-    const emailInput = page.getByTestId("account-email");
-    await emailInput.fill("recuperar@prosa.test");
-
-    const submitBtn = page.getByTestId("account-submit");
-    await submitBtn.click();
-
-    // Deve navegar para a rota /reset com o query param do email
-    await expect(page).toHaveURL(/\/reset/);
-
-    const resetEmail = page.getByTestId("reset-email");
-    await expect(resetEmail).toHaveValue("recuperar@prosa.test");
+    await expect(page.getByTestId("account-code")).toBeVisible();
+    await expect(page.getByTestId("account-new-password")).toBeVisible();
+    expect(mockApi.getCalls("POST", "/api/v1/auth/forgot").length).toBe(1);
   });
 
-  test("redefinição de senha com código válido redireciona para /account", async ({ page }) => {
+  test("link antigo /reset cai na conta já no passo de recuperação, com e-mail", async ({ page }) => {
     await page.goto("/reset?email=aluno@prosa.test");
-
-    const otpInput = page.getByTestId("reset-otp-input");
-    const passwordInput = page.getByTestId("reset-password");
-    const submitBtn = page.getByTestId("reset-submit");
-
-    await expect(otpInput).toBeAttached();
-    await otpInput.fill("123456");
-    await passwordInput.fill("novaSenhaSuperForte123!");
-
-    await submitBtn.click();
-
-    // Deve redirecionar para a tela de login
     await expect(page).toHaveURL(/\/account/);
+    await expect(page.getByTestId("account-email")).toHaveValue("aluno@prosa.test");
+  });
+
+  test("redefinição com código válido volta ao login com aviso", async ({ page }) => {
+    await page.goto("/account?mode=forgot");
+    await page.getByTestId("account-email").fill("aluno@prosa.test");
+    await page.getByTestId("account-submit").click();
+
+    await page.getByTestId("account-code").fill("123456");
+    await page.getByTestId("account-new-password").fill("novaSenhaSuperForte123!");
+    await page.getByTestId("account-submit").click();
+
+    await expect(page.getByTestId("account-notice")).toContainText("Senha nova salva");
+    await expect(page.getByTestId("account-password")).toBeVisible();
   });
 
   test("código de redefinição expirado exibe mensagem de erro traduzida", async ({ page }) => {
-    await page.goto("/reset?email=aluno@prosa.test");
+    await page.goto("/account?mode=forgot");
+    await page.getByTestId("account-email").fill("aluno@prosa.test");
+    await page.getByTestId("account-submit").click();
 
-    const otpInput = page.getByTestId("reset-otp-input");
-    const passwordInput = page.getByTestId("reset-password");
-    const submitBtn = page.getByTestId("reset-submit");
+    await page.getByTestId("account-code").fill("999999");
+    await page.getByTestId("account-new-password").fill("novaSenhaSuperForte123!");
+    await page.getByTestId("account-submit").click();
 
-    await expect(otpInput).toBeAttached();
-    await otpInput.fill("999999");
-    await passwordInput.fill("novaSenhaSuperForte123!");
-
-    await submitBtn.click();
-
-    const errorBox = page.getByTestId("reset-error");
-    await expect(errorBox).toBeVisible();
-    await expect(errorBox).toContainText("O código expirou ou não confere");
+    await expect(page.getByTestId("account-error")).toContainText("O código de redefinição expirou");
   });
 });

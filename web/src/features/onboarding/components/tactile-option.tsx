@@ -44,6 +44,8 @@ export function TactileOption({
       accessibilityRole={role}
       accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ checked: selected, selected, disabled }}
+      // O react-native-web não converte accessibilityState.checked em aria-checked.
+      aria-checked={selected}
       disabled={disabled}
       onPress={onPress}
       onPressIn={() => setPressed(true)}

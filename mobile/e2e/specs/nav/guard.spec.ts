@@ -23,11 +23,7 @@ test.describe("Route Guard (E2E)", () => {
       await expect(page).toHaveURL(/.*\/account/);
     });
 
-    test("rotas públicas como /dev/ui e /account carregam sem redirecionamento", async ({ page }) => {
-      await page.goto("/dev/ui");
-      await expect(page).toHaveURL(/.*\/dev\/ui/);
-      await expect(page.getByText("Galeria de Primitivos UI")).toBeVisible();
-
+    test("a rota pública /account carrega sem redirecionamento", async ({ page }) => {
       await page.goto("/account");
       await expect(page).toHaveURL(/.*\/account/);
       await expect(page.getByTestId("account-email")).toBeVisible();

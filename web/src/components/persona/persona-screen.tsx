@@ -299,12 +299,7 @@ export function PersonaScreen() {
                   <Text className="font-bold">{`${t.objective}: `}</Text>
                   {item.objective}
                 </Text>
-                {item.twist ? (
-                  <Text className="mt-2 text-sm leading-5 text-[#111C2D]">
-                    <Text className="font-bold">{`${t.twist}: `}</Text>
-                    {item.twist}
-                  </Text>
-                ) : null}
+                {/* A reviravolta (twist) fica só com o parceiro: mostrada antes, estragaria a surpresa. */}
                 <Text className="mt-3 text-sm font-extrabold text-[#0F766E]">{`${t.openScene} →`}</Text>
               </Pressable>
             ))}
@@ -331,12 +326,6 @@ export function PersonaScreen() {
                 <Text className="font-bold">{`${t.objective}: `}</Text>
                 {scene.objective}
               </Text>
-              {scene.twist ? (
-                <Text className="mt-1 text-sm leading-5 text-[#111C2D]">
-                  <Text className="font-bold">{`${t.twist}: `}</Text>
-                  {scene.twist}
-                </Text>
-              ) : null}
               {source === "fallback" ? (
                 <Text className="mt-2 text-xs font-bold" style={{ color: "#78350F" }}>
                   {t.fallbackBadge}

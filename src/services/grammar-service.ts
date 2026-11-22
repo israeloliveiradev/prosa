@@ -41,7 +41,7 @@ export class GrammarService {
     user: AuthUser,
     blocks: GrammarBlock[],
     voice?: string,
-  ): Promise<{ sentence: string; blocks: GrammarBlock[]; audio_url: string; words: { text: string; offset_ms: number }[] }> {
+  ): Promise<{ sentence: string; blocks: GrammarBlock[]; audio_url: string | null; words: { text: string; offset_ms: number }[] }> {
     const ordered = orderGrammarBlocks(blocks);
     if (!ordered) {
       throw new AppError(400, "Grammar blocks are incomplete");
@@ -52,20 +52,25 @@ export class GrammarService {
       blocks: ordered.map((block) => ({ role: block.role, text: block.text })),
     });
     const next = orderGrammarBlocks(
-      rebuilt.blocks.map((block) => ({
-        role: block.role,
-        text: block.text,
-        options: ordered.find((item) => item.role === block.role)?.options ?? [block.text],
-      })),
+      rebuilt.blocks.map((block) => {
+        const original = ordered.find((item) => item.role === block.role);
+        // Bloco vazio (conector absorvido pelo verbo): mantém o marcador da desmontagem.
+        const text = block.text.trim() || original?.text || "";
+        return { role: block.role, text, options: original?.options ?? [text] };
+      }),
     );
     if (!next) {
       throw new AppError(502, "Grammar response failed validation");
     }
-    const spoken = await this.neural.speak({
-      text: rebuilt.sentence,
-      lang: user.target_lang.toLowerCase(),
-      ...(voice ? { voice } : {}),
-    });
-    return { sentence: rebuilt.sentence, blocks: next, audio_url: spoken.audioUrl, words: spoken.words };
+    // A voz do servidor (edge-tts) depende de um serviço externo. Sem ela, a frase nova sai
+    // sem áudio e o app lê com a voz do aparelho, em vez de perder a variação inteira (502).
+    const spoken = await this.neural
+      .speak({
+        text: rebuilt.sentence,
+        lang: user.target_lang.toLowerCase(),
+        ...(voice ? { voice } : {}),
+      })
+      .catch(() => null);
+    return { sentence: rebuilt.sentence, blocks: next, audio_url: spoken?.audioUrl ?? null, words: spoken?.words ?? [] };
   }
 }

@@ -1,0 +1,15 @@
+# Override SÓ para a auditoria E2E local (mobile/e2e/audit). Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.audit.yml up -d --build api
+# - Zera os provedores de e-mail reais: cada conta criada pela auditoria manda um e-mail de
+#   verificação, que assim fica só no Mailpit (http://localhost:8025). Sem isso, a base da
+#   auditoria se recusa a criar contas (assertLocalMailOnly em mobile/e2e/audit/fixtures.ts).
+# - Sobe o teto global de requisições por IP: a auditoria roda tudo a partir de 127.0.0.1.
+# Para voltar ao normal: docker compose up -d --build api
+services:
+  api:
+    environment:
+      RATE_LIMIT_GLOBAL_MAX: "1500"
+      MAILJET_API_KEY: ""
+      MAILJET_API_SECRET: ""
+      RESEND_API_KEY: ""
+      BREVO_API_KEY: ""

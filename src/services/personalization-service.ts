@@ -132,10 +132,16 @@ export class PersonalizationService {
          DO UPDATE SET through_lang = EXCLUDED.through_lang, level = COALESCE($5, study_tracks.level)`,
         [user.id, targetLang, throughLang, nextLevel, level ?? null],
       );
+      // Duas instruções: numa só, o índice único parcial (um curso ativo por aluno) é conferido
+      // linha a linha e pode ver a nova ativa antes de a antiga sair (23505 → 500 na troca).
       await client.query(
-        `UPDATE study_tracks
-         SET active = (target_lang = $2)
-         WHERE user_id = $1`,
+        `UPDATE study_tracks SET active = false
+         WHERE user_id = $1 AND active AND target_lang <> $2`,
+        [user.id, targetLang],
+      );
+      await client.query(
+        `UPDATE study_tracks SET active = true
+         WHERE user_id = $1 AND target_lang = $2 AND NOT active`,
         [user.id, targetLang],
       );
       const saved = await client.query<{ level: string }>(

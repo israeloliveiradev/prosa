@@ -35,6 +35,7 @@ import {
   generatePersonalized,
   postProfileSignals,
   prefetchSpeech,
+  pushNewCard,
 } from "@/lib/api";
 import { mindForPhase, mindRole, useCast } from "@/lib/cast";
 import { fill, SESSION_COPY } from "@/lib/copy/session";
@@ -533,7 +534,9 @@ function DailySession({ session }: { session: SessionState }) {
     if (!phrase || !translation || cardInDeck(deck, phrase) || cardInDeck(getProgress().cards, phrase)) {
       return;
     }
-    persistDeck([cardFromTap({ word: phrase, translation, sentence })]);
+    const card = cardFromTap({ word: phrase, translation, sentence });
+    persistDeck([card]);
+    pushNewCard(card);
     update((current) => ({ ...current, savedWords: current.savedWords + 1 }));
     void tap("success");
     setSaveNote(copy.savedChunk);
@@ -543,13 +546,13 @@ function DailySession({ session }: { session: SessionState }) {
     if (!lesson || !picked || saved || !pickedWord) {
       return;
     }
-    persistDeck([
-      cardFromTap({
-        word: wordFace,
-        translation: wordGloss || throughForSentence(lesson.story_text, lesson.translation, picked.sentence),
-        sentence: wordSentence || picked.sentence,
-      }),
-    ]);
+    const card = cardFromTap({
+      word: wordFace,
+      translation: wordGloss || throughForSentence(lesson.story_text, lesson.translation, picked.sentence),
+      sentence: wordSentence || picked.sentence,
+    });
+    persistDeck([card]);
+    pushNewCard(card);
     update((current) => ({ ...current, savedWords: current.savedWords + 1 }));
     void tap("success");
     setPicked(null);
@@ -557,8 +560,10 @@ function DailySession({ session }: { session: SessionState }) {
   }
 
   function onSpeechScored(score: number) {
-    // Nota 0 = não ouvimos voz (ou nada reconhecido): não conta como tentativa nem paga XP.
+    // Nota 0 = não ouvimos voz (ou nada reconhecido): não conta como tentativa nem paga XP,
+    // mas libera o "pular a fala": com o microfone mudo, o aluno ficaria preso na etapa.
     if (!(score > 0)) {
+      setSpeechTrouble(true);
       return;
     }
     recordSpeaking(score);

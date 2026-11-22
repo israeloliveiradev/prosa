@@ -118,6 +118,7 @@ export function Question({ t, attempt, item, targetLang, picked, pending, error,
                   accessibilityRole="radio"
                   accessibilityLabel={option}
                   accessibilityState={{ selected, checked: selected, disabled: pending }}
+                  aria-checked={selected}
                   disabled={pending}
                   onPress={() => onPick(index)}
                   className={`min-h-14 flex-row items-center gap-3 rounded-2xl border-2 px-4 py-3 ${

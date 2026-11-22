@@ -32,6 +32,8 @@ const envSchema = z.object({
   SMTP_HOST: z.string().default(""),
   SMTP_PORT: z.coerce.number().int().positive().default(1025),
   MAIL_INBOX_URL: z.string().default(""),
+  /** Teto global de requisições por IP por minuto. Só se sobe para a auditoria E2E local. */
+  RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().positive().default(120),
   /** Pré-carga diária das notícias no tick de 15 min (gasta cota de IA): só com "true". */
   NEWS_PRELOAD_ENABLED: z
     .string()

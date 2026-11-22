@@ -123,7 +123,7 @@ export async function buildApp(env: Env) {
 
   await app.register(rateLimit, {
     global: true,
-    max: 120,
+    max: env.RATE_LIMIT_GLOBAL_MAX,
     timeWindow: "1 minute",
     redis,
     nameSpace: "prosa-rl:",

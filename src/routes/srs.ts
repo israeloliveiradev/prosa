@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { requireUser } from "../auth/session.js";
 import { AppError } from "../http/errors.js";
-import { mnemonicBodySchema, retentionBodySchema, syncReviewsBodySchema, type SyncReviewsBody } from "../schemas/srs.js";
+import { mnemonicBodySchema, newCardBodySchema, retentionBodySchema, syncReviewsBodySchema, type SyncReviewsBody } from "../schemas/srs.js";
 import type { MnemonicService } from "../services/mnemonic-service.js";
 import { scheduleFsrs } from "../services/fsrs.js";
 import { retentionSnapshot } from "../services/retention.js";
@@ -76,6 +76,40 @@ export function registerSrsRoutes(app: FastifyInstance, pool: Pool, mnemonics: M
           due: row.next_review_at.toISOString(),
         })),
       };
+    },
+  );
+
+  /**
+   * Cartão novo guardado pelo aluno (Leitura, sessão diária). Idempotente pela frase: sem isso,
+   * o cartão só nascia no servidor na primeira revisão e se perdia ao trocar de aparelho.
+   */
+  app.post(
+    "/api/v1/srs/cards",
+    {
+      config: {
+        rateLimit: { max: 60, timeWindow: "1 minute" },
+      },
+    },
+    async (request, reply) => {
+      const user = await requireUser(pool, request);
+      const body = newCardBodySchema.parse(request.body);
+      // O índice único (user_id, target_lang, lower(front_phrase)) segura dois envios ao mesmo tempo.
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO srs_cards (user_id, target_lang, front_phrase, back_translation, context_sentence)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, target_lang, lower(front_phrase)) DO NOTHING
+         RETURNING id`,
+        [user.id, user.target_lang, body.front_phrase, body.back_translation, body.context_sentence],
+      );
+      if (inserted.rows[0]) {
+        reply.code(201);
+        return { id: inserted.rows[0].id, created: true };
+      }
+      const existing = await pool.query<{ id: string }>(
+        `SELECT id FROM srs_cards WHERE user_id = $1 AND target_lang = $2 AND lower(front_phrase) = lower($3) LIMIT 1`,
+        [user.id, user.target_lang, body.front_phrase],
+      );
+      return { id: existing.rows[0]?.id ?? null, created: false };
     },
   );
 

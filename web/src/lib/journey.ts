@@ -49,17 +49,31 @@ export function getJourney(): JourneyState {
   return state;
 }
 
-export function openJourney(userId: string): JourneyState {
+/** Par da conta (idioma-alvo e de apoio) para semear a jornada nova. */
+export interface JourneyAccount {
+  target_lang?: string | null;
+  native_lang?: string | null;
+}
+
+/** Jornada vazia deste aluno, já com o par escolhido no cadastro (não o en/pt padrão). */
+function freshJourney(userId: string, account?: JourneyAccount): JourneyState {
+  if (!account?.target_lang) {
+    return { ...EMPTY, userId };
+  }
+  return { ...EMPTY, userId, ...normalizePair(account.target_lang, account.native_lang) };
+}
+
+export function openJourney(userId: string, account?: JourneyAccount): JourneyState {
   if (state.userId === userId) {
     return state;
   }
-  const next = { ...EMPTY, userId };
+  const next = freshJourney(userId, account);
   persist(next);
   return next;
 }
 
-export function reopenFirstDay(userId: string): JourneyState {
-  const next = { ...EMPTY, userId };
+export function reopenFirstDay(userId: string, account?: JourneyAccount): JourneyState {
+  const next = freshJourney(userId, account);
   persist(next);
   return next;
 }

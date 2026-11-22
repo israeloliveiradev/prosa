@@ -201,7 +201,7 @@ export const routes = [
       }
       return {
         status: 401,
-        body: { error: "Invalid credentials" },
+        body: { error: "Invalid second factor" },
       };
     },
   },
@@ -230,7 +230,7 @@ export const routes = [
       }
       return {
         status: 400,
-        body: { error: "Verify code expired" },
+        body: { error: "Reset code expired" },
       };
     },
   },
@@ -252,28 +252,6 @@ export const routes = [
     handler: () => ({
       status: 200,
       body: { status: "ok" },
-    }),
-  },
-
-  // Placement status
-  {
-    method: "GET",
-    path: "/api/v1/placement/status",
-    handler: () => ({
-      status: 200,
-      body: {
-        last: {
-          level: "B1",
-          score: 78,
-          timestamp: "2026-10-20T12:00:00Z",
-          skills: {
-            vocabulary: 80,
-            grammar: 75,
-            reading: 82,
-            listening: 74,
-          },
-        },
-      },
     }),
   },
 
@@ -334,8 +312,8 @@ export const routes = [
       status: 200,
       body: {
         tracks: [
-          { target: "en", through: "pt", level: "B1", active: true },
-          { target: "es", through: "pt", level: "A2", active: false },
+          { target_lang: "en", through_lang: "pt", level: "B1", active: true },
+          { target_lang: "es", through_lang: "pt", level: "A2", active: false },
         ],
       },
     }),
@@ -441,6 +419,32 @@ export const routes = [
         target_lang: "en",
         native_lang: "pt",
         level: req.body?.level || "B1",
+      },
+    }),
+  },
+
+  // Account settings (goal, note, daily minutes)
+  {
+    method: "PATCH",
+    path: "/api/v1/account/settings",
+    handler: (req) => ({
+      status: 200,
+      body: {
+        display_name: null,
+        display_locale: "pt",
+        reminder_enabled: false,
+        reminder_hour: 20,
+        totp_enabled: false,
+        email_2fa: false,
+        mind_reading: "einstein",
+        mind_memory: "curie",
+        mind_speech: "feynman",
+        mind_journal: "davinci",
+        mail_configured: false,
+        mail_inbox_url: null,
+        goal: req.body?.goal ?? null,
+        goal_note: req.body?.goal_note ?? null,
+        daily_minutes: req.body?.daily_minutes ?? 20,
       },
     }),
   },

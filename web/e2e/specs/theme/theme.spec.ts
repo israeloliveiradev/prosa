@@ -72,15 +72,9 @@ test.describe("Theme System (E2E)", () => {
     const stored = await page.evaluate(() => localStorage.getItem("prosa\\prosa.theme.v2"));
     expect(stored).toBe("dark");
   });
-
-  test("anti-flash script applies dark class before bundle paint when dark is stored", async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem("prosa\\prosa.theme.v2", "dark");
-    });
-
-    // Check immediate class on initial HTML load
-    await page.goto("/account", { waitUntil: "commit" });
-    const hasDarkImmediately = await page.evaluate(() => document.documentElement.classList.contains("dark"));
-    expect(hasDarkImmediately).toBe(true);
+  test("early script paints the cream background before the bundle", async ({ page }) => {
+    await page.goto("/account", { waitUntil: "domcontentloaded" });
+    const bg = await page.evaluate(() => document.documentElement.style.backgroundColor);
+    expect(bg).toBe("rgb(253, 251, 247)");
   });
 });

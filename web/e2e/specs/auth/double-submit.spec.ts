@@ -30,7 +30,7 @@ test.describe("Autenticação - Prevenção de Duplo Envio", () => {
 
     const emailInput = page.getByTestId("account-email");
     const passwordInput = page.getByTestId("account-password");
-    const submitBtn = page.getByTestId("account-submit");
+    const submitBtn = page.getByTestId("account-submit").getByRole("button");
 
     await emailInput.fill("single@prosa.test");
     await passwordInput.fill("senhaValida123");

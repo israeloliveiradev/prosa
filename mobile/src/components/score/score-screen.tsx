@@ -229,6 +229,7 @@ export function ScoreScreen() {
                   key={option}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: on }}
+                  aria-checked={on}
                   onPress={() => {
                     setPicked(optionIndex);
                     void tap("light");

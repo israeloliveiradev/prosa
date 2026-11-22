@@ -23,7 +23,8 @@ export class EmailVerify {
       throw new AppError(503, "Mail is not configured");
     }
     const code = sixDigitCode();
-    console.log(`\n========================================\n[PROSA VERIFY CODE] ${email} -> ${code}\n========================================\n`);
+    // Nunca registrar o código: com o log, qualquer um com acesso a ele entraria na conta.
+    // Em desenvolvimento o código aparece no Mailpit (http://localhost:8025).
     await this.redis.set(this.key(email), `${userId}:${digestCode(code)}`, "EX", TTL);
     const letter = brandedMail({ locale, kind, code, email });
     const ok = await this.mailer.send({ to: email, ...letter });

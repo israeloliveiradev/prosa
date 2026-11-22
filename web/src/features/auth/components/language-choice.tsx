@@ -28,6 +28,7 @@ export function LanguageChoice({ label, hint, options, value, onChange, nameFor,
               accessibilityRole="radio"
               accessibilityLabel={name}
               accessibilityState={{ checked: selected, selected }}
+              aria-checked={selected}
               onPress={() => onChange(code)}
               style={{
                 flexDirection: "row",

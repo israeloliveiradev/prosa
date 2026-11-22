@@ -12,7 +12,9 @@ export function useServerDeck(): { syncing: boolean; failed: boolean } {
   const session = useSession();
   const token = session?.token ?? null;
   const query = useQuery({
-    queryKey: ["srs-cards", session?.user.id ?? null],
+    // O idioma-alvo entra na chave: GET /srs/cards devolve só o curso ativo, e sem ele a troca
+    // de curso reaproveitava a resposta "fresca" do curso anterior por até 60 s.
+    queryKey: ["srs-cards", session?.user.id ?? null, session?.user.target_lang ?? null],
     enabled: Boolean(token),
     staleTime: 60_000,
     queryFn: async () => {

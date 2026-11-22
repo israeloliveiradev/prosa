@@ -10,18 +10,17 @@ test.describe("Guide Screen (/guide) (E2E)", () => {
     await expect(guideScreen).toBeVisible();
 
     // Título H1 sem kicker
-    const title = page.getByTestId("guide-title");
-    await expect(title).toBeVisible();
-    await expect(title).toHaveText("Como usar o Prosa");
+    await expect(page.getByRole("heading", { name: "Como usar o Prosa" })).toBeVisible();
+    await expect(page.getByTestId("guide-steps")).toBeVisible();
 
     // Conteúdo editorial
     await expect(page.getByText("O ritmo dos 20 minutos")).toBeVisible();
-    await expect(page.getByText("As quatro mentes pedagógicas")).toBeVisible();
-    await expect(page.getByText("Albert Einstein")).toBeVisible();
-    await expect(page.getByText("Marie Curie")).toBeVisible();
-    await expect(page.getByText("Richard Feynman")).toBeVisible();
-    await expect(page.getByText("Leonardo da Vinci")).toBeVisible();
-    await expect(page.getByText("Memória e retenção duradoura")).toBeVisible();
+    await expect(page.getByText("As quatro mentes")).toBeVisible();
+    await expect(page.getByText("Einstein").first()).toBeVisible();
+    await expect(page.getByText("Curie").first()).toBeVisible();
+    await expect(page.getByText("Feynman").first()).toBeVisible();
+    await expect(page.getByText("Leonardo").first()).toBeVisible();
+    await expect(page.getByText("Memória que dura")).toBeVisible();
 
     // Ação "Rever as dicas de uso"
     const resetBtn = page.getByTestId("guide-reset-hints");

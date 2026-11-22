@@ -26,7 +26,7 @@ test.describe("Autenticação - Segundo Fator (2FA)", () => {
     await submitBtn.click();
 
     // Deve estar no modo 2FA com campo OTP visível
-    const otpInput = page.getByTestId("account-otp-input");
+    const otpInput = page.getByTestId("account-second-factor");
     await expect(otpInput).toBeAttached();
 
     // Digita o código de 6 dígitos
@@ -59,7 +59,7 @@ test.describe("Autenticação - Segundo Fator (2FA)", () => {
     await page.getByTestId("account-password").fill("senhaValida123");
     await page.getByTestId("account-submit").click();
 
-    const otpInput = page.getByTestId("account-otp-input");
+    const otpInput = page.getByTestId("account-second-factor");
     await expect(otpInput).toBeAttached();
 
     // Digita código inválido
@@ -68,6 +68,6 @@ test.describe("Autenticação - Segundo Fator (2FA)", () => {
 
     const errorBox = page.getByTestId("account-error");
     await expect(errorBox).toBeVisible();
-    await expect(errorBox).toContainText("E-mail ou senha não confere");
+    await expect(errorBox).toContainText("Código de verificação incorreto");
   });
 });

@@ -985,6 +985,7 @@ export class GeminiGateway {
         "Keep each block's meaning. Adjust only the minimum needed for agreement.",
         "sentence is the full sentence.",
         "blocks echo the four roles with the final text used in the sentence.",
+        "connector is never empty: when the tense lives in the verb ending, write the marker the way the input connector was written.",
       ].join(" "),
       contents: [
         `Target language: ${namedLang(input.targetLang)}`,
@@ -1153,7 +1154,8 @@ export class GeminiGateway {
     const completion = await this.generateStructured({
       systemInstruction: [
         "Design three short role-play scenes for a language learner.",
-        "Scene kind goal comes from the learner goal, kind unit practises the trail unit, kind interest comes from one of the learner interests.",
+        // Contrato (docs/13-m3-contrato.md): a cena interest vem de users.interests[0], o tema principal.
+        "Scene kind goal comes from the learner goal, kind unit practises the trail unit, kind interest is about the learner's main interest and no other topic.",
         "Each scene is a concrete, realistic situation at the learner CEFR level, with one person the learner talks to.",
         `title, setting, learner_role, partner_role, objective and twist are written in ${ui}, the learner interface language.`,
         // Mesmo registro da interface (du/tú/tu informais; vous; です/ます), senão a cena destoa do app.
@@ -1173,7 +1175,7 @@ export class GeminiGateway {
         `Trail unit: ${input.unit.title} (${input.unit.topic})`,
         input.unit.canDo.length > 0 ? `Unit can-do goals: ${input.unit.canDo.join(" ")}` : "",
         input.unit.grammar ? `Unit grammar: ${input.unit.grammar}` : "",
-        `Learner interests: ${input.interests.length > 0 ? input.interests.slice(0, 4).join(", ") : "everyday life"}`,
+        `Main interest (the interest scene is about this): ${input.interests[0] ?? "everyday life"}`,
       ]
         .filter(Boolean)
         .join("\n"),
@@ -1230,7 +1232,7 @@ export class GeminiGateway {
         "Play partner_role in the setting. The learner plays learner_role and is trying to reach the objective.",
         "Use the register that fits the setting and the two roles.",
         input.scene.twist
-          ? "Hold the twist: do not give the learner what they first asked for. Make them negotiate: another option, another time, or a clear next step. Do not resolve it on the first learner turn."
+          ? "Hold the twist: do not give the learner what they first asked for. Make them negotiate: another option, another time, or a clear next step. Do not resolve it on the first learner turn. The learner does not know the twist: let it surface naturally from what your character knows or sees, never as a general announcement."
           : "There is no twist: react naturally and let the learner work toward the objective.",
         "Do not invent a second complication.",
         "reply is one to three sentences at the learner CEFR level. Do not translate it. Do not add a teaching note inside the reply.",

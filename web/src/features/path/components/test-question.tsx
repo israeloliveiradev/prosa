@@ -86,6 +86,7 @@ export function TestQuestion({ t, item, number, total, targetLang, picked, disab
                 accessibilityRole="radio"
                 accessibilityLabel={option}
                 accessibilityState={{ selected, checked: selected, disabled }}
+                aria-checked={selected}
                 disabled={disabled}
                 onPress={() => onPick(index)}
                 style={{

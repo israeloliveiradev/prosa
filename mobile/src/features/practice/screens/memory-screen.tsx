@@ -10,7 +10,8 @@ import { tactile } from "@/components/tactile/tokens";
 import { useAreaCopy } from "@/lib/copy/area";
 import { MEMORY, type MemoryCopy } from "@/lib/copy/memory";
 import { tap } from "@/lib/haptics";
-import { enqueueReview, persistDeck, useProgress } from "@/lib/progress";
+import { cardXpKey, enqueueReview, persistDeck, useProgress } from "@/lib/progress";
+import { awardXp } from "@/lib/xp";
 import { useSession } from "@/lib/session";
 import type { SessionCard } from "@/lib/types";
 import { PracticePage } from "../components/practice-header";
@@ -84,6 +85,8 @@ export function MemoryScreen() {
               setQueue(next);
               persistDeck(next);
               enqueueReview(graded, quality);
+              // enqueueReview não paga XP; 1 XP por cartão por dia, como na sessão diária.
+              awardXp("card", cardXpKey(graded));
             }}
           />
         </View>

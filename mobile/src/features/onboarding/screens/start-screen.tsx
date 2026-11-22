@@ -99,10 +99,10 @@ export function StartScreen() {
   const remember = useCallback(
     (patch: Partial<JourneyState>) => {
       if (!userId) return;
-      openJourney(userId);
+      openJourney(userId, user ?? undefined);
       patchJourney(patch);
     },
-    [userId],
+    [userId, user],
   );
 
   // Cada troca de passo volta ao topo e fica gravada (F5 retoma daqui).

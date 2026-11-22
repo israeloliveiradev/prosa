@@ -83,15 +83,20 @@ export class DossierService {
   }
 
   async view(token: string) {
-    const found = await this.pool.query<{ user_id: string; target_lang: string }>(
-      `SELECT user_id, target_lang FROM tutor_dossiers WHERE share_token = $1`,
+    const found = await this.pool.query<{ user_id: string; target_lang: string; account_level: string; account_target: string }>(
+      `SELECT d.user_id, d.target_lang, u.level AS account_level, u.target_lang AS account_target
+       FROM tutor_dossiers AS d JOIN users AS u ON u.id = d.user_id
+       WHERE d.share_token = $1`,
       [token],
     );
     const row = found.rows[0];
     if (!row) {
       throw new AppError(404, "Dossier was not found");
     }
-    const level = await this.level(row.user_id, row.target_lang);
+    // Mesmo nível que o dono vê em mine(): sem linha em study_tracks, vale o nível da conta
+    // (que é o do curso ativo, então só serve de reserva quando o dossiê é desse curso).
+    const fallback = row.account_target === row.target_lang ? row.account_level : undefined;
+    const level = await this.level(row.user_id, row.target_lang, fallback);
     return this.body({ id: row.user_id, level, target_lang: row.target_lang }, row.target_lang);
   }
 

@@ -7,6 +7,7 @@ import { TactilePanel } from "@/components/tactile/tactile-panel";
 import { tactile } from "@/components/tactile/tokens";
 import { ErrorPanel, PracticePage } from "@/features/practice/components/practice-header";
 import { applyAnswer, EMPTY_TALLY, unitParam, type DuelRoundData, type DuelTally } from "@/features/practice/model/duel-model";
+import { queryClient } from "@/api/query-client";
 import { fetchDuelBoard, fetchDuelRound, saveDuelScore, type DuelBoardEntry } from "@/lib/api";
 import { useAreaCopy } from "@/lib/copy/area";
 import { DUEL } from "@/lib/copy/duel";
@@ -68,6 +69,8 @@ export function DuelScreen() {
       void saveDuelScore(token, { score: final.score, best_combo: final.bestCombo, correct_count: final.correct, unit_id: unitId })
         .then(() => {
           setSave("saved");
+          // O cartão do Duelo em /practice lê o recorde desta consulta (staleTime 60 s).
+          void queryClient.invalidateQueries({ queryKey: ["duel-board"] });
           void fetchDuelBoard(token)
             .then(setBoard)
             .catch(() => setBoard(null));

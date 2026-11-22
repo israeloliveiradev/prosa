@@ -1,22 +1,24 @@
 import { test, expect } from "../../fixtures";
 
 test.describe("Autenticação - Cadastro", () => {
-  test("alterna para o modo de cadastro e exibe campos e seletor de nível", async ({ page }) => {
+  test("alterna para o modo de cadastro e exibe campos e seletores de idioma", async ({ page }) => {
     await page.goto("/account");
 
-    const toggleBtn = page.getByTestId("account-toggle-mode");
+    const toggleBtn = page.getByTestId("account-tab-signup");
     await expect(toggleBtn).toBeVisible();
     await toggleBtn.click();
 
     // Campos de cadastro
     const emailInput = page.getByTestId("account-email");
     const passwordInput = page.getByTestId("account-password");
-    const levelSelector = page.getByTestId("account-level");
+    const targetSelector = page.getByTestId("account-target");
+    const supportSelector = page.getByTestId("account-support");
     const submitBtn = page.getByTestId("account-submit");
 
     await expect(emailInput).toBeVisible();
     await expect(passwordInput).toBeVisible();
-    await expect(levelSelector).toBeVisible();
+    await expect(targetSelector).toBeVisible();
+    await expect(supportSelector).toBeVisible();
     await expect(submitBtn).toBeVisible();
   });
 
@@ -27,7 +29,7 @@ test.describe("Autenticação - Cadastro", () => {
     await passwordInput.fill("12345678");
 
     // Verifica que mensagem de força aparece
-    const strengthText = page.locator("text=Senha");
+    const strengthText = page.getByText("Senha aceitável.");
     await expect(strengthText.first()).toBeVisible();
   });
 
@@ -60,6 +62,6 @@ test.describe("Autenticação - Cadastro", () => {
 
     const errorBox = page.getByTestId("account-error");
     await expect(errorBox).toBeVisible();
-    await expect(errorBox).toContainText("Este e-mail já tem uma conta");
+    await expect(errorBox).toContainText("Este e-mail já tem conta");
   });
 });

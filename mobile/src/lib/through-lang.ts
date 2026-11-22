@@ -1,5 +1,6 @@
 export function spanishGlossLeak(text: string): boolean {
-  return /ñ|¿|¡|cción\b|ción\b|sión\b|ía\b/iu.test(text.normalize("NFC"));
+  // Igual a src/services/through-lang.ts: "ía" final só depois de consoante ("construía" é português).
+  return /ñ|¿|¡|cción\b|ción\b|sión\b|(?:^|[^aeiouáéíóúâêôãõ])ía\b/iu.test(text.normalize("NFC"));
 }
 
 export function cardsForThrough<T extends { back_translation: string }>(cards: T[], throughLang: string): T[] {

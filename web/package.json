@@ -83,6 +83,9 @@
     "e2e": "playwright test --project=mobile --project=desktop",
     "e2e:ui": "playwright test --ui",
     "e2e:smoke": "node scripts/with-env.mjs PW_SMOKE=1 playwright test --project=smoke",
+    "audit:build": "node scripts/with-env.mjs EXPO_PUBLIC_API_URL=http://127.0.0.1:3000 npx expo export --platform web --output-dir dist-smoke --clear",
+    "audit:serve": "node e2e/helpers/serve.mjs --dist dist-smoke --port 8081 --api none",
+    "e2e:audit": "playwright test -c playwright.audit.config.ts",
     "e2e:report": "playwright show-report"
   },
   "private": true

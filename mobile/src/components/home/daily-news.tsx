@@ -8,7 +8,7 @@ import { NewsDictogloss } from "@/components/home/news-dictogloss";
 import { classifyFailure, fill, type FailureKind } from "@/components/persona/talk-logic";
 import { TactileButton } from "@/components/tactile/tactile-button";
 import { TactileCard } from "@/components/tactile/tactile-card";
-import { fetchAdaptedNews, speakStory, type AdaptedNews } from "@/lib/api";
+import { fetchAdaptedNews, pushNewCard, speakStory, type AdaptedNews } from "@/lib/api";
 import { useAreaCopy } from "@/lib/copy/area";
 import {
   READING,
@@ -124,6 +124,7 @@ function Chip({
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityState={{ selected, checked: selected, disabled }}
+      aria-checked={selected}
       disabled={disabled}
       onPress={onPress}
       className={`min-h-11 cursor-pointer items-center justify-center rounded-xl border px-4 ${
@@ -338,6 +339,7 @@ export function DailyNews() {
         status: "learning",
       },
     ]);
+    pushNewCard({ front_phrase: entry.word, back_translation: entry.translation, context_sentence: entry.example_sentence });
     void tap("success");
   }
 

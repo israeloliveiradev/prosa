@@ -14,7 +14,7 @@ test.describe("Course Switcher & Sheet (E2E)", () => {
     // Folha de cursos
     const sheet = page.getByTestId("course-sheet");
     await expect(sheet).toBeVisible();
-    await expect(page.getByText("Seus idiomas")).toBeVisible();
+    await expect(sheet.getByText("Seus cursos")).toBeVisible();
 
     // Botão de adicionar curso
     const addBtn = page.getByTestId("course-add-btn");

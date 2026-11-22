@@ -25,9 +25,10 @@ test.describe("Autenticação - Login", () => {
     await passwordInput.fill("123");
     await submitBtn.click();
 
-    const errorBox = page.getByTestId("account-error");
-    await expect(errorBox).toBeVisible();
-    await expect(errorBox).toContainText("Confira o e-mail e use uma senha");
+    // Validação local: erros por campo, sem chamar a API
+    await expect(page.getByText("Digite um e-mail válido.")).toBeVisible();
+    await expect(page.getByText("A senha precisa de 8 a 72 caracteres.")).toBeVisible();
+    expect(mockApi.getCalls("POST", "/api/v1/auth/login").length).toBe(0);
   });
 
   test("credenciais incorretas (401) mostram erro traduzido", async ({ page, mockApi }) => {
@@ -45,7 +46,7 @@ test.describe("Autenticação - Login", () => {
 
     const errorBox = page.getByTestId("account-error");
     await expect(errorBox).toBeVisible();
-    await expect(errorBox).toContainText("E-mail ou senha não confere");
+    await expect(errorBox).toContainText("E-mail ou senha não conferem");
   });
 
   test("login com sucesso redireciona para a aplicação", async ({ page, mockApi }) => {

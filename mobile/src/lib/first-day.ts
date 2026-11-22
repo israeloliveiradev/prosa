@@ -47,7 +47,7 @@ export async function syncFirstDay(token: string, user: AccountUser): Promise<vo
       return;
     }
   } catch {
-    openJourney(user.id);
+    openJourney(user.id, user);
     return;
   }
   if (getJourney().userId !== user.id) {
@@ -57,10 +57,10 @@ export async function syncFirstDay(token: string, user: AccountUser): Promise<vo
       resetGuide();
       bindProgressLang(user.target_lang);
     }
-    reopenFirstDay(user.id);
+    reopenFirstDay(user.id, user);
     return;
   }
-  openJourney(user.id);
+  openJourney(user.id, user);
 }
 
 export function firstDayHref(userId: string): "/start" | "/" {

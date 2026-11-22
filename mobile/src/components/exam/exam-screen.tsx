@@ -222,6 +222,7 @@ export function ExamScreen() {
                 testID={`exam-track-${exam.id}`}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: status.track === exam.id, disabled: pending }}
+                aria-checked={status.track === exam.id}
                 onPress={() => void pickTrack(exam.id)}
                 disabled={pending}
                 className={`rounded-2xl border-2 px-4 py-3 ${status.track === exam.id ? "border-[#0F766E] bg-[#F0FDFA]" : "border-[#E7E5E4] bg-white"}`}
@@ -252,6 +253,7 @@ export function ExamScreen() {
                   key={option}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: on }}
+                  aria-checked={on}
                   onPress={() => keepChoice(optionIndex)}
                   className={`min-h-12 justify-center rounded-2xl border px-4 py-3 ${on ? "border-[#0F766E] bg-[#F0FDFA]" : "border-[#E7E5E4] bg-white"}`}
                 >

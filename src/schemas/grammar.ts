@@ -20,7 +20,9 @@ export const grammarVaryModelSchema = z.object({
   blocks: z.array(
     z.object({
       role: grammarRoleSchema,
-      text: z.string().trim().min(1).max(160),
+      // O modelo devolve o conector vazio quando o tempo vai para a desinência ("sells");
+      // GrammarService.vary repõe o bloco de entrada nesse caso.
+      text: z.string().trim().max(160),
     }),
   ).length(4),
 });

@@ -210,10 +210,15 @@ export async function evaluateJournal(input: {
   token?: string;
 }): Promise<JournalEvaluation> {
   const { token, ...body } = input;
+  // A cadeia de IA às vezes não responde: sem teto, a tela ficava em "Lendo sua resposta…" para
+  // sempre. Com ele, sai o erro traduzido e o aluno pode tentar de novo.
   const response = await fetch(`${apiUrl()}/api/v1/journal/evaluate`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(75_000),
+  }).catch(() => {
+    throw new Error(copy().journalFailed);
   });
   if (!response.ok) {
     throw new Error(await readError(response));
@@ -1010,6 +1015,29 @@ export async function fetchSrsCards(token: string): Promise<SessionCard[]> {
       typeof card.context_sentence === "string" &&
       (card.status === "learning" || card.status === "reviewing" || card.status === "mastered"),
   );
+}
+
+/**
+ * Cartão que o aluno acabou de guardar (Leitura, sessão): cria no servidor já, sem esperar a
+ * primeira revisão. Sem rede, segue só no aparelho e a primeira revisão o leva ao servidor.
+ */
+export function pushNewCard(card: { front_phrase: string; back_translation: string; context_sentence: string }): void {
+  const token = getSession()?.token;
+  const front = card.front_phrase.trim();
+  const back = card.back_translation.trim();
+  const context = card.context_sentence.trim() || front;
+  if (!token || !front || !back) {
+    return;
+  }
+  void fetch(`${apiUrl()}/api/v1/srs/cards`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      front_phrase: front.slice(0, 240),
+      back_translation: back.slice(0, 240),
+      context_sentence: context.slice(0, 500),
+    }),
+  }).catch(() => undefined);
 }
 
 export async function recordRetention(

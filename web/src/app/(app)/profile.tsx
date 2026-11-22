@@ -406,6 +406,7 @@ export default function ProfileScreen() {
                 accessibilityRole="radio"
                 accessibilityLabel={label}
                 accessibilityState={{ selected, checked: selected }}
+                aria-checked={selected}
                 onPress={() => void chooseLocale(code)}
                 className={`min-h-11 cursor-pointer items-center justify-center rounded-xl border px-4 ${selected ? "bg-[#0D9488]" : "bg-white"}`}
                 style={{ borderColor: selected ? "#0F766E" : "#E2E8F0", boxShadow: selected ? "0 3px 0 #0F766E" : "0 3px 0 #E2E8F0" } as ViewStyle}
@@ -498,6 +499,7 @@ export default function ProfileScreen() {
                         accessibilityRole="radio"
                         accessibilityLabel={`${mindLabel}. ${mindLine(mind.id, t)}`}
                         accessibilityState={{ selected, checked: selected, disabled: mindState[slot] === "saving" }}
+                        aria-checked={selected}
                         onPress={() => void chooseMind(slot, mind.id)}
                         className="flex-1 cursor-pointer flex-row items-center gap-3 rounded-xl border p-2.5"
                         style={

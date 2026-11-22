@@ -16,6 +16,9 @@ export const syncReviewSchema = z.object({
   reviewed_at: z.string().datetime({ offset: true }).optional(),
 });
 
+/** Cartão novo (POST /srs/cards): os mesmos campos que a revisão leva para criar o cartão. */
+export const newCardBodySchema = syncReviewSchema.pick({ front_phrase: true, back_translation: true, context_sentence: true });
+
 export const syncReviewsBodySchema = z.object({
   user_id: z.string().uuid(),
   reviews: z.array(syncReviewSchema).min(1).max(50),
